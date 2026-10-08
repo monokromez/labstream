@@ -12,8 +12,11 @@
   --background: #F0FDFA;
   --surface: #FFFFFF;
 
-  --text: #134E4A;
-  --text-muted: #5F7F7A;
+  --text-lightbg: #134E4A;
+  --text-muted-lightbg: #5F7F7A;
+
+  --text-darkbg: #D1FAE5;
+  --text-muted-darkbg: #A7F3D0;
 
   --border: #CCFBF1;
   --hover: #059669;
@@ -21,4 +24,30 @@
   --success: #047857;
   --warning: #D97706;
   --error: #DC2626;
+
+  --main-font: 'Sansation', sans-serif;
+  --title-font: 'Zen Dots', sans-serif;
+}
+
+#root {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  font-family: var(--main-font);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--title-font);
 }
