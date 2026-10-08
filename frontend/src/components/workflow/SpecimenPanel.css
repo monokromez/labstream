@@ -1,0 +1,8 @@
+.specimen-panel__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1rem; }
+.specimen-panel__item { min-width: 0; }
+.specimen-panel__notes { grid-column: 1 / -1; }
+
+@media (max-width: 560px) {
+  .specimen-panel__details { grid-template-columns: 1fr; }
+  .specimen-panel__notes { grid-column: auto; }
+}

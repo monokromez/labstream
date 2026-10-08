@@ -1,0 +1,10 @@
+.cashier-page__workspace {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 1fr);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .cashier-page__workspace { grid-template-columns: 1fr; }
+}

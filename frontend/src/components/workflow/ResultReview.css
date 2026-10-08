@@ -1,0 +1,7 @@
+.result-review__layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, 0.65fr); gap: 1rem; align-items: start; }
+.result-review__actions { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+.result-review__return { border-color: #fcd34d; background: #fffbeb; }
+
+@media (max-width: 700px) {
+  .result-review__layout { grid-template-columns: 1fr; }
+}

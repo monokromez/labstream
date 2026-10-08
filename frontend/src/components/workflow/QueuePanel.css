@@ -1,0 +1,2 @@
+.queue-panel__number { font-variant-numeric: tabular-nums; font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; line-height: 1; color: #0f766e; }
+.queue-panel__actions { display: flex; flex-wrap: wrap; gap: 0.625rem; }

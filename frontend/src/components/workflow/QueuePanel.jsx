@@ -1,0 +1,1 @@
+import './QueuePanel.css'

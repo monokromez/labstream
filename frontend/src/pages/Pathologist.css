@@ -1,0 +1,10 @@
+.pathologist-page__review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(17rem, 0.8fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 850px) {
+  .pathologist-page__review-layout { grid-template-columns: 1fr; }
+}

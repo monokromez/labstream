@@ -1,0 +1,8 @@
+.report-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; }
+.report-filters__field { min-width: 10rem; }
+.report-filters__actions { display: flex; gap: 0.5rem; margin-inline-start: auto; }
+
+@media (max-width: 600px) {
+  .report-filters__field, .report-filters__actions { width: 100%; }
+  .report-filters__actions { margin-inline-start: 0; }
+}

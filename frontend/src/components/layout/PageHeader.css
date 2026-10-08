@@ -1,0 +1,13 @@
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.page-header__actions { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+
+@media (max-width: 600px) {
+  .page-header { flex-direction: column; }
+}

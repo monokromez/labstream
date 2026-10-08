@@ -1,0 +1,3 @@
+.empty-state { display: grid; justify-items: center; gap: 0.5rem; padding: 3rem 1.5rem; text-align: center; }
+.empty-state__icon { display: grid; width: 3rem; height: 3rem; place-items: center; border-radius: 9999px; background: #f1f5f9; color: #64748b; }
+.empty-state__description { max-width: 34rem; color: #64748b; }

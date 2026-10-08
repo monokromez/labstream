@@ -1,0 +1,12 @@
+.patient-portal__result-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+.patient-portal__notice {
+  border-inline-start: 3px solid #0f766e;
+  border-radius: 0.5rem;
+  background: #f0fdfa;
+  padding: 0.875rem 1rem;
+}
