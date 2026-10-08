@@ -3,3 +3,22 @@
 @import "normalize.css/normalize.css" layer(base);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+
+:root {
+  --primary: #0F766E;
+  --secondary: #14B8A6;
+  --accent: #10B981;
+
+  --background: #F0FDFA;
+  --surface: #FFFFFF;
+
+  --text: #134E4A;
+  --text-muted: #5F7F7A;
+
+  --border: #CCFBF1;
+  --hover: #059669;
+
+  --success: #047857;
+  --warning: #D97706;
+  --error: #DC2626;
+}
