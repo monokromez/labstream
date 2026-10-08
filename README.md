@@ -16,7 +16,7 @@ frontend/
     index.css           Global CSS, Tailwind setup, and shared color variables
 ```
 
-The UI files are scaffolds and the app is still under development. `frontend/src/App.jsx` currently renders the Topbar directly. The page and component files are being built incrementally.
+The UI is still under development. `frontend/src/App.jsx` renders the shared `AppShell`, which contains the Topbar, role-based Sidebar, and current page area. Page and component screens are being built incrementally.
 
 ## Prerequisites
 
@@ -115,6 +115,28 @@ export default function App() {
 ```
 
 React passes the content between `<AppShell>` and `</AppShell>` to the shell as its `children` prop. Use explicit imports while prototyping; a folder cannot be rendered directly as a component. The current page/component files are placeholders, so add JSX that returns visible markup before expecting a full screen to appear.
+
+## Sidebar navigation by role
+
+`frontend/src/components/layout/Sidebar.jsx` shows navigation based on the `role` passed to `AppShell`. The default role is `cashier`. To preview a different role, set the prop in `App.jsx`:
+
+```jsx
+<AppShell role="medical_technologist">
+  <TechnologistPage />
+</AppShell>
+```
+
+The current Sidebar items are:
+
+| Role | Sidebar items | Intended function |
+|---|---|---|
+| `cashier` | Dashboard; Register New Request; Queue; Payments & Receipts | Start walk-in requests, manage the patient queue, and review recorded payments/receipts. |
+| `medical_technologist` | Work Queue; Specimens; Results in Progress | Find paid requests, record received specimens, and continue result processing. |
+| `pathologist` | Pending Validation; Returned Results; Released Results | Review results, revisit returned work, and inspect released results. |
+| `administrator` | Dashboard; Staff Accounts; Test Catalog; Reference Ranges; Reports; Audit Log | Manage staff and test setup, review reports, and inspect recorded system activity. |
+| `patient` | My Results; Test History | View the signed-in patient's released results and previous tests. |
+
+The icons are SVG files from `frontend/src/assets/`. Sidebar entries currently update the selected appearance and use placeholder hash links; they do not yet navigate to real routes. Sidebar visibility is only a UI convenience—backend endpoints must still enforce each role's permissions.
 
 ## Styling guidance
 
