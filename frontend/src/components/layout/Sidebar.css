@@ -1,12 +1,96 @@
 .app-sidebar {
-  background: #0f2f35;
-  color: #e2e8f0;
+  grid-area: sidebar;
+  min-width: 0;
+  background: #134e4a;
+  color: var(--text-darkbg);
+  padding: 1.25rem 0.875rem;
 }
 
-.app-sidebar__nav { display: grid; gap: 0.375rem; }
-.app-sidebar__link { border-radius: 0.625rem; padding: 0.7rem 0.85rem; transition: background-color 150ms ease; }
-.app-sidebar__link:hover, .app-sidebar__link[aria-current="page"] { background: rgb(255 255 255 / 12%); color: #fff; }
+.app-sidebar__heading {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem 1.25rem;
+}
 
-@media (max-width: 767px) {
-  .app-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 30; width: min(18rem, 85vw); box-shadow: 0 0 0 100vmax rgb(15 23 42 / 35%); }
+.app-sidebar__eyebrow {
+  color: var(--text-muted-darkbg);
+  font-family: var(--main-font);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.app-sidebar__role {
+  color: var(--text-darkbg);
+  font-family: var(--main-font);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.app-sidebar__nav {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.app-sidebar__link {
+  display: flex;
+  min-height: 2.875rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  color: var(--text-darkbg);
+  font-family: var(--main-font);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.app-sidebar__link:hover {
+  background: rgb(255 255 255 / 9%);
+  color: #fff;
+}
+
+.app-sidebar__link[aria-current="page"] {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.app-sidebar__link:focus-visible {
+  outline: 2px solid var(--text-darkbg);
+  outline-offset: 2px;
+}
+
+.app-sidebar__icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: 0 0 1.125rem;
+  background-color: currentColor;
+  mask: var(--sidebar-icon) center / contain no-repeat;
+  -webkit-mask: var(--sidebar-icon) center / contain no-repeat;
+}
+
+@media (max-width: 760px) {
+  .app-sidebar {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .app-sidebar__heading {
+    padding: 0.25rem 0.5rem 0.6rem;
+  }
+
+  .app-sidebar__nav {
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+    padding: 0.1rem 0.1rem 0.4rem;
+    scrollbar-width: thin;
+  }
+
+  .app-sidebar__link {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }

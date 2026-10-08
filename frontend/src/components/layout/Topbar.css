@@ -1,14 +1,71 @@
 .app-topbar {
+  grid-area: topbar;
+  height: 4rem;
+  width: 100%;
   display: flex;
-  min-height: 4rem;
   align-items: center;
+  padding-inline: 25px;
   justify-content: space-between;
-  gap: 1rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: #fff;
-  padding: 0.75rem 1.5rem;
+  background: linear-gradient(to bottom, var(--accent), var(--primary));
+  color: var(--text-darkbg);
 }
 
-@media (max-width: 520px) {
-  .app-topbar { padding-inline: 1rem; }
+.app-topbar__logo h1{
+  font-size: 1.7rem;
+  font-weight: 500;
+  font-family: var(--title-font);
 }
+
+.app-topbar__user {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-family: var(--main-font);
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.app-topbar__icon-button {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.app-topbar__icon-button:hover {
+  background: rgb(255 255 255 / 14%);
+}
+
+.app-topbar__icon-button:focus-visible {
+  outline: 2px solid var(--text-darkbg);
+  outline-offset: 2px;
+}
+
+.app-topbar__icon {
+  display: block;
+  width: 1.5em;
+  height: 1.5em;
+  background-color: var(--text-darkbg);
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+}
+
+.app-topbar__icon--account {
+  mask-image: url('../../assets/account-icon.svg');
+  -webkit-mask-image: url('../../assets/account-icon.svg');
+}
+
+.app-topbar__icon--logout {
+  mask-image: url('../../assets/logout-icon.svg');
+  -webkit-mask-image: url('../../assets/logout-icon.svg');
+}
+
