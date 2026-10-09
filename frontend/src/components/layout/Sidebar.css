@@ -32,6 +32,24 @@
   gap: 0.35rem;
 }
 
+.app-sidebar__group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.app-sidebar__group + .app-sidebar__group {
+  margin-top: 1rem;
+}
+
+.app-sidebar__group-heading {
+  padding: 0.25rem 0.75rem 0.2rem;
+  color: var(--text-muted-darkbg);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .app-sidebar__link {
   display: flex;
   min-height: 2.875rem;
@@ -87,6 +105,19 @@
     overflow-x: auto;
     padding: 0.1rem 0.1rem 0.4rem;
     scrollbar-width: thin;
+  }
+
+  .app-sidebar__group {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .app-sidebar__group + .app-sidebar__group {
+    margin-top: 0;
+  }
+
+  .app-sidebar__group-heading {
+    display: none;
   }
 
   .app-sidebar__link {
