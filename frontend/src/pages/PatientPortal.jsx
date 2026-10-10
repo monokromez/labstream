@@ -51,6 +51,30 @@ const results = [
       { heading: 'Diagnosis', text: 'Benign fibrous histiocytoma.' },
     ],
   },
+  ...Array.from({ length: 9 }, (_, index) => {
+    const categories = ['Laboratory', 'Microbiology', 'Histopathology']
+    const category = categories[index % categories.length]
+    const day = String(14 - index).padStart(2, '0')
+
+    return {
+      labNo: `LAB-2026-000${120 - index}`,
+      category,
+      orderDate: `2026-04-${day}`,
+      releasedDate: `2026-04-${String(15 - index).padStart(2, '0')}`,
+      tests: category === 'Laboratory'
+        ? ['Complete Blood Count']
+        : category === 'Microbiology'
+          ? ['Blood Culture']
+          : ['Gastric biopsy'],
+      remarks: '',
+      validatedBy: 'Dr. Maria L. Santos, MD, Pathologist',
+      report: [
+        { heading: 'Specimen', text: 'Patient specimen received and processed.' },
+        { heading: 'Findings', text: 'Report findings are available for review.' },
+        { heading: 'Impression', text: 'See the complete report for clinical interpretation.' },
+      ],
+    }
+  }),
 ]
 
 const categoryLabels = {
@@ -83,6 +107,58 @@ function DownloadIcon() {
     <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
       <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v2h14v-2" />
     </svg>
+  )
+}
+
+function Pagination({ page, pageCount, onPageChange }) {
+  if (pageCount <= 1) return null
+
+  const pageItems = [...new Set([1, page - 1, page, page + 1, pageCount])]
+    .filter((pageNumber) => pageNumber >= 1 && pageNumber <= pageCount)
+    .sort((left, right) => left - right)
+    .reduce((items, pageNumber) => {
+      const previousPage = items[items.length - 1]
+      if (previousPage && pageNumber - previousPage > 1) items.push('ellipsis')
+      items.push(pageNumber)
+      return items
+    }, [])
+
+  return (
+    <nav className="patient-portal__pagination" aria-label="Results pages">
+      <button
+        className="patient-portal__page-button"
+        type="button"
+        disabled={page === 1}
+        onClick={() => onPageChange(page - 1)}
+      >
+        Previous
+      </button>
+      <div className="patient-portal__page-numbers">
+        {pageItems.map((pageNumber, index) => (
+          pageNumber === 'ellipsis' ? (
+            <span className="patient-portal__page-ellipsis" key={`ellipsis-${index}`} aria-hidden="true">…</span>
+          ) : (
+            <button
+              className={`patient-portal__page-button${pageNumber === page ? ' patient-portal__page-button--current' : ''}`}
+              type="button"
+              key={pageNumber}
+              aria-current={pageNumber === page ? 'page' : undefined}
+              onClick={() => onPageChange(pageNumber)}
+            >
+              {pageNumber}
+            </button>
+          )
+        ))}
+      </div>
+      <button
+        className="patient-portal__page-button"
+        type="button"
+        disabled={page === pageCount}
+        onClick={() => onPageChange(page + 1)}
+      >
+        Next
+      </button>
+    </nav>
   )
 }
 
@@ -275,18 +351,53 @@ function ProfilePage({ onPasswordChanged }) {
 
 export default function PatientPortal({ currentHash = '#/all' }) {
   const [search, setSearch] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [sort, setSort] = useState('desc')
+  const [page, setPage] = useState(1)
+  const [pageKey, setPageKey] = useState('')
   const [selectedResult, setSelectedResult] = useState(null)
   const [notice, setNotice] = useState('')
   const route = currentHash.replace(/^#\//, '')
   const isProfile = route === 'profile'
   const category = categoryLabels[route] ? route : 'all'
+  const pageSize = 10
+  const hasInvalidDateRange = Boolean(fromDate && toDate && fromDate > toDate)
+  const filterKey = `${category}|${search}|${fromDate}|${toDate}|${sort}`
 
-  const visibleResults = useMemo(() => results
+  const filteredResults = useMemo(() => results
     .filter((result) => category === 'all' || result.category.toLowerCase() === category)
+    .filter((result) => !fromDate || result.orderDate >= fromDate)
+    .filter((result) => !toDate || result.orderDate <= toDate)
     .filter((result) => {
       const query = search.trim().toLowerCase()
       return !query || result.labNo.toLowerCase().includes(query) || result.tests.some((test) => test.toLowerCase().includes(query))
-    }), [category, search])
+    }), [category, fromDate, search, toDate])
+
+  const sortedResults = useMemo(() => [...filteredResults].sort((left, right) => {
+    const comparison = left.orderDate.localeCompare(right.orderDate)
+    return sort === 'asc' ? comparison : -comparison
+  }), [filteredResults, sort])
+
+  const pageCount = Math.ceil(sortedResults.length / pageSize)
+  const activePage = pageKey === filterKey ? page : 1
+  const visibleResults = sortedResults.slice((activePage - 1) * pageSize, activePage * pageSize)
+  const hasAnyReleasedResults = results.some((result) => category === 'all' || result.category.toLowerCase() === category)
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setPageKey(filterKey)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const clearFilters = () => {
+    setSearch('')
+    setFromDate('')
+    setToDate('')
+    setSort('desc')
+    setPage(1)
+    setPageKey(filterKey)
+  }
 
   const handleDownload = (result) => {
     setNotice(`PDF download requested for ${result.labNo}.`)
@@ -305,18 +416,43 @@ export default function PatientPortal({ currentHash = '#/all' }) {
 
       <div className="patient-portal__toolbar">
         <label className="patient-portal__search">
-          <span className="sr-only">Search results</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by Lab No. or test name" />
+          <span>Search</span>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Lab No. or test name" />
         </label>
-        <span className="patient-portal__result-count">{visibleResults.length} {visibleResults.length === 1 ? 'report' : 'reports'}</span>
+        <label className="patient-portal__date-filter">
+          <span>Order Date From</span>
+          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+        </label>
+        <label className="patient-portal__date-filter">
+          <span>Order Date To</span>
+          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+        </label>
+        <label className="patient-portal__sort-filter">
+          <span>Sort By</span>
+          <select value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="desc">Newest first</option>
+            <option value="asc">Oldest first</option>
+          </select>
+        </label>
+        <button className="patient-portal__clear" type="button" onClick={clearFilters}>Clear</button>
       </div>
 
-      {visibleResults.length ? (
-        <ResultsTable results={visibleResults} showCategory={category === 'all'} onView={setSelectedResult} onDownload={handleDownload} />
+      {hasInvalidDateRange ? (
+        <p className="patient-portal__filter-error" role="alert">The From date must be before the To date.</p>
+      ) : sortedResults.length ? (
+        <>
+          <p className="patient-portal__result-count">
+            {sortedResults.length > pageSize
+              ? `Showing ${(activePage - 1) * pageSize + 1}-${Math.min(activePage * pageSize, sortedResults.length)} of ${sortedResults.length} reports`
+              : `${sortedResults.length} ${sortedResults.length === 1 ? 'report' : 'reports'}`}
+          </p>
+          <ResultsTable results={visibleResults} showCategory={category === 'all'} onView={setSelectedResult} onDownload={handleDownload} />
+          <Pagination page={activePage} pageCount={pageCount} onPageChange={handlePageChange} />
+        </>
       ) : (
         <div className="patient-portal__empty">
-          <h2>No released results found</h2>
-          <p>Results appear here once the laboratory publishes them.</p>
+          <h2>{hasAnyReleasedResults ? 'No released results match your filters.' : 'No released results found.'}</h2>
+          <p>{hasAnyReleasedResults ? 'Try changing your search or date filters.' : 'Results appear here once the laboratory publishes them.'}</p>
         </div>
       )}
 

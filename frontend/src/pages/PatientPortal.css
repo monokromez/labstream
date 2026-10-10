@@ -2,7 +2,10 @@
 .patient-portal__profile {
   display: grid;
   gap: 1.5rem;
+  width: 100%;
   max-width: 76rem;
+  min-width: 0;
+  box-sizing: border-box;
   margin-inline: auto;
   color: var(--text-lightbg);
 }
@@ -44,17 +47,35 @@
 
 .patient-portal__toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-end;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .patient-portal__search {
-  flex: 1;
-  max-width: 34rem;
+  flex: 1 1 15rem;
+}
+
+.patient-portal__search,
+.patient-portal__date-filter,
+.patient-portal__sort-filter {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.patient-portal__date-filter,
+.patient-portal__sort-filter {
+  flex: 0 1 10rem;
 }
 
 .patient-portal__search input,
+.patient-portal__date-filter input,
+.patient-portal__sort-filter select,
 .patient-portal__password-dialog input {
   width: 100%;
   border: 1px solid var(--border);
@@ -66,19 +87,59 @@
 }
 
 .patient-portal__search input:focus,
+.patient-portal__date-filter input:focus,
+.patient-portal__sort-filter select:focus,
 .patient-portal__password-dialog input:focus {
   border-color: var(--primary);
   outline: 3px solid rgb(20 184 166 / 22%);
 }
 
 .patient-portal__result-count {
+  margin: 0;
   color: var(--text-muted-lightbg);
   font-size: 0.85rem;
   white-space: nowrap;
 }
 
+.patient-portal__clear {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.75rem 0.25rem;
+}
+
+.patient-portal__clear:hover {
+  color: var(--hover);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.patient-portal__clear:focus-visible,
+.patient-portal__page-button:focus-visible {
+  outline: 3px solid rgb(20 184 166 / 35%);
+  outline-offset: 2px;
+}
+
+.patient-portal__filter-error {
+  margin: 0;
+  border: 1px solid #fecaca;
+  border-radius: 0.65rem;
+  background: #fef2f2;
+  color: var(--error);
+  padding: 0.85rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .patient-portal__table-wrap {
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: 0.85rem;
   background: var(--surface);
@@ -116,6 +177,60 @@
 
 .patient-portal__table tbody tr:hover {
   background: var(--background);
+}
+
+.patient-portal__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.patient-portal__page-numbers {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.patient-portal__page-ellipsis {
+  min-width: 1rem;
+  color: var(--text-muted-lightbg);
+  text-align: center;
+}
+
+.patient-portal__page-button {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.55rem 0.7rem;
+}
+
+.patient-portal__page-button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.patient-portal__page-button--current {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.patient-portal__page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .patient-portal__category,
@@ -415,7 +530,13 @@
 }
 
 @media (max-width: 760px) {
-  .patient-portal__toolbar,
+  .patient-portal__toolbar {
+    display: grid;
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+
   .patient-portal__security,
   .patient-portal__dialog-header,
   .patient-portal__dialog-footer {
@@ -423,8 +544,23 @@
     flex-direction: column;
   }
 
-  .patient-portal__search {
-    max-width: none;
+  .patient-portal__search,
+  .patient-portal__date-filter,
+  .patient-portal__sort-filter {
+    width: 100%;
+  }
+
+  .patient-portal__clear {
+    justify-self: start;
+    padding-inline: 0;
+  }
+
+  .patient-portal__page-numbers {
+    max-width: 100%;
+  }
+
+  .patient-portal__result-count {
+    white-space: normal;
   }
 
   .patient-portal__patient-grid {
@@ -454,5 +590,13 @@
   .patient-portal__password-dialog {
     max-height: calc(100vh - 1.5rem);
     padding: 1rem;
+  }
+
+  .patient-portal__pagination {
+    gap: 0.35rem;
+  }
+
+  .patient-portal__page-button {
+    padding-inline: 0.55rem;
   }
 }
