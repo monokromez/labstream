@@ -2,7 +2,7 @@ import './AppShell.css'
 import Topbar from './Topbar.jsx'
 import Sidebar from './Sidebar.jsx'
 
-export default function AppShell({ children, role = 'cashier', activeItem }) {
+export default function AppShell({ children, role = 'patient', activeItem }) {
   return (
     <div className="app-shell">
       <Topbar />

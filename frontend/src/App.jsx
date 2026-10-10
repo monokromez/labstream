@@ -1,5 +1,5 @@
-import AppShell from './components/layout/AppShell.jsx'
+import PatientLogin from './pages/PatientLogin.jsx'
 
 export default function App() {
-  return <AppShell />
+  return <PatientLogin />
 }

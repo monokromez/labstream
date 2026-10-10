@@ -116,6 +116,20 @@ export default function App() {
 
 React passes the content between `<AppShell>` and `</AppShell>` to the shell as its `children` prop. Use explicit imports while prototyping; a folder cannot be rendered directly as a component. The current page/component files are placeholders, so add JSX that returns visible markup before expecting a full screen to appear.
 
+### Patient login UI
+
+`frontend/src/App.jsx` currently renders the patient-only login page at `frontend/src/pages/PatientLogin.jsx`, styled by the adjacent `PatientLogin.css`. To preview the staff shell again, change `App.jsx` to import and render `AppShell` instead:
+
+```jsx
+import AppShell from './components/layout/AppShell.jsx'
+
+export default function App() {
+  return <AppShell />
+}
+```
+
+The component presents the patient login, retrieve-account, registration, and password setup screens described in the supplied patient login guide. It follows the Labstream teal theme and adapts to mobile widths. Its optional `onLogin`, `onRetrieve`, `onRegister`, and `onSetPassword` props are integration callbacks; the component does not authenticate users or send email by itself. Patient authentication, generic credential failures, attempt limits, link expiry and one-time use, password hashing, and authorization must be implemented and enforced by the backend.
+
 ## Sidebar navigation by role
 
 `frontend/src/components/layout/Sidebar.jsx` shows navigation based on the `role` passed to `AppShell`. The default role is `cashier`. To preview a different role, set the prop in `App.jsx`:

@@ -3,3 +3,7 @@
 **/.env
 **/.env.*
 !**/.env.example
+.agents
+.codex
+.impeccable
+skills-lock.json
