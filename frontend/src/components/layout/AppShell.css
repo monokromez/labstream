@@ -14,17 +14,18 @@
   grid-area: main;
   width: min(100%, 80rem);
   min-width: 0;
+  min-height: 0;
   margin-inline: auto;
   padding: 1.5rem;
+  background: var(--background);
 }
 
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 4rem auto minmax(0, 1fr);
+    grid-template-rows: 4rem minmax(0, 1fr);
     grid-template-areas:
       "topbar"
-      "sidebar"
       "main";
   }
 

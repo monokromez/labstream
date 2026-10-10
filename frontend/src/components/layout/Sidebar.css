@@ -7,9 +7,16 @@
 }
 
 .app-sidebar__heading {
-  display: grid;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.35rem;
   padding: 0.5rem 0.75rem 1.25rem;
+}
+
+.app-sidebar__heading > div {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .app-sidebar__eyebrow {
@@ -81,6 +88,10 @@
   outline-offset: 2px;
 }
 
+.app-sidebar__menu-button {
+  display: none;
+}
+
 .app-sidebar__icon {
   width: 1.125rem;
   height: 1.125rem;
@@ -92,36 +103,98 @@
 
 @media (max-width: 760px) {
   .app-sidebar {
-    padding: 0.65rem 0.75rem;
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    padding: max(1.25rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 240ms;
   }
 
   .app-sidebar__heading {
-    padding: 0.25rem 0.5rem 0.6rem;
+    align-items: center;
+    padding: 0.15rem 0.25rem 1.5rem;
   }
 
   .app-sidebar__nav {
-    display: flex;
-    gap: 0.4rem;
-    overflow-x: auto;
-    padding: 0.1rem 0.1rem 0.4rem;
-    scrollbar-width: thin;
+    display: grid;
+    overflow-y: auto;
+    gap: 0.35rem;
+    padding: 0 0 0.1rem;
   }
 
   .app-sidebar__group {
-    display: flex;
+    display: grid;
     gap: 0.4rem;
   }
 
   .app-sidebar__group + .app-sidebar__group {
-    margin-top: 0;
+    margin-top: 0.75rem;
   }
 
   .app-sidebar__group-heading {
-    display: none;
+    padding: 0.15rem 0.8rem 0.1rem;
+    color: var(--text-muted-darkbg);
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
 
   .app-sidebar__link {
-    flex: 0 0 auto;
-    white-space: nowrap;
+    min-height: 2.75rem;
+    padding-inline: 0.8rem;
+  }
+
+  .app-sidebar__menu-button {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    flex: 0 0 2.75rem;
+    place-content: center;
+    gap: 0.28rem;
+    border: 1px solid rgb(209 250 229 / 25%);
+    border-radius: 0.65rem;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .app-sidebar__menu-button span {
+    display: block;
+    width: 1.25rem;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--text-darkbg);
+    transition: transform 150ms ease, opacity 150ms ease;
+  }
+
+  .app-sidebar__menu-button:focus-visible {
+    outline: 2px solid var(--text-darkbg);
+    outline-offset: 2px;
+  }
+
+  .app-sidebar--mobile-open {
+    visibility: visible;
+    transform: translateX(0);
+    transition-delay: 0s;
+  }
+
+  .app-sidebar--mobile-open .app-sidebar__menu-button span:first-child,
+  .app-topbar__menu-button--open span:first-child {
+    transform: translateY(0.4rem) rotate(45deg);
+  }
+
+  .app-sidebar--mobile-open .app-sidebar__menu-button span:nth-child(2),
+  .app-topbar__menu-button--open span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .app-sidebar--mobile-open .app-sidebar__menu-button span:last-child,
+  .app-topbar__menu-button--open span:last-child {
+    transform: translateY(-0.4rem) rotate(-45deg);
   }
 }

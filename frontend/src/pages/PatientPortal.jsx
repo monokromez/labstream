@@ -236,7 +236,6 @@ function ProfilePage({ onPasswordChanged }) {
             ['Age', `${getAge(patient.dob)} years old`],
           ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
         </div>
-        <p className="patient-portal__notice">To correct any of these details, please visit the cashier.</p>
       </div>
       <div className="patient-portal__security">
         <div><h2>Security</h2><p className="patient-portal__muted">Keep your patient portal password private and up to date.</p></div>

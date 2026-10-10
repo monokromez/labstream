@@ -68,23 +68,44 @@ const roleNavigation = {
   ],
 }
 
-export default function Sidebar({ role = 'cashier', activeItem }) {
+export default function Sidebar({
+  role = 'cashier',
+  activeItem,
+  isMobileNavOpen = false,
+  onMobileNavClose,
+  closeButtonRef,
+}) {
   const [selectedItem, setSelectedItem] = useState(activeItem)
   const currentRole = roleNavigation[role] ? role : 'cashier'
   const navigationGroups = role === 'patient'
     ? roleNavigation.patient
     : [{ items: roleNavigation[currentRole] }]
   const currentRoleLabel = roleLabels[currentRole]
-  const selected = selectedItem?.replace('#/', '') ?? 'all'
+  const selected = (activeItem ?? selectedItem)?.replace('#/', '') ?? 'all'
 
   return (
-    <aside className="app-sidebar">
+    <aside className={`app-sidebar${isMobileNavOpen ? ' app-sidebar--mobile-open' : ''}`}>
       <div className="app-sidebar__heading">
-        <span className="app-sidebar__eyebrow">WORKSPACE</span>
-        <span className="app-sidebar__role">{currentRoleLabel}</span>
+        <div>
+          <span className="app-sidebar__eyebrow">WORKSPACE</span>
+          <span className="app-sidebar__role">{currentRoleLabel}</span>
+        </div>
+        <button
+          className="app-sidebar__menu-button"
+          type="button"
+          aria-expanded={isMobileNavOpen}
+          aria-controls="app-navigation"
+          aria-label="Close navigation menu"
+          onClick={onMobileNavClose}
+          ref={closeButtonRef}
+        >
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+          <span aria-hidden="true" />
+        </button>
       </div>
 
-      <nav className="app-sidebar__nav" aria-label={`${currentRoleLabel} navigation`}>
+      <nav className="app-sidebar__nav" id="app-navigation" aria-label={`${currentRoleLabel} navigation`}>
         {navigationGroups.map((group) => (
           <div className="app-sidebar__group" key={group.group ?? 'navigation'}>
             {group.group && <span className="app-sidebar__group-heading">{group.group}</span>}
@@ -94,7 +115,10 @@ export default function Sidebar({ role = 'cashier', activeItem }) {
                 className="app-sidebar__link"
                 href={`#/${item.id}`}
                 aria-current={selected === item.id ? 'page' : undefined}
-                onClick={() => setSelectedItem(item.id)}
+                onClick={() => {
+                  setSelectedItem(item.id)
+                  onMobileNavClose?.()
+                }}
               >
                 <span
                   className="app-sidebar__icon"
