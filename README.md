@@ -126,15 +126,15 @@ React passes the content between `<AppShell>` and `</AppShell>` to the shell as 
 </AppShell>
 ```
 
-The current Sidebar items are:
+The current Sidebar content by role is:
 
-| Role | Sidebar items | Intended function |
+| Role | Sidebar Content |
 |---|---|---|
-| `cashier` | Dashboard; Register New Request; Queue; Payments & Receipts | Start walk-in requests, manage the patient queue, and review recorded payments/receipts. |
-| `medical_technologist` | Work Queue; Specimens; Results in Progress | Find paid requests, record received specimens, and continue result processing. |
-| `pathologist` | Pending Validation; Returned Results; Released Results | Review results, revisit returned work, and inspect released results. |
-| `administrator` | Dashboard; Staff Accounts; Test Catalog; Reference Ranges; Reports; Audit Log | Manage staff and test setup, review reports, and inspect recorded system activity. |
-| `patient` | My Results; Test History | View the signed-in patient's released results and previous tests. |
+| `cashier` | Dashboard · Register New Request · Queue · Payments & Receipts |
+| `medical_technologist` | Work Queue · Specimens · Results in Progress |
+| `pathologist` | Pending Validation · Returned Results · Released Results |
+| `administrator` | Dashboard · Staff Accounts · Test Catalog · Reference Ranges · Reports · Audit Log |
+| `patient` | My Results · Test History |
 
 The icons are SVG files from `frontend/src/assets/`. Sidebar entries currently update the selected appearance and use placeholder hash links; they do not yet navigate to real routes. Sidebar visibility is only a UI convenience—backend endpoints must still enforce each role's permissions.
 
