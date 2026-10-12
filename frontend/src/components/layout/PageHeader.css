@@ -6,7 +6,27 @@
   margin-bottom: 1.5rem;
 }
 
-.page-header__actions { display: flex; flex-wrap: wrap; gap: 0.625rem; }
+.page-header__actions { 
+  display: flex; 
+  flex-wrap: wrap; 
+  gap: 0.625rem; 
+}
+
+.page-header__title { 
+  margin: 0; 
+  color: var(--text-lightbg); 
+  font-family: var(--main-font); 
+  font-size: 1.75rem; 
+  font-weight: 700; 
+}
+
+.page-header__description { 
+  margin: 0.4rem 0 0; 
+  color: var(--text-muted-lightbg); 
+  font-family: var(--main-font); 
+  font-size: 1.125rem;
+  font-weight: bold;
+}
 
 @media (max-width: 600px) {
   .page-header { flex-direction: column; }

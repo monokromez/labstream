@@ -8,14 +8,26 @@
     "topbar topbar"
     "sidebar main";
   background: var(--background);
+  transition: grid-template-columns 280ms ease;
+}
+
+.app-shell--sidebar-closed {
+  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .app-shell__main {
   grid-area: main;
-  width: min(100%, 80rem);
+  width: 100%;
   min-width: 0;
   margin-inline: auto;
   padding: 1.5rem;
+}
+
+.app-shell__content-divider {
+  width: 100%;
+  margin: 0 auto 1.5rem;
+  border: 0;
+  border-top: 1px solid #4b5563;
 }
 
 @media (max-width: 760px) {
@@ -26,6 +38,11 @@
       "topbar"
       "sidebar"
       "main";
+    transition: grid-template-rows 280ms ease;
+  }
+
+  .app-shell--sidebar-closed {
+    grid-template-rows: 4rem 0 minmax(0, 1fr);
   }
 
   .app-shell__main {
