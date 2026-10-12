@@ -1,9 +1,21 @@
 .app-sidebar {
   grid-area: sidebar;
+  width: 16rem;
   min-width: 0;
+  overflow: hidden;
   background: #134e4a;
   color: var(--text-darkbg);
   padding: 1.25rem 0.875rem;
+  transform: translateX(0);
+  transition: transform 280ms ease, padding 280ms ease, visibility 0s linear;
+}
+
+.app-shell--sidebar-closed .app-sidebar {
+  transform: translateX(-100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 280ms ease, padding 280ms ease,
+    visibility 0s linear 280ms;
 }
 
 .app-sidebar__heading {
@@ -74,7 +86,12 @@
 
 @media (max-width: 760px) {
   .app-sidebar {
+    width: 100%;
     padding: 0.65rem 0.75rem;
+  }
+
+  .app-shell--sidebar-closed .app-sidebar {
+    transform: translateY(-100%);
   }
 
   .app-sidebar__heading {
