@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import './Sidebar.css'
 import auditLogIcon from '../../assets/audit_log-icon.svg'
 import dashboardIcon from '../../assets/dashboard-icon.svg'
@@ -28,41 +27,134 @@ const roleLabels = {
 
 const roleNavigation = {
   cashier: [
-    { id: 'dashboard', label: 'Dashboard', icon: dashboardIcon },
-    { id: 'register-request', label: 'Register New Request', icon: registerRequestIcon },
-    { id: 'queue', label: 'Queue', icon: queueIcon },
-    { id: 'payments', label: 'Payments & Receipts', icon: paymentReceiptIcon },
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      description: 'Manage your activity, track metrics, and access key tools.',
+      icon: dashboardIcon,
+    },
+    {
+      id: 'register-request',
+      label: 'Register Request',
+      description: 'Register a new test request for a patient.',
+      icon: registerRequestIcon,
+    },
+    {
+      id: 'queue',
+      label: 'Queue',
+      description: 'View and manage pending requests.',
+      icon: queueIcon,
+    },
+    {
+      id: 'payments',
+      label: 'Payments & Receipts',
+      description: 'Manage payments and generate receipts.',
+      icon: paymentReceiptIcon,
+    },
   ],
   medical_technologist: [
-    { id: 'work-queue', label: 'Work Queue', icon: workQueueIcon },
-    { id: 'specimens', label: 'Specimens', icon: specimenIcon },
-    { id: 'results-in-progress', label: 'Results in Progress', icon: resultInProgressIcon },
+    {
+      id: 'work-queue',
+      label: 'Work Queue',
+      description: 'View and manage your assigned tasks.',
+      icon: workQueueIcon,
+    },
+    {
+      id: 'specimens',
+      label: 'Specimens',
+      description: 'Manage and track specimen samples.',
+      icon: specimenIcon,
+    },
+    {
+      id: 'results-in-progress',
+      label: 'Results in Progress',
+      description: 'View and manage results that are currently being processed.',
+      icon: resultInProgressIcon,
+    },
   ],
   pathologist: [
-    { id: 'pending-validation', label: 'Pending Validation', icon: pendingValidationIcon },
-    { id: 'returned-results', label: 'Returned Results', icon: returnedResultIcon },
-    { id: 'released-results', label: 'Released Results', icon: releasedResultIcon },
+    {
+      id: 'pending-validation',
+      label: 'Pending Validation',
+      description: 'View and manage test results that require validation.',
+      icon: pendingValidationIcon,
+    },
+    {
+      id: 'returned-results',
+      label: 'Returned Results',
+      description: 'View and manage test results that have been returned.',
+      icon: returnedResultIcon,
+    },
+    {
+      id: 'released-results',
+      label: 'Released Results',
+      description: 'View and manage test results that have been released.',
+      icon: releasedResultIcon,
+    },
   ],
   administrator: [
-    { id: 'dashboard', label: 'Dashboard', icon: dashboardIcon },
-    { id: 'staff-accounts', label: 'Staff Accounts', icon: staffAccountsIcon },
-    { id: 'test-catalog', label: 'Test Catalog', icon: testCatalogIcon },
-    { id: 'reference-ranges', label: 'Reference Ranges', icon: refRangeIcon },
-    { id: 'reports', label: 'Reports', icon: reportsIcon },
-    { id: 'audit-log', label: 'Audit Log', icon: auditLogIcon },
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      description: 'Manage your activity, track metrics, and access key tools.',
+      icon: dashboardIcon,
+    },
+    {
+      id: 'staff-accounts',
+      label: 'Staff Accounts',
+      description: 'Manage staff accounts and permissions.',
+      icon: staffAccountsIcon,
+    },
+    {
+      id: 'test-catalog',
+      label: 'Test Catalog',
+      description: 'Manage the catalog of available tests.',
+      icon: testCatalogIcon,
+    },
+    {
+      id: 'reference-ranges',
+      label: 'Reference Ranges',
+      description: 'Manage reference ranges for test results.',
+      icon: refRangeIcon,
+    },
+    {
+      id: 'reports',
+      label: 'Reports',
+      description: 'Generate and view reports.',
+      icon: reportsIcon,
+    },
+    {
+      id: 'audit-log',
+      label: 'Audit Log',
+      description: 'View audit logs.',
+      icon: auditLogIcon,
+    },
   ],
   patient: [
-    { id: 'my-results', label: 'My Results', icon: myResultsIcon },
-    { id: 'test-history', label: 'Test History', icon: testHistoryIcon },
+    {
+      id: 'my-results',
+      label: 'My Results',
+      description: 'View your test results.',
+      icon: myResultsIcon,
+    },
+    {
+      id: 'test-history',
+      label: 'Test History',
+      description: 'View your test history.',
+      icon: testHistoryIcon,
+    },
   ],
 }
 
-export default function Sidebar({ role = 'cashier', activeItem }) {
-  const [selectedItem, setSelectedItem] = useState(activeItem)
+export function getRoleNavigation(role = 'cashier') {
+  return roleNavigation[role] ?? roleNavigation.cashier
+}
+
+export default function Sidebar({ role = 'cashier', activeItem, onSelect }) {
   const currentRole = roleNavigation[role] ? role : 'cashier'
-  const navigationItems = roleNavigation[currentRole]
+  const navigationItems = getRoleNavigation(currentRole)
   const currentRoleLabel = roleLabels[currentRole]
-  const selected = selectedItem ?? navigationItems[0].id
+  const selected = activeItem ?? navigationItems[0].id
 
   return (
     <aside className="app-sidebar">
@@ -78,7 +170,10 @@ export default function Sidebar({ role = 'cashier', activeItem }) {
             className="app-sidebar__link"
             href={`#${item.id}`}
             aria-current={selected === item.id ? 'page' : undefined}
-            onClick={() => setSelectedItem(item.id)}
+            onClick={(event) => {
+              event.preventDefault()
+              onSelect?.(item.id)
+            }}
           >
             <span
               className="app-sidebar__icon"
