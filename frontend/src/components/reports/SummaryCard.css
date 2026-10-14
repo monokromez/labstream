@@ -1,3 +1,31 @@
-.summary-card { min-width: 0; border: 1px solid #e2e8f0; border-radius: 0.875rem; background: #fff; padding: 1.125rem; }
-.summary-card__value { margin-top: 0.5rem; font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 650; line-height: 1.1; color: #0f172a; }
-.summary-card__trend { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.75rem; font-size: 0.75rem; color: #0f766e; }
+.summary-card {
+  min-width: 0;
+  padding: 1.125rem;
+  border: 1px solid var(--border);
+  border-radius: 0.500rem;
+  background: var(--surface);
+}
+
+.summary-card__title {
+  margin: 0;
+  color: var(--text-muted-lightbg);
+  font-family: var(--main-font);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.summary-card__value {
+  margin: 0.6rem 0 0;
+  color: var(--text-lightbg);
+  font-family: var(--main-font);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.summary-card__helper {
+  margin: 0.6rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-family: var(--main-font);
+  font-size: 0.8rem;
+}

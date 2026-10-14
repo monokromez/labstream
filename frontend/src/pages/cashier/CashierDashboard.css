@@ -1,0 +1,98 @@
+.cashier-dashboard {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.cashier-dashboard__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cashier-dashboard__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface);
+}
+
+.cashier-dashboard__table {
+  width: 100%;
+  min-width: 50rem;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.cashier-dashboard__table th,
+.cashier-dashboard__table td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.cashier-dashboard__table th {
+  background: var(--background);
+  color: var(--text-muted-lightbg);
+  font-family: var(--main-font);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.cashier-dashboard__table td {
+  color: var(--text-lightbg);
+  font-family: var(--main-font);
+  font-size: 0.9rem;
+}
+
+.cashier-dashboard__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cashier-dashboard__table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+.cashier-dashboard__table tbody tr:hover {
+  background: var(--background);
+}
+
+.cashier-dashboard__payment-status,
+.cashier-dashboard__workflow-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cashier-dashboard__payment-status--paid {
+  background: #d1fae5;
+  color: var(--success);
+}
+
+.cashier-dashboard__payment-status--unpaid {
+  background: #fef3c7;
+  color: var(--warning);
+}
+
+.cashier-dashboard__workflow-status {
+  background: #ccfbf1;
+  color: var(--primary);
+}
+
+@media (max-width: 1050px) {
+  .cashier-dashboard__summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .cashier-dashboard__summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -3,8 +3,19 @@ import './AppShell.css'
 import Topbar from './Topbar.jsx'
 import Sidebar, { getRoleNavigation } from './Sidebar.jsx'
 import PageHeader from './PageHeader.jsx'
+import CashierDashboard from '../../pages/cashier/CashierDashboard.jsx'
+import RegisterRequest from '../../pages/cashier/RegisterRequest.jsx'
+import CashierQueue from '../../pages/cashier/CashierQueue.jsx'
+import PaymentsReceipts from '../../pages/cashier/PaymentsReceipts.jsx'
 
-export default function AppShell({ children, role = 'pathologist', activeItem }) {
+export default function AppShell({ children, role = 'cashier', activeItem }) {
+  const cashierPages = {
+    dashboard: <CashierDashboard />,
+    'register-request': <RegisterRequest />,
+    queue: <CashierQueue />,
+    payments: <PaymentsReceipts />,
+  }
+
   const navigationItems = getRoleNavigation(role)
   const [selectedItem, setSelectedItem] = useState(
     activeItem ?? navigationItems[0].id,
@@ -29,7 +40,7 @@ export default function AppShell({ children, role = 'pathologist', activeItem })
           title={currentItem.label}
           description={currentItem.description} />
         <hr className="app-shell__content-divider" />
-        {children}
+        {cashierPages[currentItem.id]}
       </main>
     </div>
   )
