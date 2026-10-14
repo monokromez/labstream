@@ -3,18 +3,55 @@ import './AppShell.css'
 import Topbar from './Topbar.jsx'
 import Sidebar, { getRoleNavigation } from './Sidebar.jsx'
 import PageHeader from './PageHeader.jsx'
-import CashierDashboard from '../../pages/cashier/CashierDashboard.jsx'
-import RegisterRequest from '../../pages/cashier/RegisterRequest.jsx'
-import CashierQueue from '../../pages/cashier/CashierQueue.jsx'
-import PaymentsReceipts from '../../pages/cashier/PaymentsReceipts.jsx'
+import * as CashierPages from '../../pages/cashier/index.js'
+import * as TechnologistPages from '../../pages/medical-technologist/index.js'
+import * as PathologistPages from '../../pages/pathologist/index.js'
+import * as AdministratorPages from '../../pages/administrator/index.js'
+import * as PatientPages from '../../pages/patient/index.js'
 
-export default function AppShell({ children, role = 'cashier', activeItem }) {
+export default function AppShell({ children, role = 'pathologist', activeItem }) {
   const cashierPages = {
-    dashboard: <CashierDashboard />,
-    'register-request': <RegisterRequest />,
-    queue: <CashierQueue />,
-    payments: <PaymentsReceipts />,
+    dashboard: <CashierPages.CashierDashboard />,
+    'register-request': <CashierPages.RegisterRequest />,
+    queue: <CashierPages.CashierQueue />,
+    payments: <CashierPages.PaymentsReceipts />,
   }
+
+  const technologistPages = {
+    'work-queue': <TechnologistPages.WorkQueue />,
+    specimens: <TechnologistPages.Specimens />,
+    'results-in-progress': <TechnologistPages.ResultsInProgress />,
+  }
+
+  const pathologistPages = {
+    'pending-validation': <PathologistPages.PendingValidation />,
+    'returned-results': <PathologistPages.ReturnedResults />,
+    'released-results': <PathologistPages.ReleasedResults />,
+  }
+
+  const adminPages = {
+    dashboard: <AdministratorPages.AdminDashboard />,
+    'staff-accounts': <AdministratorPages.StaffAccounts />,
+    'test-catalog': <AdministratorPages.TestCatalog />,
+    'reference-ranges': <AdministratorPages.ReferenceRanges />,
+    reports: <AdministratorPages.Reports />,
+    'audit-log': <AdministratorPages.AuditLog />,
+  }
+
+  const patientPages = {
+    'my-results': <PatientPages.MyResults />,
+    'test-history': <PatientPages.TestHistory />,
+  }
+
+  const pagesByRole = {
+    cashier: cashierPages,
+    medical_technologist: technologistPages,
+    pathologist: pathologistPages,
+    administrator: adminPages,
+    patient: patientPages,
+  }
+
+  const pagesForRole = pagesByRole[role] ?? {}
 
   const navigationItems = getRoleNavigation(role)
   const [selectedItem, setSelectedItem] = useState(
@@ -40,7 +77,9 @@ export default function AppShell({ children, role = 'cashier', activeItem }) {
           title={currentItem.label}
           description={currentItem.description} />
         <hr className="app-shell__content-divider" />
-        {cashierPages[currentItem.id]}
+        {pagesForRole[currentItem.id] ?? children ?? (
+          <p>This page has not been connected yet.</p>
+        )}
       </main>
     </div>
   )

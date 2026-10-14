@@ -1,0 +1,13 @@
+.cashier-page-placeholder {
+  min-height: 5rem;
+  padding: 1rem 1.25rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  color: var(--text-muted-lightbg);
+  font-family: var(--main-font);
+}
+
+.cashier-page-placeholder p {
+  margin: 0;
+}
