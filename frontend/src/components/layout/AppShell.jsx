@@ -9,7 +9,7 @@ import * as PathologistPages from '../../pages/pathologist/index.js'
 import * as AdministratorPages from '../../pages/administrator/index.js'
 import * as PatientPages from '../../pages/patient/index.js'
 
-export default function AppShell({ children, role = 'pathologist', activeItem }) {
+export default function AppShell({ children, role = 'cashier', activeItem }) {
   const cashierPages = {
     dashboard: <CashierPages.CashierDashboard />,
     'register-request': <CashierPages.RegisterRequest />,
