@@ -1,4 +1,5 @@
 import './Sidebar.css'
+import labstreamIcon from '../../assets/labstream-icon.png'
 import auditLogIcon from '../../assets/audit_log-icon.svg'
 import dashboardIcon from '../../assets/dashboard-icon.svg'
 import myResultsIcon from '../../assets/my_results-icon.svg'
@@ -150,7 +151,7 @@ export function getRoleNavigation(role = 'cashier') {
   return roleNavigation[role] ?? roleNavigation.cashier
 }
 
-export default function Sidebar({ role = 'cashier', activeItem, onSelect }) {
+export default function Sidebar({ role = 'cashier', userName = 'User', activeItem, onSelect }) {
   const currentRole = roleNavigation[role] ? role : 'cashier'
   const navigationItems = getRoleNavigation(currentRole)
   const currentRoleLabel = roleLabels[currentRole]
@@ -158,9 +159,14 @@ export default function Sidebar({ role = 'cashier', activeItem, onSelect }) {
 
   return (
     <aside className="app-sidebar">
+      <a className="app-sidebar__brand" href="#dashboard" aria-label="Labstream home">
+        <img className="app-sidebar__brand-icon" src={labstreamIcon} alt="" />
+        <span>Labstream</span>
+      </a>
+
       <div className="app-sidebar__heading">
-        <span className="app-sidebar__eyebrow">WORKSPACE</span>
-        <span className="app-sidebar__role">{currentRoleLabel}</span>
+        <span className="app-sidebar__eyebrow">{currentRoleLabel}</span>
+        <span className="app-sidebar__user-name">{userName}</span>
       </div>
 
       <nav className="app-sidebar__nav" aria-label={`${currentRoleLabel} navigation`}>

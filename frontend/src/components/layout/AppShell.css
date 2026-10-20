@@ -3,16 +3,10 @@
   min-height: 100vh;
   width: 100%;
   grid-template-columns: 16rem minmax(0, 1fr);
-  grid-template-rows: 4rem minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   grid-template-areas:
-    "topbar topbar"
     "sidebar main";
   background: var(--background);
-  transition: grid-template-columns 280ms ease;
-}
-
-.app-shell--sidebar-closed {
-  grid-template-columns: 0 minmax(0, 1fr);
 }
 
 .app-shell__main {
@@ -33,16 +27,10 @@
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 4rem auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
-      "topbar"
       "sidebar"
       "main";
-    transition: grid-template-rows 280ms ease;
-  }
-
-  .app-shell--sidebar-closed {
-    grid-template-rows: 4rem 0 minmax(0, 1fr);
   }
 
   .app-shell__main {

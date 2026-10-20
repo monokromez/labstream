@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import './AppShell.css'
-import Topbar from './Topbar.jsx'
 import Sidebar, { getRoleNavigation } from './Sidebar.jsx'
 import PageHeader from './PageHeader.jsx'
 import * as CashierPages from '../../pages/cashier/index.js'
@@ -9,7 +8,7 @@ import * as PathologistPages from '../../pages/pathologist/index.js'
 import * as AdministratorPages from '../../pages/administrator/index.js'
 import * as PatientPages from '../../pages/patient/index.js'
 
-export default function AppShell({ children, role = 'cashier', activeItem }) {
+export default function AppShell({ children, role = 'cashier', userName = 'User', activeItem }) {
   const cashierPages = {
     dashboard: <CashierPages.CashierDashboard />,
     'register-request': <CashierPages.RegisterRequest />,
@@ -57,18 +56,14 @@ export default function AppShell({ children, role = 'cashier', activeItem }) {
   const [selectedItem, setSelectedItem] = useState(
     activeItem ?? navigationItems[0].id,
   )
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const currentItem = navigationItems.find((item) => item.id === selectedItem)
     ?? navigationItems[0]
 
   return (
-    <div className={`app-shell${isSidebarOpen ? '' : ' app-shell--sidebar-closed'}`}>
-      <Topbar
-        isSidebarOpen={isSidebarOpen}
-        onToggleSidebar={() => setIsSidebarOpen((isOpen) => !isOpen)}
-      />
+    <div className="app-shell">
       <Sidebar
         role={role}
+        userName={userName}
         activeItem={currentItem.id}
         onSelect={setSelectedItem}
       />
