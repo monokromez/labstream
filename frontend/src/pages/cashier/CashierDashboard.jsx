@@ -1,5 +1,9 @@
+import { useState } from 'react'
 import './CashierDashboard.css'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
+import TablePagination from '../../components/data/TablePagination.jsx'
+
+const ROWS_PER_PAGE = 10
 
 const summary = [
   { label: 'Requests Today', value: '24' },
@@ -28,6 +32,12 @@ const recentRequests = [
 ]
 
 export default function CashierDashboard() {
+  const [currentPage, setCurrentPage] = useState(1)
+  const visibleRequests = recentRequests.slice(
+    (currentPage - 1) * ROWS_PER_PAGE,
+    currentPage * ROWS_PER_PAGE,
+  )
+
   return (
     <section className="cashier-dashboard" aria-label="Cashier dashboard">
       <div className="cashier-dashboard__summary">
@@ -56,7 +66,7 @@ export default function CashierDashboard() {
               </tr>
             </thead>
             <tbody>
-              {recentRequests.map((request) => (
+              {visibleRequests.map((request) => (
                 <tr key={request.number}>
                   <td>{request.number}</td>
                   <td>{request.patient}</td>
@@ -78,6 +88,12 @@ export default function CashierDashboard() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            pageSize={ROWS_PER_PAGE}
+            totalItems={recentRequests.length}
+            onPageChange={setCurrentPage}
+          />
         </div>
       </section>
     </section>
