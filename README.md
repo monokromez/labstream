@@ -21,7 +21,7 @@ frontend/
     index.css           Global CSS, Tailwind setup, and shared color variables
 ```
 
-The UI is still under development. `frontend/src/App.jsx` renders the shared `AppShell`, which contains the Topbar, role-based Sidebar, PageHeader, and selected page area. Each role has a page folder with an `index.js` barrel file; pages are being built incrementally.
+The UI is still under development. `frontend/src/App.jsx` renders the shared `AppShell`, which contains the Topbar, role-based Sidebar, PageHeader, and selected page area. Each role has a page folder with an `index.js` barrel file; pages are being built incrementally. The Administrator role includes an operations dashboard, staff accounts, test catalog, reference ranges, reports, and an audit log. Its current sample data and management changes are held in the browser only and are not persisted to the backend.
 
 ## Prerequisites
 
@@ -104,7 +104,7 @@ export default function App() {
 }
 ```
 
-Use one of the supported role keys: `cashier`, `medical_technologist`, `pathologist`, `administrator`, or `patient`. If the `role` prop is omitted, `AppShell` currently defaults to `pathologist`. To preview a particular page within that role, click its Sidebar item. The PageHeader title and description come from that item's `label` and `description` in `Sidebar.jsx`.
+Use one of the supported role keys: `cashier`, `medical_technologist`, `pathologist`, `administrator`, or `patient`. If the `role` prop is omitted, `AppShell` currently defaults to `cashier`. To preview a particular page within that role, click its Sidebar item. The PageHeader title and description come from that item's `label` and `description` in `Sidebar.jsx`.
 
 To preview an individual component outside the role-based page flow, import it and render it directly. Components may need props or surrounding layout:
 
@@ -147,7 +147,7 @@ export { default as RegisterRequest } from './RegisterRequest.jsx'
 
 ## Sidebar navigation by role
 
-`frontend/src/components/layout/Sidebar.jsx` shows navigation based on the `role` passed to `AppShell`. `AppShell` currently defaults to `pathologist`; the Sidebar component defaults to `cashier` when used on its own. To preview a different role, set the prop in `App.jsx`:
+`frontend/src/components/layout/Sidebar.jsx` shows navigation based on the `role` passed to `AppShell`. `AppShell` currently defaults to `cashier`; the Sidebar component also defaults to `cashier` when used on its own. To preview a different role, set the prop in `App.jsx`:
 
 ```jsx
 <AppShell role="medical_technologist" />
