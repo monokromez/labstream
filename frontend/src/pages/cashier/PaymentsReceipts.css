@@ -40,45 +40,14 @@
 }
 
 .payments-receipts__search {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
   width: min(100%, 34rem);
-  height: 2.875rem;
-  padding: 0 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 0.625rem;
-  background: var(--surface);
-  color: var(--text-muted-lightbg);
+  flex: 0 1 34rem;
 }
 
-.payments-receipts__search:focus-within,
 .payments-receipts__filter select:focus-visible {
   border-color: var(--primary);
   outline: none;
   box-shadow: 0 0 0 3px rgb(15 118 110 / 14%);
-}
-
-.payments-receipts__search svg {
-  width: 1.2rem;
-  height: 1.2rem;
-  flex: 0 0 auto;
-}
-
-.payments-receipts__search input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text-lightbg);
-  font: inherit;
-  font-size: 0.9rem;
-}
-
-.payments-receipts__search input::placeholder {
-  color: var(--text-muted-lightbg);
-  opacity: 0.85;
 }
 
 .payments-receipts__filter {
@@ -158,8 +127,8 @@
 }
 
 .payments-receipts__table th {
-  background: var(--background);
-  color: var(--text-muted-lightbg);
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
   font-family: var(--main-font);
   font-size: 0.75rem;
   font-weight: 700;

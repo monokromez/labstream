@@ -31,8 +31,8 @@
 }
 
 .cashier-dashboard__table th {
-  background: var(--background);
-  color: var(--text-muted-lightbg);
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
   font-family: var(--main-font);
   font-size: 0.75rem;
   font-weight: 700;

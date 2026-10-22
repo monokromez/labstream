@@ -164,8 +164,8 @@
 }
 
 .admin-table th {
-  background: var(--background);
-  color: var(--text-muted-lightbg);
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.045em;
@@ -202,6 +202,7 @@
 .admin-table tbody tr:hover { background: #f7fffd; }
 .admin-table__primary { color: var(--text-lightbg) !important; font-weight: 700; }
 .admin-table__secondary { display: block; margin-top: 0.2rem; font-size: 0.78rem; }
+.admin-table__actions { display: flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
 
 .visually-hidden {
   position: absolute;
@@ -230,8 +231,9 @@
 }
 
 .admin-toolbar__field--search { flex: 1 1 16rem; }
+.admin-toolbar__search { flex: 1 1 16rem; min-width: 12rem; }
 
-.admin-toolbar input,
+.admin-toolbar input:not([type='search']),
 .admin-toolbar select,
 .admin-form input,
 .admin-form select {
@@ -246,7 +248,7 @@
   font-size: 0.88rem;
 }
 
-.admin-toolbar input:focus,
+.admin-toolbar input:not([type='search']):focus,
 .admin-toolbar select:focus,
 .admin-form input:focus,
 .admin-form select:focus,
