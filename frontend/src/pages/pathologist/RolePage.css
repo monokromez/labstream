@@ -1,13 +1,52 @@
-.role-page-placeholder {
-  min-height: 5rem;
-  padding: 1rem 1.25rem;
-  border: 1px dashed var(--border);
-  border-radius: 0.75rem;
-  background: var(--surface);
-  color: var(--text-muted-lightbg);
-  font-family: var(--main-font);
+@import '../administrator/Administrator.css';
+
+.pathologist-page { padding-bottom: 2rem; }
+.pathologist-panel { padding: 1.25rem; }
+.pathologist-table tbody tr.is-selected { background: #f7fffd; }
+.pathologist-table__patient { display: grid; gap: 0.2rem; padding: 0; border: 0; background: transparent; color: var(--text-lightbg); cursor: pointer; text-align: left; font: inherit; font-weight: 700; }
+.pathologist-result-value { color: var(--text-lightbg) !important; font-weight: 700; }
+.pathologist-review__top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-bottom: 1.1rem; border-bottom: 1px solid var(--border); }
+.pathologist-eyebrow { display: block; margin-bottom: 0.4rem; color: var(--text-muted-lightbg); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.pathologist-review__top h2, .pathologist-feedback h2 { margin: 0; color: var(--text-lightbg); font: 700 1rem var(--main-font); }
+.pathologist-review__top p { margin: 0.3rem 0 0; color: var(--text-muted-lightbg); font-size: 0.8rem; }
+.pathologist-review__submitted { color: var(--text-muted-lightbg); font-size: 0.78rem; }
+.pathologist-review__content { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(17rem, 0.85fr); gap: 1.5rem; padding-top: 1.2rem; }
+.pathologist-review__results h3 { margin: 0 0 0.75rem; color: var(--text-lightbg); font: 700 0.88rem var(--main-font); }
+.pathologist-table--results { min-width: 32rem; }
+.pathologist-table--results th, .pathologist-table--results td { padding: 0.7rem 0.75rem; }
+.pathologist-review__form { display: flex; flex-direction: column; align-items: stretch; }
+.pathologist-review__form label { display: flex; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.55rem; color: var(--text-muted-lightbg); font-size: 0.78rem; font-weight: 700; }
+.pathologist-review__form label span { font-size: 0.7rem; font-weight: 400; }
+.pathologist-review__form textarea { width: 100%; min-height: 6.5rem; padding: 0.7rem; resize: vertical; border: 1px solid var(--border); border-radius: 0.5rem; color: var(--text-lightbg); background: var(--surface); font: 0.84rem/1.5 var(--main-font); }
+.pathologist-review__form textarea:focus { outline: 3px solid #99f6e4; outline-offset: 2px; }
+.pathologist-review__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
+.pathologist-button--return { border-color: var(--warning); color: #92400e; }
+.pathologist-button--return:hover { background: #fef3c7; }
+.pathologist-review__hint { margin: 0.55rem 0 0; color: var(--text-muted-lightbg); font-size: 0.72rem; text-align: right; }
+.pathologist-page__notice { margin: 0; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 0.6rem; color: var(--text-lightbg); background: var(--background); font-size: 0.84rem; }
+.pathologist-feedback { display: flex; align-items: flex-start; gap: 0.9rem; }
+.pathologist-feedback__icon { display: grid; flex: 0 0 2.3rem; height: 2.3rem; place-items: center; border-radius: 50%; color: #92400e; background: #fef3c7; font-size: 1.1rem; }
+.pathologist-feedback--released .pathologist-feedback__icon { color: var(--success); background: #d1fae5; }
+.pathologist-feedback h2 span { color: var(--text-muted-lightbg); font-size: 0.8rem; font-weight: 400; }
+.pathologist-feedback p { margin: 0.45rem 0 0; color: var(--text-muted-lightbg); font-size: 0.84rem; line-height: 1.5; }
+.pathologist-feedback small { display: block; margin-top: 0.55rem; color: var(--text-muted-lightbg); font-size: 0.75rem; }
+.pathologist-feedback__awaiting { flex: 0 0 auto; margin-left: auto; color: #92400e; font-size: 0.78rem; }
+.pathologist-all-done { display: flex; align-items: center; gap: 0.8rem; }
+.pathologist-all-done > span { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; border-radius: 50%; color: var(--success); background: #d1fae5; }
+.pathologist-all-done strong { font-size: 0.9rem; }
+.pathologist-all-done p { margin: 0.25rem 0 0; color: var(--text-muted-lightbg); font-size: 0.82rem; }
+
+@media (max-width: 900px) {
+  .pathologist-review__content { grid-template-columns: 1fr; }
 }
 
-.role-page-placeholder p {
-  margin: 0;
+@media (max-width: 600px) {
+  .pathologist-panel { padding: 1rem; }
+  .pathologist-panel .admin-panel__heading { flex-direction: column; }
+  .pathologist-panel .admin-toolbar__field--search { width: 100%; }
+  .pathologist-review__top { align-items: flex-start; flex-direction: column; }
+  .pathologist-review__actions { justify-content: stretch; }
+  .pathologist-review__actions .admin-button { flex: 1; }
+  .pathologist-feedback { flex-wrap: wrap; }
+  .pathologist-feedback__awaiting { margin-left: 3.2rem; }
 }
