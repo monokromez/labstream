@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import './AuditLog.css'
 
@@ -38,18 +39,16 @@ export default function AuditLog() {
       </div>
 
       <div className="admin-toolbar" role="search">
-        <label className="admin-toolbar__field admin-toolbar__field--search">
-          Search activity
-          <input
-            type="search"
-            placeholder="Staff member, request, or activity"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value)
-              setCurrentPage(1)
-            }}
-          />
-        </label>
+        <SearchInput
+          className="admin-toolbar__search"
+          label="Search activity"
+          placeholder="Staff member, request, or activity"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value)
+            setCurrentPage(1)
+          }}
+        />
         <label className="admin-toolbar__field">
           Filter by event
           <select

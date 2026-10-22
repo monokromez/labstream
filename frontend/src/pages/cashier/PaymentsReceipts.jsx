@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { testCategories } from '../../data/testCatalog.js'
 import { formatDate } from '../../utils/dateFormat.js'
@@ -66,19 +67,13 @@ export default function PaymentsReceipts() {
       </div>
 
       <div className='payments-receipts__toolbar'>
-        <label className='payments-receipts__search' htmlFor='payments-search'>
-          <svg aria-hidden='true' viewBox='0 0 24 24' fill='none'>
-            <circle cx='10.8' cy='10.8' r='6.3' stroke='currentColor' strokeWidth='1.8' />
-            <path d='m15.4 15.4 4.1 4.1' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' />
-          </svg>
-          <input
-            id='payments-search'
-            type='search'
-            placeholder='Search by PID, patient name, or receipt no.'
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </label>
+        <SearchInput
+          className='payments-receipts__search'
+          label='Search payment transactions'
+          placeholder='Search by PID, patient name, or receipt no.'
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
         <label className='payments-receipts__filter' htmlFor='payments-status-filter'>
           <span>Status</span>
           <select id='payments-status-filter' value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import SearchInput from '../../components/data/SearchInput.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import './PendingValidation.css'
@@ -49,7 +50,7 @@ export default function PendingValidation() {
       <section className="admin-panel pathologist-panel" aria-labelledby="pending-list-title">
         <div className="admin-panel__heading">
           <div><h2 id="pending-list-title">Results awaiting review</h2><p>Check patient details and result values before approving or returning.</p></div>
-          <label className="admin-toolbar__field admin-toolbar__field--search">Search pending results<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1) }} placeholder="Patient or request number" /></label>
+          <SearchInput className="admin-toolbar__search" label="Search pending results" value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1) }} placeholder="Patient or request number" />
         </div>
         <div className="admin-table-wrap">
           <table className="admin-table">

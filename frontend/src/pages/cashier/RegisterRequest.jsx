@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { testCategories } from '../../data/testCatalog.js'
 import { formatDate } from '../../utils/dateFormat.js'
@@ -191,19 +192,13 @@ export default function RegisterRequest() {
   return (
     <section className='register-request' aria-label='Find a patient'>
       <div className='register-request__toolbar'>
-        <label className='register-request__search' htmlFor='search-bar'>
-          <svg aria-hidden='true' viewBox='0 0 24 24' fill='none'>
-            <circle cx='10.8' cy='10.8' r='6.3' stroke='currentColor' strokeWidth='1.8' />
-            <path d='m15.4 15.4 4.1 4.1' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' />
-          </svg>
-          <input
-            type='search'
-            placeholder='Search by patient name, PID, or contact number'
-            id='search-bar'
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </label>
+        <SearchInput
+          className='register-request__search'
+          label='Search patients'
+          placeholder='Search by patient name, PID, or contact number'
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
 
         <div className='register-request__filters' aria-label='Patient filters'>
           <label className='register-request__field' htmlFor='filter-sex'>

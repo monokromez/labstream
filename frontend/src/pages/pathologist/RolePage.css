@@ -43,7 +43,7 @@
 @media (max-width: 600px) {
   .pathologist-panel { padding: 1rem; }
   .pathologist-panel .admin-panel__heading { flex-direction: column; }
-  .pathologist-panel .admin-toolbar__field--search { width: 100%; }
+  .pathologist-panel .admin-toolbar__search { width: 100%; min-width: 0; }
   .pathologist-review__top { align-items: flex-start; flex-direction: column; }
   .pathologist-review__actions { justify-content: stretch; }
   .pathologist-review__actions .admin-button { flex: 1; }
