@@ -1,4 +1,4 @@
-import { testCatalog } from '../data/testCatalog.js'
+import { readCatalog } from '../data/administratorCatalog.js'
 
 const STORAGE_KEY = 'labstream.cashier.transactions.v1'
 const CHANGE_EVENT = 'labstream:cashier-transactions-changed'
@@ -14,18 +14,21 @@ const todayISO = () => {
 const sampleTransactions = [
   {
     id: 'sample-txn-001', pid: 'PID-2026-00124', patientName: 'Ariana Mae Santos',
-    tests: [{ id: 'cbc', name: 'Complete Blood Count (CBC)', price: 400 }, { id: 'fasting-blood-sugar', name: 'Fasting Blood Sugar', price: 150 }],
-    fee: 550, paymentMethod: 'cash', status: 'pending', transactionDate: null, receiptNumber: null,
+    tests: [{ id: 1, name: 'Complete Blood Count (CBC)', category: 'Hematology', price: 450 }, { id: 2, name: 'Fasting Blood Sugar', category: 'Clinical Chemistry', price: 250 }],
+    fee: 700, paymentMethod: 'cash', status: 'pending', transactionDate: null, receiptNumber: null,
+    requestedAt: '2026-10-23T10:42:00',
   },
   {
     id: 'sample-txn-002', pid: 'PID-2026-00123', patientName: 'Miguel Luis Reyes',
-    tests: [{ id: 'urinalysis', name: 'Urinalysis', price: 200 }],
-    fee: 200, paymentMethod: 'cash', status: 'paid', transactionDate: '2026-10-18', receiptNumber: 'LS-20261018-0002',
+    tests: [{ id: 3, name: 'Urinalysis', category: 'Clinical Microscopy', price: 300 }],
+    fee: 300, paymentMethod: 'cash', status: 'paid', transactionDate: '2026-10-18', receiptNumber: 'LS-20261018-0002',
+    requestedAt: '2026-10-18T09:15:00',
   },
   {
     id: 'sample-txn-003', pid: 'PID-2026-00122', patientName: 'Leah Anne Dela Cruz',
-    tests: [{ id: 'lipid-profile', name: 'Lipid Profile', price: 650 }],
-    fee: 650, paymentMethod: 'cash', status: 'pending', transactionDate: null, receiptNumber: null,
+    tests: [{ id: 4, name: 'Lipid Profile', category: 'Clinical Chemistry', price: 850 }],
+    fee: 850, paymentMethod: 'cash', status: 'pending', transactionDate: null, receiptNumber: null,
+    requestedAt: '2026-10-17T14:20:00',
   },
 ]
 
@@ -65,7 +68,8 @@ export const subscribeToCashierTransactions = (listener) => {
 }
 
 export const createCashierTransaction = ({ patient, testIds }) => {
-  const tests = testIds.map((id) => testCatalog.find((test) => test.id === id)).filter(Boolean)
+  const { tests: testCatalog } = readCatalog()
+  const tests = testIds.map((id) => testCatalog.find((test) => String(test.id) === String(id))).filter(Boolean)
   if (!patient || tests.length === 0) return null
 
   const transactions = readTransactions()
@@ -75,10 +79,11 @@ export const createCashierTransaction = ({ patient, testIds }) => {
     id: makeId(),
     pid: patient.pid,
     patientName: [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ') || patient.name || 'Patient',
-    tests: tests.map(({ id, name, price }) => ({ id, name, price })),
+    tests: tests.map(({ id, name, category, price }) => ({ id, name, category, price })),
     fee: tests.reduce((total, test) => total + test.price, 0),
     paymentMethod: 'cash',
     status: 'pending',
+    requestedAt: new Date().toISOString(),
     transactionDate: null,
     receiptNumber: null,
   }

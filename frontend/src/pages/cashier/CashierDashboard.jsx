@@ -51,7 +51,7 @@ export default function CashierDashboard() {
       </div>
 
       <section className="cashier-dashboard__recent">
-        <h2>Recent Requests</h2>
+        <header className="cashier-dashboard__table-heading"><div><h2>Recent Requests</h2><p>Latest patient requests and payment progress.</p></div><span>{recentRequests.length} entries</span></header>
 
         <div className="cashier-dashboard__table-wrap">
           <table className="cashier-dashboard__table">

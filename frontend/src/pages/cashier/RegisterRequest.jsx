@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { City, Country } from 'country-state-city'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
-import { testCategories } from '../../data/testCatalog.js'
+import useTestCatalog from '../../data/useTestCatalog.js'
 import { formatDate } from '../../utils/dateFormat.js'
 import {
   createCashierTransaction,
@@ -79,6 +80,7 @@ export default function RegisterRequest() {
   const [sexFilter, setSexFilter] = useState('all')
   const [previousVisitFilter, setPreviousVisitFilter] = useState('')
   const [patientCountry, setPatientCountry] = useState('')
+  const [patientCountryCode, setPatientCountryCode] = useState('')
   const [patientCity, setPatientCity] = useState('')
   const [patientDateOfBirth, setPatientDateOfBirth] = useState('')
   const [validIdSelection, setValidIdSelection] = useState('')
@@ -93,6 +95,11 @@ export default function RegisterRequest() {
   const [patientConfirmData, setPatientConfirmData] = useState(null)
   const [showRequestConfirm, setShowRequestConfirm] = useState(false)
   const [transactions, setTransactions] = useState(getCashierTransactions)
+  const { categories: testCategories } = useTestCatalog({ availableOnly: true })
+  const countries = useMemo(() => Country.getAllCountries().sort((first, second) => first.name.localeCompare(second.name)), [])
+  const cities = useMemo(() => patientCountryCode
+    ? [...new Set(City.getCitiesOfCountry(patientCountryCode).map((city) => city.name))].sort((first, second) => first.localeCompare(second))
+    : [], [patientCountryCode])
 
   useEffect(() => subscribeToCashierTransactions(() => setTransactions(getCashierTransactions())), [])
 
@@ -125,6 +132,7 @@ export default function RegisterRequest() {
     setShowRequestConfirm(false)
     if (type === 'add') {
       setPatientCountry('')
+      setPatientCountryCode('')
       setPatientCity('')
       setPatientDateOfBirth('')
       setValidIdSelection('')
@@ -341,7 +349,7 @@ export default function RegisterRequest() {
                 <p>
                   {activeModal === 'details' && 'Review the selected patient’s registry information.'}
                   {activeModal === 'request' && (requestSubmitted
-                    ? 'The request has been added to Payments & Receipts as pending.'
+                    ? 'The request has been added to Payments & Invoice as pending.'
                     : `Create a test request for ${getPatientName(selectedPatient ?? {})}.`)}
                   {activeModal === 'add' && !showRequestPrompt && 'Enter the patient’s information to create a registry record.'}
                   {activeModal === 'add' && showRequestPrompt && 'Patient registration is complete.'}
@@ -387,7 +395,7 @@ export default function RegisterRequest() {
                 requestSubmitted ? (
                   <div className='register-request__confirmation'>
                     <h3>Request registered</h3>
-                    <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Receipts with a Pending status. The cashier can record the in-person cash payment there.</p>
+                  <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Invoice with a Pending status. The cashier can record the in-person cash payment there.</p>
                   </div>
                 ) : (
                 <form className='register-request__modal-form'>
@@ -420,7 +428,7 @@ export default function RegisterRequest() {
                       {selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'} selected
                     </p>
                   </fieldset>
-                  <p className='register-request__modal-note'>Sample catalog and prices are used in this prototype. The real request will use the administrator’s active test catalog.</p>
+                  <p className='register-request__modal-note'>Available tests and prices come from the administrator’s current catalog.</p>
                 </form>
                 )
               )}
@@ -433,11 +441,13 @@ export default function RegisterRequest() {
                     <label htmlFor='new-patient-last-name'>Surname<input id='new-patient-last-name' name='lastName' type='text' placeholder='Surname' required /></label>
                   </div>
                   <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-country'>Country<input id='new-patient-country' name='country' type='text' placeholder='Country' autoComplete='country-name' value={patientCountry} onChange={(event) => {
-                      setPatientCountry(event.target.value)
+                    <label htmlFor='new-patient-country'>Country<select id='new-patient-country' name='country' autoComplete='country-name' value={patientCountry} onChange={(event) => {
+                      const country = countries.find((item) => item.name === event.target.value)
+                      setPatientCountry(country?.name ?? '')
+                      setPatientCountryCode(country?.isoCode ?? '')
                       setPatientCity('')
-                    }} required /></label>
-                    <label htmlFor='new-patient-city'>City<input id='new-patient-city' name='city' type='text' placeholder={patientCountry ? 'City' : 'Enter a country first'} autoComplete='address-level2' disabled={!patientCountry.trim()} value={patientCity} onChange={(event) => setPatientCity(event.target.value)} required /></label>
+                    }} required><option value='' disabled>Select a country</option>{countries.map((country) => <option key={country.isoCode} value={country.name}>{country.name}</option>)}</select></label>
+                    <label htmlFor='new-patient-city'>City<select id='new-patient-city' name='city' autoComplete='address-level2' disabled={!patientCountryCode} value={patientCity} onChange={(event) => setPatientCity(event.target.value)} required><option value='' disabled>{patientCountryCode ? 'Select a city' : 'Select a country first'}</option>{cities.map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
                   </div>
                   <div className='register-request__form-row'>
                     <label htmlFor='new-patient-house-number'>House no.<input id='new-patient-house-number' name='houseNumber' type='text' placeholder='House number' /></label>
@@ -544,7 +554,7 @@ export default function RegisterRequest() {
         <div className='register-request__confirm-backdrop'>
           <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-request-title'>
             <h2 id='confirm-request-title'>Confirm Test Request?</h2>
-            <p>Create a request for <strong>{getPatientName(selectedPatient ?? {})}</strong> with <strong>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'}</strong>? It will appear in Payments &amp; Receipts as pending.</p>
+            <p>Create a request for <strong>{getPatientName(selectedPatient ?? {})}</strong> with <strong>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'}</strong>? It will appear in Payments &amp; Invoice as pending.</p>
             <div className='register-request__confirm-actions'>
               <button className='register-request__modal-secondary' type='button' onClick={() => setShowRequestConfirm(false)}>Back to Tests</button>
               <button className='register-request__modal-primary' type='button' onClick={confirmCreateTestRequest}>Confirm Request</button>

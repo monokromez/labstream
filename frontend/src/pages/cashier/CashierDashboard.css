@@ -12,6 +12,10 @@
 .cashier-dashboard__recent > h2 {
   text-transform: uppercase;
 }
+.cashier-dashboard__table-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .75rem; }
+.cashier-dashboard__table-heading h2 { margin: 0; text-transform: uppercase; }
+.cashier-dashboard__table-heading p { margin: .25rem 0 0; color: var(--text-muted-lightbg); font-size: .85rem; }
+.cashier-dashboard__table-heading > span { padding: .35rem .65rem; border-radius: 999px; background: #d9f2ee; color: var(--text-lightbg); font-size: .8rem; white-space: nowrap; }
 
 .cashier-dashboard__table-wrap {
   overflow-x: auto;
