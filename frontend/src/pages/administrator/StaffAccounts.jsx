@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import PlusIcon from '../../components/data/PlusIcon.jsx'
 import { formatDateTime } from '../../utils/dateFormat.js'
 import './StaffAccounts.css'
 
@@ -59,11 +60,13 @@ export default function StaffAccounts() {
 
   return (
     <section className="admin-page" aria-label="Staff accounts">
-      <div className="admin-page__title-row"><div><h2>Staff directory</h2><p>Manage staff access and assigned system roles.</p></div><button className="admin-button" type="button" onClick={openAdd}>Add staff member</button></div>
-      <div className="admin-toolbar" role="search">
-        <SearchInput className="admin-toolbar__search" label="Search staff" placeholder="Name or email" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
-        <label className="admin-toolbar__field">Filter by post<select value={postFilter} onChange={(event) => { setPostFilter(event.target.value); setPage(1) }}><option>All posts</option>{posts.map((post) => <option key={post}>{post}</option>)}</select></label>
-        <label className="admin-toolbar__field">Filter by account status<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }}><option>All statuses</option><option>Active</option><option>Inactive</option></select></label>
+      <div className="admin-page__controls-row">
+        <div className="admin-toolbar" role="search">
+          <SearchInput className="admin-toolbar__search" label="Search staff" placeholder="Name or email" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
+          <label className="admin-toolbar__field">Filter by post<select value={postFilter} onChange={(event) => { setPostFilter(event.target.value); setPage(1) }}><option>All posts</option>{posts.map((post) => <option key={post}>{post}</option>)}</select></label>
+          <label className="admin-toolbar__field">Filter by account status<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }}><option>All statuses</option><option>Active</option><option>Inactive</option></select></label>
+        </div>
+        <button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button>
       </div>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Name</th><th>Post</th><th>Last sign in</th><th>Account status</th><th><span className="visually-hidden">Account action</span></th></tr></thead>
@@ -72,7 +75,7 @@ export default function StaffAccounts() {
             <td className="admin-table__primary">{displayName(person)}<span className="admin-table__secondary">{person.email}</span></td>
             <td>{person.post}</td><td>{formatDateTime(person.lastSignIn)}</td>
             <td><span className={`admin-badge ${person.status === 'Active' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{person.status}</span></td>
-            <td><button className="admin-button admin-button--secondary admin-button--small" type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button></td>
+            <td><button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button></td>
           </tr>)}
           {visibleStaff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
@@ -106,7 +109,7 @@ export default function StaffAccounts() {
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="staff-add-form">Review account</button></div>
       </AdminDialog>}
       {dialog?.type === 'confirm-add' && <AdminDialog title="Confirm staff account" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Add <strong>{form.firstName} {form.surname}</strong> as <strong>{form.post}</strong>?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ type: 'add' })}>Back</button><button className="admin-button" type="button" onClick={commitAdd}>Confirm add</button></div></AdminDialog>}
-      {dialog?.type === 'status' && <AdminDialog title={`${dialog.person.status === 'Active' ? 'Deactivate' : 'Activate'} account?`} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Confirm {dialog.person.status === 'Active' ? 'deactivating' : 'activating'} <strong>{displayName(dialog.person)}</strong>’s staff account?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="button" onClick={commitStatus}>Confirm</button></div></AdminDialog>}
+      {dialog?.type === 'status' && <AdminDialog title={`${dialog.person.status === 'Active' ? 'Deactivate' : 'Activate'} account?`} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Confirm {dialog.person.status === 'Active' ? 'deactivating' : 'activating'} <strong>{displayName(dialog.person)}</strong>’s staff account?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className={`admin-button ${dialog.person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={commitStatus}>Confirm</button></div></AdminDialog>}
     </section>
   )
 }

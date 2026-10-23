@@ -1,4 +1,6 @@
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
+import TablePagination from '../../components/data/TablePagination.jsx'
+import useTablePagination from '../../components/data/useTablePagination.js'
 import './Reports.css'
 
 const reportMetrics = [
@@ -9,6 +11,13 @@ const reportMetrics = [
   ['Average turnaround time', '4h 18m'],
 ]
 
+const performanceRows = [
+  ['Average turnaround time', '4h 18m'],
+  ['Requests completed', '216'],
+  ['Requests awaiting validation', '12'],
+  ['Payments recorded', '₱84,650'],
+]
+
 const testVolume = [
   { category: 'Hematology', value: 92 },
   { category: 'Clinical Chemistry', value: 76 },
@@ -17,6 +26,8 @@ const testVolume = [
 ]
 
 export default function Reports() {
+  const { currentPage, pageSize, setCurrentPage, visibleItems: pageRows } = useTablePagination(performanceRows)
+
   function exportForExcel() {
     const rows = [
       ['October 2026 Laboratory Operations Report'],
@@ -42,13 +53,10 @@ export default function Reports() {
   return (
     <section className="admin-page" aria-label="Laboratory reports">
       <div className="admin-page__title-row">
-        <div>
-          <h2>Laboratory operations</h2>
-          <p>Monthly overview · October 1–31, 2026</p>
-        </div>
+        <p>Reporting period · October 1–31, 2026</p>
         <div className="admin-toolbar">
-          <button className="admin-button admin-button--secondary" type="button" onClick={exportForExcel}>
-            Export for Excel
+          <button className="admin-button admin-button--positive" type="button" onClick={exportForExcel}>
+            Export Spreadsheet
           </button>
           <button className="admin-button" type="button" onClick={() => window.print()}>
             Print / Save PDF
@@ -66,7 +74,7 @@ export default function Reports() {
       <section className="admin-panel admin-report">
         <div className="admin-panel__heading">
           <div>
-            <h2>Test volume by category</h2>
+            <h2>Category Volume</h2>
             <p>Distribution of processed tests this month</p>
           </div>
           <span className="admin-badge">248 tests</span>
@@ -87,7 +95,7 @@ export default function Reports() {
       <section className="admin-panel">
         <div className="admin-panel__heading">
           <div>
-            <h2>Performance summary</h2>
+            <h2>Performance</h2>
             <p>Operational indicators for the selected reporting period</p>
           </div>
         </div>
@@ -97,13 +105,11 @@ export default function Reports() {
               <tr><th scope="col">Measure</th><th scope="col">Result</th></tr>
             </thead>
             <tbody>
-              <tr><td className="admin-table__primary">Average turnaround time</td><td>4h 18m</td></tr>
-              <tr><td className="admin-table__primary">Requests completed</td><td>216</td></tr>
-              <tr><td className="admin-table__primary">Requests awaiting validation</td><td>12</td></tr>
-              <tr><td className="admin-table__primary">Payments recorded</td><td>₱84,650</td></tr>
+              {pageRows.map(([measure, result]) => <tr key={measure}><td className="admin-table__primary">{measure}</td><td>{result}</td></tr>)}
             </tbody>
           </table>
         </div>
+        <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={performanceRows.length} onPageChange={setCurrentPage} />
       </section>
     </section>
   )

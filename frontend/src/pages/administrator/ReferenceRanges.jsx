@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import PlusIcon from '../../components/data/PlusIcon.jsx'
 import { readCatalog, subscribeCatalog } from '../../data/administratorCatalog.js'
 import './ReferenceRanges.css'
 
@@ -51,15 +52,17 @@ export default function ReferenceRanges() {
 
   return (
     <section className="admin-page" aria-label="Reference ranges">
-      <div className="admin-page__title-row"><div><h2>Result reference ranges</h2><p>Set age and gender-specific boundaries for test result interpretation.</p></div><button className="admin-button" type="button" onClick={openAdd}>Add Reference Change</button></div>
-      <div className="admin-toolbar" role="search">
-        <SearchInput className="admin-toolbar__search" label="Search reference ranges" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
-        <label className="admin-toolbar__field">Filter by gender<select value={genderFilter} onChange={(event) => { setGenderFilter(event.target.value); setPage(1) }}><option>All genders</option><option>All</option><option>Female</option><option>Male</option></select></label>
+      <div className="admin-page__controls-row">
+        <div className="admin-toolbar" role="search">
+          <SearchInput className="admin-toolbar__search" label="Search reference ranges" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
+          <label className="admin-toolbar__field">Filter by gender<select value={genderFilter} onChange={(event) => { setGenderFilter(event.target.value); setPage(1) }}><option>All genders</option><option>All</option><option>Female</option><option>Male</option></select></label>
+        </div>
+        <button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> REFERENCE RANGE</button>
       </div>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Test</th><th>Gender</th><th>Age range</th><th>Boundary limits</th><th>Unit</th><th>Actions</th></tr></thead>
         <tbody>
-          {pageRows.map((range) => <tr key={range.id}><td className="admin-table__primary">{range.test}</td><td>{range.gender}</td><td>{range.minAge}–{range.maxAge}</td><td>{range.lower}–{range.upper}</td><td>{range.unit}</td><td className="admin-table__actions"><button className="admin-button admin-button--secondary admin-button--small" type="button" onClick={() => openEdit(range)}>Edit</button><button className="admin-button admin-button--secondary admin-button--small" type="button" onClick={() => setDialog({ type: 'delete', range })}>Delete</button></td></tr>)}
+          {pageRows.map((range) => <tr key={range.id}><td className="admin-table__primary">{range.test}</td><td>{range.gender}</td><td>{range.minAge}–{range.maxAge}</td><td>{range.lower}–{range.upper}</td><td>{range.unit}</td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => openEdit(range)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'delete', range })}>Delete</button></td></tr>)}
           {visibleRanges.length === 0 && <tr><td className="admin-empty" colSpan="6">No reference ranges match your filters.</td></tr>}
         </tbody>
       </table></div>
@@ -78,7 +81,7 @@ export default function ReferenceRanges() {
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="range-form">Review changes</button></div>
       </AdminDialog>}
       {dialog?.type === 'confirm-save' && <AdminDialog title="Confirm reference range" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">{dialog.editingId ? 'Save the updated boundaries for' : 'Add a reference range for'} <strong>{form.test}</strong>, {form.gender.toLowerCase()}, ages <strong>{form.minAge}–{form.maxAge}</strong>?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ ...dialog, type: 'form' })}>Back</button><button className="admin-button" type="button" onClick={commitSave}>Confirm</button></div></AdminDialog>}
-      {dialog?.type === 'delete' && <AdminDialog title="Delete reference range?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Delete the reference range for <strong>{dialog.range.test}</strong> ({dialog.range.gender}, {dialog.range.minAge}–{dialog.range.maxAge})?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="button" onClick={commitDelete}>Confirm delete</button></div></AdminDialog>}
+      {dialog?.type === 'delete' && <AdminDialog title="Delete reference range?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Delete the reference range for <strong>{dialog.range.test}</strong> ({dialog.range.gender}, {dialog.range.minAge}–{dialog.range.maxAge})?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button admin-button--negative" type="button" onClick={commitDelete}>Confirm delete</button></div></AdminDialog>}
     </section>
   )
 }

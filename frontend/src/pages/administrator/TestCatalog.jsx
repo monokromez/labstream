@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
+import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { defaultCatalog, readCatalog, subscribeCatalog, writeCatalog } from '../../data/administratorCatalog.js'
 import './TestCatalog.css'
@@ -76,15 +77,17 @@ export default function TestCatalog() {
 
   return (
     <section className="admin-page" aria-label="Test catalog">
-      <div className="admin-page__title-row"><div><h2>Test catalog</h2><p>Manage tests, categories, prices, turnaround times, and availability.</p></div><button className="admin-button" type="button" onClick={openAdd}>Add Test/Category</button></div>
-      <div className="admin-toolbar" role="search">
-        <SearchInput className="admin-toolbar__search" label="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
-        <label className="admin-toolbar__field">Filter by category<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option>All categories</option>{catalog.categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+      <div className="admin-page__controls-row">
+        <div className="admin-toolbar" role="search">
+          <SearchInput className="admin-toolbar__search" label="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
+          <label className="admin-toolbar__field">Filter by category<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option>All categories</option>{catalog.categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+        </div>
+        <button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> TEST/CATEGORY</button>
       </div>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Test</th><th>Category</th><th>Price</th><th>TAT</th><th>Availability</th><th>Actions</th></tr></thead>
         <tbody>
-          {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--secondary admin-button--small" type="button" onClick={() => editTest(test)}>Edit</button><button className="admin-button admin-button--secondary admin-button--small" type="button" onClick={() => setDialog({ type: 'delete', test })}>Delete</button></td></tr>)}
+          {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'delete', test })}>Delete</button></td></tr>)}
           {visibleTests.length === 0 && <tr><td className="admin-empty" colSpan="6">No tests match your filters.</td></tr>}
         </tbody>
       </table></div>
@@ -104,7 +107,7 @@ export default function TestCatalog() {
       </AdminDialog>}
       {dialog?.type === 'confirm-test' && <AdminDialog title={dialog.editingId ? 'Confirm test changes' : 'Confirm new test'} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">{dialog.editingId ? 'Save changes to' : 'Add'} <strong>{form.name}</strong> under <strong>{form.category}</strong>?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ ...dialog, type: 'manage' })}>Back</button><button className="admin-button" type="button" onClick={saveTest}>Confirm</button></div></AdminDialog>}
       {dialog?.type === 'confirm-category' && <AdminDialog title="Confirm category" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Add <strong>{categoryName.trim()}</strong> to the test catalog categories?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ type: 'manage' })}>Back</button><button className="admin-button" type="button" onClick={saveCategory}>Confirm</button></div></AdminDialog>}
-      {dialog?.type === 'delete' && <AdminDialog title="Delete test?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Delete <strong>{dialog.test.name}</strong> from the catalog? This sample action cannot be undone.</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="button" onClick={deleteTest}>Confirm delete</button></div></AdminDialog>}
+      {dialog?.type === 'delete' && <AdminDialog title="Delete test?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Delete <strong>{dialog.test.name}</strong> from the catalog? This sample action cannot be undone.</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button admin-button--negative" type="button" onClick={deleteTest}>Confirm delete</button></div></AdminDialog>}
     </section>
   )
 }

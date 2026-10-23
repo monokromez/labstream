@@ -3,7 +3,7 @@ import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import './AuditLog.css'
 
-const PAGE_SIZE = 5
+const PAGE_SIZE = 10
 
 const auditEvents = [
   { id: 1, timestamp: 'Oct 22, 2026 · 10:42 AM', user: 'Dr. Ana Reyes', role: 'Pathologist', action: 'Result released', record: 'REQ-2026-0248' },
@@ -19,22 +19,21 @@ const auditEvents = [
 export default function AuditLog() {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('All activity')
+  const [roleFilter, setRoleFilter] = useState('All roles')
   const [currentPage, setCurrentPage] = useState(1)
 
   const visibleEvents = useMemo(() => auditEvents.filter((event) => {
     const matchesSearch = `${event.user} ${event.role} ${event.action} ${event.record}`.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch && (actionFilter === 'All activity' || event.action === actionFilter)
-  }), [actionFilter, search])
+    return matchesSearch
+      && (actionFilter === 'All activity' || event.action === actionFilter)
+      && (roleFilter === 'All roles' || event.role === roleFilter)
+  }), [actionFilter, roleFilter, search])
 
   const pagedEvents = visibleEvents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   return (
     <section className="admin-page" aria-label="Audit log">
-      <div className="admin-page__title-row">
-        <div>
-          <h2>System activity history</h2>
-          <p>Review a traceable record of payments and result workflow events.</p>
-        </div>
+      <div className="admin-page__title-row admin-page__actions-row">
         <span className="admin-badge">Audit trail</span>
       </div>
 
@@ -60,6 +59,19 @@ export default function AuditLog() {
           >
             <option>All activity</option>
             {[...new Set(auditEvents.map((event) => event.action))].map((action) => <option key={action}>{action}</option>)}
+          </select>
+        </label>
+        <label className="admin-toolbar__field">
+          Filter by role
+          <select
+            value={roleFilter}
+            onChange={(event) => {
+              setRoleFilter(event.target.value)
+              setCurrentPage(1)
+            }}
+          >
+            <option>All roles</option>
+            {[...new Set(auditEvents.map((event) => event.role))].sort().map((role) => <option key={role}>{role}</option>)}
           </select>
         </label>
       </div>

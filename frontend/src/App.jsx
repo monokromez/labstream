@@ -1,5 +1,5 @@
 import AppShell from './components/layout/AppShell.jsx'
 
 export default function App() {
-  return <AppShell role="medical_technologist"/>
+  return <AppShell role="administrator"/>
 }
