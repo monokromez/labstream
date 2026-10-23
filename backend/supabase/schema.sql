@@ -1,5 +1,7 @@
--- Labstream initial schema for a NEW, EMPTY Supabase PostgreSQL project.
--- Paste into Supabase Dashboard > SQL Editor > New query, then run once.
+-- Labstream base schema for a NEW, EMPTY Supabase PostgreSQL project.
+-- Run this file, then run 002_tenant_accounts.sql to apply the current
+-- clinic-scoped account model. For an existing database, run only the
+-- 002_tenant_accounts.sql upgrade after confirming it matches your schema.
 
 create type public.user_role as enum (
   'cashier',
