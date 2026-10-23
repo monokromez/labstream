@@ -7,6 +7,7 @@ import * as TechnologistPages from '../../pages/medical-technologist/index.js'
 import * as PathologistPages from '../../pages/pathologist/index.js'
 import * as AdministratorPages from '../../pages/administrator/index.js'
 import * as PatientPages from '../../pages/patient/index.js'
+import { TechnologistProvider } from '../../pages/medical-technologist/TechnologistContext.jsx'
 
 export default function AppShell({ children, role = 'administrator', userName = 'User', activeItem, onLogout }) {
   const cashierPages = {
@@ -58,6 +59,9 @@ export default function AppShell({ children, role = 'administrator', userName = 
   )
   const currentItem = navigationItems.find((item) => item.id === selectedItem)
     ?? navigationItems[0]
+  const currentPage = pagesForRole[currentItem.id] ?? children ?? (
+    <p>This page has not been connected yet.</p>
+  )
 
   return (
     <div className="app-shell">
@@ -73,9 +77,9 @@ export default function AppShell({ children, role = 'administrator', userName = 
           title={currentItem.label}
           description={currentItem.description} />
         <hr className="app-shell__content-divider" />
-        {pagesForRole[currentItem.id] ?? children ?? (
-          <p>This page has not been connected yet.</p>
-        )}
+        {role === 'medical_technologist'
+          ? <TechnologistProvider onNavigate={setSelectedItem}>{currentPage}</TechnologistProvider>
+          : currentPage}
       </main>
     </div>
   )

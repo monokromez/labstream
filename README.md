@@ -21,7 +21,7 @@ frontend/
     index.css           Global CSS, Tailwind setup, and shared color variables
 ```
 
-The UI is still under development. `frontend/src/App.jsx` renders the shared `AppShell`, which contains the role-based Sidebar, PageHeader, and selected page area. Each role has a page folder with an `index.js` barrel file; pages are being built incrementally. The Administrator role includes an operations dashboard, staff accounts, test catalog, reference ranges, reports, and an audit log. Its forms and confirmation dialogs are prototype UI: the test catalog is stored in browser local storage, while staff and reference-range changes are held in page state. None of these changes are saved to the backend yet.
+The UI is still under development. `frontend/src/App.jsx` renders the shared `AppShell`, which contains the role-based Sidebar, PageHeader, and selected page area. Each role has a page folder with an `index.js` barrel file; pages are being built incrementally. The Medical Technologist role includes Work Queue, Specimens, and Results in Progress prototype flows with sample data held in page-level state; changes are not saved to the backend. The Administrator role includes an operations dashboard, staff accounts, test catalog, reference ranges, reports, and an audit log. Its forms and confirmation dialogs are prototype UI: the test catalog is stored in browser local storage, while staff and reference-range changes are held in page state. None of these changes are saved to the backend yet.
 
 ## Prerequisites
 
