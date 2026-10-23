@@ -5,7 +5,7 @@
   gap: 1rem;
   padding: 0.8rem 1rem;
   border-top: 1px solid var(--border);
-  background: var(--surface);
+  background: transparent;
   color: var(--text-muted-lightbg);
   font-family: var(--main-font);
   font-size: 0.85rem;
@@ -21,7 +21,7 @@
   min-height: 2.2rem;
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--border);
-  border-radius: 0.45rem;
+  border-radius: 0.2rem;
   background: var(--surface);
   color: var(--text-lightbg);
   font: inherit;

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import './AdminDialog.css'
 
-export default function AdminDialog({ title, description, onClose, children, footer, size = 'medium' }) {
+export default function AdminDialog({ title, description, onClose, children, footer, size = 'medium', className = '' }) {
   useEffect(() => {
     function handleKeyDown(event) {
       if (event.key === 'Escape') onClose()
@@ -12,7 +12,7 @@ export default function AdminDialog({ title, description, onClose, children, foo
 
   return (
     <div className="admin-dialog__backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className={`admin-dialog admin-dialog--${size}`} role="dialog" aria-modal="true" aria-labelledby="admin-dialog-title">
+      <section className={`admin-dialog admin-dialog--${size} ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="admin-dialog-title">
         <header className="admin-dialog__header">
           <div>
             <h2 id="admin-dialog-title">{title}</h2>
