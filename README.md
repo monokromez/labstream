@@ -7,7 +7,8 @@ Labstream is a web-based diagnostic laboratory and test result portal prototype.
 ```text
 backend/
   src/                 Express API and Drizzle database schema
-  supabase/schema.sql   SQL setup for a new, empty Supabase database
+  supabase/schema.sql   Base SQL setup for a new, empty Supabase database
+  supabase/002_tenant_accounts.sql  Clinic tenancy and account-provisioning upgrade
   drizzle/             Drizzle migration files
 frontend/
   src/
@@ -61,16 +62,9 @@ Keep `.env` and database credentials private. Never put the database connection 
 
 ### Set up the database
 
-For a **new, empty Supabase database**, you can open `backend/supabase/schema.sql` in Supabase SQL Editor and run it once. This creates the tables and enables Row Level Security, with no client policies yet.
+For a **new, empty Supabase database**, run `backend/supabase/schema.sql`, then `backend/supabase/002_tenant_accounts.sql` in Supabase SQL Editor. The second script adds clinic tenancy and account provisioning.
 
-Alternatively, manage schema changes through Drizzle from the backend folder:
-
-```powershell
-npm run db:generate
-npm run db:migrate
-```
-
-Choose one setup path for a database. Do not run the fresh-database SQL script and the existing Drizzle migrations against the same database; the repo's initial Drizzle migration describes an earlier starter schema. For an existing database, create and review an upgrade migration instead of running the fresh setup script.
+Use the two SQL files above for Supabase setup for now. The checked-in initial Drizzle migration describes an earlier starter schema, so do not run `npm run db:migrate` against this database. The Drizzle schema file is updated for the current model, but generated migrations and backend/database wiring have not yet been reconciled with the SQL setup path. If your database already has the original `schema.sql`, run only `002_tenant_accounts.sql`. This upgrade script is intended to run once.
 
 ### Start the API
 
@@ -173,6 +167,26 @@ The icons are SVG files from `frontend/src/assets/`. Selecting a Sidebar item up
 - Staff, Test Catalog, and Reference Ranges tables show up to 10 rows per page. Search and filters operate on sample data.
 - Table header backgrounds across the app use the Sidebar's color token, `--sidebar-background` in `frontend/src/index.css`.
 
+### Shared table layout rules
+
+Use this order for table sections across all roles:
+
+1. Table label
+2. Short description of the table's purpose
+3. Divider
+4. Search bar followed by any filters
+5. Table
+
+Keep the table's border on the table itself. A transparent horizontal-scroll wrapper is acceptable for narrow screens, but do not style it as a card or panel around the table. Keep corner rounding modest throughout every role's pages and components.
+
+### Shared interaction and labeling rules
+
+- Every add-entry button uses a plus icon and names the entity being added (for example, **Add Staff Member**, **Add Test/Category**, **Add Reference Range**, or **Add Patient**).
+- State-changing positive actions use a green hover background; destructive or cancelling actions use a red hover background. Read-only actions such as **View Results** may use a neutral/brand hover treatment.
+- Ask for confirmation before consequential actions, including workflow transitions, not only create/update/delete operations. Examples include registering a patient or request, recording/cancelling payment, accepting/rejecting a specimen, submitting results, and approving/returning results. Viewing, filtering, and navigation do not need confirmation.
+- Visible form labels are uppercase. Entered values and placeholders retain normal casing.
+- Status tags share the same shape, sizing, typography, and semantic colors across roles: green for completed/positive, amber for pending/review, red for rejected/cancelled, and neutral gray for inactive or awaiting states.
+
 ## Styling guidance
 
 - `frontend/src/main.jsx` imports `frontend/src/index.css` once. Global rules, custom properties, and Tailwind utilities from there are available throughout the app.
@@ -210,13 +224,26 @@ Use the variables in regular CSS with `var(--primary)`, or use Tailwind v4's arb
 
 Then classes such as `bg-primary`, `text-primary`, and `bg-surface` can use those tokens. Prefer the shared palette over introducing one-off brand colors in page files. Tailwind v4 documents custom colors using `@theme`: [Tailwind color customization](https://tailwindcss.com/docs/customizing-colors).
 
-## Database and security notes
+## Database, clinics, and account security
 
 - The Drizzle schema is in `backend/src/db/schema.js`.
 - The backend connects to Postgres using `DATABASE_URL` and currently requires SSL.
-- The SQL setup enables RLS without policies, so direct Supabase Data API access is denied until policies are deliberately added.
-- Keep privileged database credentials on the backend. The backend must enforce authentication, role permissions, and valid workflow transitions; RLS does not replace those checks.
-- Never store plaintext passwords. The backend includes Argon2 for password hashing.
+- Each clinic or clinic branch is one isolated tenant/site. This supports separate online deployments while retaining the proposal's single-laboratory scope; it does not add multi-branch administration within one clinic account.
+- On a new, empty Supabase project, run `backend/supabase/schema.sql` first, then `backend/supabase/002_tenant_accounts.sql`. On the existing database created from the earlier `schema.sql`, run only `002_tenant_accounts.sql`. The upgrade preserves existing rows and assigns them to a tenant with code `LAB001`; rename that clinic before onboarding its users. Do not run the upgrade twice.
+- The SQL enables RLS without policies, so direct Supabase Data API access remains denied. Do not add broad policies just to make prototype UI work. When backend access is implemented, scope every read and write to the authenticated user's clinic and role, then design RLS policies to match that trust model.
+- Clinic creation and the first Administrator should be a controlled one-time onboarding operation. Do not expose unrestricted public clinic/admin creation. The Administrator can manage staff and catalog data only inside their own clinic.
+- Staff sign in with their clinic code, generated username, and password; patients use their clinic code, PID, and password. Staff usernames use a stable tenant-scoped form such as `CSH-000021`, `MLT-000022`, `PTH-000023`, or `ADM-000024`. The numeric staff number is generated by the database. The name suffix from the original example is omitted because it exposes personal data and becomes stale when a name changes.
+- Do not issue a permanent password assembled from predictable character counts. Create a cryptographically random, one-time activation code (and one-time reset codes), store only its SHA-256 digest in `account_tokens`, set an expiry and consume it once. Deliver it privately; activation requires the user to choose a password, which the backend hashes with Argon2id. Do not put codes on public receipts. A patient PID is an identifier, never a password. Apply rate limits, expiry, account disablement, and audit logging in the future auth endpoints.
+- Pending accounts may have a null `password_hash`; active accounts must have an Argon2id hash. `must_change_password` supports the activation/forced-change flow, and `last_sign_in_at` supports staff account reporting.
+- Keep privileged database credentials on the backend. The backend must enforce authentication, clinic isolation, role permissions, and valid workflow transitions; RLS does not replace those checks. The current API/UI is still a prototype and these authentication and tenant controls are not wired yet.
+
+### Clinic and account workflow
+
+1. A clinic completes controlled onboarding. One clinic record is provisioned and the first Administrator account is created in the same clinic. Public, unrestricted clinic creation and a global Administrator role are not part of the proposal.
+2. The first Administrator activates their account, sets a password, and manages that clinic's staff, test catalog, and reference ranges. They cannot grant another Administrator role through Staff Accounts.
+3. When the Administrator creates staff, the database assigns a staff number and generates a username such as `CSH-000021` (`MLT`, `PTH`, or `ADM` for the other staff roles). The username is unique within that clinic; the name is not embedded. The staff member receives a private one-time activation code, activates their own account, and chooses a password.
+4. During the proposal's walk-in registration, the Cashier creates the patient and PID, registers requested tests, and handles payment and queueing. The system can issue the patient a private one-time activation code for the portal; the patient signs in using clinic code + PID + their chosen password. Do not use the PID itself as a password or put activation codes on a public receipt.
+5. Cashier, Medical Technologist, Pathologist, and Patient operations remain the proposal's sequence: paid request and queue → specimen receipt and manual result entry → Pathologist validation/return → release → patient views only their clinic's released results. Every service operation must verify clinic membership and role; the UI's selected role is not an authorization check.
 
 ## Useful commands
 
@@ -227,9 +254,8 @@ npm run build
 npm run lint
 ```
 
-Run these from `backend/`:
+Generate a Drizzle migration for review from `backend/` (do not apply it to Supabase until it is reconciled with the SQL setup path):
 
 ```powershell
 npm run db:generate
-npm run db:migrate
 ```
