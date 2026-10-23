@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
+import TablePagination from '../../components/data/TablePagination.jsx'
+import useTablePagination from '../../components/data/useTablePagination.js'
 import './ResultsInProgress.css'
 
 const stateFilters = [
@@ -41,6 +43,90 @@ function abnormalFlag(value, range) {
   return ''
 }
 
+function ResultEntryTable({ fields, specimenLabel, values, isLocked, showFieldErrors, onValueChange }) {
+  const { currentPage, pageSize, setCurrentPage, visibleItems } = useTablePagination(fields)
+
+  return (
+    <>
+      <div className="medtech-table-wrap medtech-table-wrap--result">
+        <table className="medtech-table medtech-table--result-entry">
+          <thead>
+            <tr>
+              <th scope="col">Parameter</th>
+              <th scope="col">Result</th>
+              <th scope="col">Unit</th>
+              <th scope="col">Reference range</th>
+              <th scope="col">Flag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleItems.map((field) => {
+              const fieldValue = String(values[field.key] ?? '')
+              const missing = !fieldValue.trim()
+              const flag = abnormalFlag(fieldValue, field.range)
+              return (
+                <tr key={field.key}>
+                  <td className="medtech-table__primary">{field.label}</td>
+                  <td>
+                    <label className="visually-hidden" htmlFor={`result-${specimenLabel}-${field.key}`}>{field.label} result</label>
+                    {field.valueType === 'select' ? (
+                      <select id={`result-${specimenLabel}-${field.key}`} className="medtech-result-input" value={fieldValue} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => onValueChange(field.key, event.target.value)}>
+                        <option value="">Select…</option>
+                        {field.options.map((option) => <option key={option}>{option}</option>)}
+                      </select>
+                    ) : (
+                      <input
+                        id={`result-${specimenLabel}-${field.key}`}
+                        className="medtech-result-input"
+                        type={field.valueType === 'numeric' ? 'number' : 'text'}
+                        step={field.valueType === 'numeric' ? 'any' : undefined}
+                        value={fieldValue}
+                        disabled={isLocked}
+                        aria-invalid={showFieldErrors && missing}
+                        onChange={(event) => onValueChange(field.key, event.target.value)}
+                      />
+                    )}
+                  </td>
+                  <td>{field.unit ?? '—'}</td>
+                  <td>{field.range}</td>
+                  <td>{flag
+                    ? <span className="medtech-flag" title={flag === 'H' ? 'Above reference range' : 'Below reference range'}>{flag} <span>{flag === 'H' ? 'High' : 'Low'}</span></span>
+                    : '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={fields.length} onPageChange={setCurrentPage} />
+    </>
+  )
+}
+
+function getNumericChartRows(fields, values) {
+  return fields.flatMap((field) => {
+    if (field.valueType !== 'numeric' || !String(values[field.key] ?? '').trim()) return []
+    const value = Number(values[field.key])
+    if (!Number.isFinite(value) || value < 0) return []
+
+    const interval = field.range.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$/)
+    const upperLimit = field.range.match(/^<\s*(\d+(?:\.\d+)?)$/)
+    const lowerLimit = field.range.match(/^>\s*(\d+(?:\.\d+)?)$/)
+    const lower = interval ? Number(interval[1]) : lowerLimit ? Number(lowerLimit[1]) : 0
+    const upper = interval ? Number(interval[2]) : upperLimit ? Number(upperLimit[1]) : lowerLimit ? Math.max(value, Number(lowerLimit[1]) * 1.1) : 0
+    const scale = Math.max(value, upper, 1) * 1.1
+    const hasReferenceRange = Boolean(interval || upperLimit || lowerLimit)
+    return [{
+      ...field,
+      value,
+      valueWidth: Math.min(100, (value / scale) * 100),
+      rangeStart: Math.min(100, (lower / scale) * 100),
+      rangeWidth: hasReferenceRange ? Math.max(0, Math.min(100, ((upper - lower) / scale) * 100)) : 0,
+      flag: abnormalFlag(String(value), field.range),
+    }]
+  })
+}
+
 export default function ResultsInProgress() {
   const { requests, specimens, results, saveDraft, submitResult } = useTechnologist()
   const [filter, setFilter] = useState('all')
@@ -73,6 +159,7 @@ export default function ResultsInProgress() {
     category: test.category,
     range: referenceRange(field, selectedResult?.request.sex),
   })))
+  const numericChartRows = getNumericChartRows(resultFields, values)
   const isLocked = selectedResult?.state === 'validation'
 
   function saveCurrentDraft() {
@@ -124,6 +211,13 @@ export default function ResultsInProgress() {
     setValidationError('')
   }
 
+  function selectSpecimen(specimenLabel) {
+    setSelectedLabel(specimenLabel)
+    setShowFieldErrors(false)
+    setValidationError('')
+    setConfirmSubmit(false)
+  }
+
   return (
     <section className="medtech-page medtech-results" aria-label="Results in progress">
       <div className="medtech-result-layout">
@@ -155,7 +249,7 @@ export default function ResultsInProgress() {
                   type="button"
                   key={result.specimenLabel}
                   aria-pressed={selectedResult?.specimenLabel === result.specimenLabel}
-                  onClick={() => setSelectedLabel(result.specimenLabel)}
+                  onClick={() => selectSpecimen(result.specimenLabel)}
                 >
                   <span className="medtech-result-card__top">
                     <strong>{result.specimenLabel}</strong>
@@ -227,16 +321,23 @@ export default function ResultsInProgress() {
                           return (
                             <label className="medtech-form__field" htmlFor={`result-${selectedResult.specimenLabel}-${field.key}`} key={field.key}>
                               <span>{field.label}</span>
-                              <textarea
-                                id={`result-${selectedResult.specimenLabel}-${field.key}`}
-                                rows="3"
-                                value={values[field.key] ?? ''}
-                                disabled={isLocked}
-                                aria-invalid={showFieldErrors && missing}
-                                onChange={(event) => {
-                                  changeFieldValue(field.key, event.target.value)
-                                }}
-                              />
+                              {field.valueType === 'select' ? (
+                                <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
+                                  <option value="">Select {field.label.toLowerCase()}</option>
+                                  {field.options.map((option) => <option key={option}>{option}</option>)}
+                                </select>
+                              ) : field.valueType === 'numeric' ? (
+                                <input id={`result-${selectedResult.specimenLabel}-${field.key}`} type="number" step="any" value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)} />
+                              ) : (
+                                <textarea
+                                  id={`result-${selectedResult.specimenLabel}-${field.key}`}
+                                  rows="3"
+                                  value={values[field.key] ?? ''}
+                                  disabled={isLocked}
+                                  aria-invalid={showFieldErrors && missing}
+                                  onChange={(event) => changeFieldValue(field.key, event.target.value)}
+                                />
+                              )}
                             </label>
                           )
                         })}
@@ -249,60 +350,43 @@ export default function ResultsInProgress() {
                     <div className="medtech-test-section__heading">
                       <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>
                     </div>
-                    <div className="medtech-table-wrap medtech-table-wrap--result">
-                      <table className="medtech-table medtech-table--result-entry">
-                        <thead>
-                          <tr>
-                            <th scope="col">Parameter</th>
-                            <th scope="col">Result</th>
-                            <th scope="col">Unit</th>
-                            <th scope="col">Reference range</th>
-                            <th scope="col">Flag</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {fields.map((field) => {
-                            const fieldValue = String(values[field.key] ?? '')
-                            const missing = !fieldValue.trim()
-                            const flag = abnormalFlag(fieldValue, field.range)
-                            return (
-                              <tr key={field.key}>
-                                <td className="medtech-table__primary">{field.label}</td>
-                                <td>
-                                  <label className="visually-hidden" htmlFor={`result-${selectedResult.specimenLabel}-${field.key}`}>{field.label} result</label>
-                                  <input
-                                    id={`result-${selectedResult.specimenLabel}-${field.key}`}
-                                    className="medtech-result-input"
-                                    type="text"
-                                    inputMode={field.valueType === 'numeric' ? 'decimal' : 'text'}
-                                    value={fieldValue}
-                                    disabled={isLocked}
-                                    aria-invalid={showFieldErrors && missing}
-                                    onChange={(event) => {
-                                      changeFieldValue(field.key, event.target.value)
-                                    }}
-                                  />
-                                </td>
-                                <td>{field.unit ?? '—'}</td>
-                                <td>{field.range}</td>
-                                <td>{flag
-                                  ? <span className="medtech-flag" title={flag === 'H' ? 'Above reference range' : 'Below reference range'}>{flag} <span>{flag === 'H' ? 'High' : 'Low'}</span></span>
-                                  : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ResultEntryTable
+                      fields={fields}
+                      specimenLabel={selectedResult.specimenLabel}
+                      values={values}
+                      isLocked={isLocked}
+                      showFieldErrors={showFieldErrors}
+                      onValueChange={changeFieldValue}
+                    />
                   </section>
                 )
               })}
 
+              {numericChartRows.length > 0 && (
+                <figure className="medtech-findings-chart" aria-label="Chart of entered numeric findings">
+                  <figcaption>
+                    <strong>Numeric findings overview</strong>
+                    <span>Bars show entered values; shaded bands show reference ranges when available.</span>
+                  </figcaption>
+                  <div className="medtech-findings-chart__rows">
+                    {numericChartRows.map((row) => (
+                      <div className="medtech-findings-chart__row" key={row.key}>
+                        <div className="medtech-findings-chart__label"><span>{row.label}</span><strong>{row.value} {row.unit ?? ''}</strong></div>
+                        <div className="medtech-findings-chart__track" role="img" aria-label={`${row.label}: ${row.value} ${row.unit ?? ''}; reference ${row.range || 'not specified'}${row.flag ? `; ${row.flag === 'H' ? 'high' : 'low'}` : ''}`}>
+                          {row.rangeWidth > 0 && <span className="medtech-findings-chart__range" style={{ left: `${row.rangeStart}%`, width: `${row.rangeWidth}%` }} />}
+                          <span className={`medtech-findings-chart__value-marker${row.flag ? ' is-out-of-range' : ''}`} style={{ left: `${row.valueWidth}%` }} />
+                        </div>
+                        <small>Reference: {row.range || 'Not specified'} {row.unit ?? ''}</small>
+                      </div>
+                    ))}
+                  </div>
+                </figure>
+              )}
+
               {validationError && <p className="medtech-form__error" role="alert">{validationError}</p>}
               {!isLocked && (
                 <div className="medtech-result-actions">
-                  <button className="medtech-button medtech-button--secondary" type="button" onClick={saveCurrentDraft}>Save draft</button>
+                  <button className="medtech-button medtech-button--positive" type="button" onClick={saveCurrentDraft}>Save draft</button>
                   <button className="medtech-button" type="submit">
                     {selectedResult.state === 'returned' ? 'Resubmit to pathologist' : 'Submit to pathologist'}
                   </button>

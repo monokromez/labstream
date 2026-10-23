@@ -4,6 +4,9 @@ import { rejectionReasons } from '../../data/medicalTechnologist.js'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
+import SummaryCard from '../../components/reports/SummaryCard.jsx'
+import TablePagination from '../../components/data/TablePagination.jsx'
+import useTablePagination from '../../components/data/useTablePagination.js'
 import './Specimens.css'
 
 const statusOptions = ['All', 'Expected', 'Received', 'Accepted', 'Rejected']
@@ -27,26 +30,32 @@ function formatDateTime(value) {
 export default function Specimens() {
   const { requests, specimens, specimenSearch, setSpecimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen } = useTechnologist()
   const [status, setStatus] = useState('All')
+  const [specimenType, setSpecimenType] = useState('All types')
   const [activeSpecimen, setActiveSpecimen] = useState(null)
   const [collectedAt, setCollectedAt] = useState(localDateTimeValue)
   const [reason, setReason] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
+  const [confirmReject, setConfirmReject] = useState(false)
 
   const visibleSpecimens = useMemo(() => specimens
     .filter((specimen) => status === 'All' || specimen.status === status)
+    .filter((specimen) => specimenType === 'All types' || specimen.type === specimenType)
     .filter((specimen) => {
       const request = requests.find((item) => item.id === specimen.requestId)
       const searchText = `${specimen.label} ${specimen.requestId} ${request?.patient ?? ''}`.toLowerCase()
       return searchText.includes(specimenSearch.trim().toLowerCase())
     }),
-  [specimens, requests, status, specimenSearch])
+  [specimens, requests, status, specimenSearch, specimenType])
+  const specimenTypes = [...new Set(specimens.map((specimen) => specimen.type))].sort()
+  const { currentPage, pageSize, setCurrentPage, visibleItems: pageSpecimens } = useTablePagination(visibleSpecimens)
 
   function closeDialog() {
     setActiveSpecimen(null)
     setError('')
     setReason('')
     setNotes('')
+    setConfirmReject(false)
   }
 
   function openReceiveDialog(specimen) {
@@ -59,6 +68,7 @@ export default function Specimens() {
     setReason('')
     setNotes('')
     setError('')
+    setConfirmReject(false)
     setActiveSpecimen({ ...specimen, action: 'reject' })
   }
 
@@ -82,16 +92,26 @@ export default function Specimens() {
       setError('Add a note when the reason is Other.')
       return
     }
+    setConfirmReject(true)
+  }
+
+  function confirmSpecimenRejection() {
     rejectSpecimen(activeSpecimen.label, reason, notes)
     closeDialog()
   }
 
   return (
     <section className="medtech-page" aria-label="Specimen tracking">
+      <div className="medtech-summary-cards">
+        <SummaryCard title="Expected" value={String(specimens.filter((item) => item.status === 'Expected').length).padStart(2, '0')} helperText="Awaiting collection" />
+        <SummaryCard title="Received" value={String(specimens.filter((item) => item.status === 'Received').length).padStart(2, '0')} helperText="Needs quality check" />
+        <SummaryCard title="Accepted" value={String(specimens.filter((item) => item.status === 'Accepted').length).padStart(2, '0')} helperText="Ready for processing" />
+        <SummaryCard title="Rejected" value={String(specimens.filter((item) => item.status === 'Rejected').length).padStart(2, '0')} helperText="Recollection required" />
+      </div>
       <section className="medtech-panel" aria-labelledby="specimens-title">
         <div className="medtech-panel__heading">
           <div>
-            <h2 id="specimens-title">Specimen tracking</h2>
+            <h2 id="specimens-title">Specimens</h2>
             <p>Record arrivals, then check specimen quality before processing.</p>
           </div>
         </div>
@@ -102,12 +122,19 @@ export default function Specimens() {
             label="Search specimens"
             placeholder="Specimen label, request ID, or patient"
             value={specimenSearch}
-            onChange={(event) => setSpecimenSearch(event.target.value)}
+            onChange={(event) => { setSpecimenSearch(event.target.value); setCurrentPage(1) }}
           />
           <label className="medtech-select-field">
             <span>Status</span>
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select value={status} onChange={(event) => { setStatus(event.target.value); setCurrentPage(1) }}>
               {statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <label className="medtech-select-field">
+            <span>Specimen type</span>
+            <select value={specimenType} onChange={(event) => { setSpecimenType(event.target.value); setCurrentPage(1) }}>
+              <option>All types</option>
+              {specimenTypes.map((type) => <option key={type}>{type}</option>)}
             </select>
           </label>
         </div>
@@ -130,7 +157,7 @@ export default function Specimens() {
               </tr>
             </thead>
             <tbody>
-              {visibleSpecimens.map((specimen) => {
+              {pageSpecimens.map((specimen) => {
                 const request = requests.find((item) => item.id === specimen.requestId)
                 return (
                   <tr key={specimen.label}>
@@ -145,13 +172,13 @@ export default function Specimens() {
                     <td><TechnologistStatusBadge status={specimen.status} /></td>
                     <td className="medtech-table__action-cell">
                       {specimen.status === 'Expected' && (
-                        <button className="medtech-button medtech-button--secondary medtech-button--small" type="button" onClick={() => openReceiveDialog(specimen)}>
+                        <button className="medtech-button medtech-button--positive medtech-button--small" type="button" onClick={() => openReceiveDialog(specimen)}>
                           Mark as received
                         </button>
                       )}
                       {specimen.status === 'Received' && (
                         <div className="medtech-inline-actions">
-                          <button className="medtech-button medtech-button--small" type="button" onClick={() => acceptSpecimen(specimen.label)}>
+                          <button className="medtech-button medtech-button--positive medtech-button--small" type="button" onClick={() => setActiveSpecimen({ ...specimen, action: 'accept' })}>
                             Accept
                           </button>
                           <button className="medtech-button medtech-button--danger medtech-button--small" type="button" onClick={() => openRejectDialog(specimen)}>
@@ -169,6 +196,7 @@ export default function Specimens() {
           </table>
           {visibleSpecimens.length === 0 && <p className="medtech-empty">No specimens match your filters.</p>}
         </div>
+        <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={visibleSpecimens.length} onPageChange={setCurrentPage} />
       </section>
 
       {activeSpecimen?.action === 'receive' && (
@@ -199,7 +227,20 @@ export default function Specimens() {
         </TechnologistDialog>
       )}
 
-      {activeSpecimen?.action === 'reject' && (
+      {activeSpecimen?.action === 'accept' && (
+        <TechnologistDialog title="Accept specimen?" onClose={closeDialog}>
+          <div className="medtech-dialog__body">
+            <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
+            <p className="medtech-form__notice">Accepting confirms this specimen passed the quality check and can proceed to result entry.</p>
+            <div className="medtech-dialog__actions">
+              <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
+              <button className="medtech-button medtech-button--positive" type="button" onClick={() => { acceptSpecimen(activeSpecimen.label); closeDialog() }}>Confirm acceptance</button>
+            </div>
+          </div>
+        </TechnologistDialog>
+      )}
+
+      {activeSpecimen?.action === 'reject' && !confirmReject && (
         <TechnologistDialog title="Reject specimen" onClose={closeDialog}>
           <form className="medtech-dialog__body medtech-form" onSubmit={submitReject}>
             <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type}</p>
@@ -241,6 +282,19 @@ export default function Specimens() {
               <button className="medtech-button medtech-button--danger" type="submit">Reject specimen</button>
             </div>
           </form>
+        </TechnologistDialog>
+      )}
+
+      {activeSpecimen?.action === 'reject' && confirmReject && (
+        <TechnologistDialog title="Confirm specimen rejection?" onClose={() => setConfirmReject(false)}>
+          <div className="medtech-dialog__body">
+            <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type}</p>
+            <p className="medtech-form__notice">Reject this specimen for <strong>{reason}</strong>? A new specimen will be expected for recollection.</p>
+            <div className="medtech-dialog__actions">
+              <button className="medtech-button medtech-button--secondary" type="button" onClick={() => setConfirmReject(false)}>Back to Details</button>
+              <button className="medtech-button medtech-button--danger" type="button" onClick={confirmSpecimenRejection}>Confirm Rejection</button>
+            </div>
+          </div>
         </TechnologistDialog>
       )}
     </section>

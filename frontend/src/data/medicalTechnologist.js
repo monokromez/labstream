@@ -47,12 +47,12 @@ export const medicalTechnologistTests = [
     category: 'Laboratory',
     specimenType: 'Urine',
     fields: [
-      { key: 'color', label: 'Color', unit: '-', range: '', valueType: 'text' },
-      { key: 'transparency', label: 'Transparency', unit: '-', range: '', valueType: 'text' },
+      { key: 'color', label: 'Color', unit: '-', range: '', valueType: 'select', options: ['Pale yellow', 'Yellow', 'Dark yellow', 'Amber', 'Red-brown'] },
+      { key: 'transparency', label: 'Transparency', unit: '-', range: '', valueType: 'select', options: ['Clear', 'Slightly cloudy', 'Cloudy', 'Turbid'] },
       { key: 'ph', label: 'pH', unit: '-', range: '4.6 - 8.0', valueType: 'numeric' },
       { key: 'specific-gravity', label: 'Specific Gravity', unit: '-', range: '1.005 - 1.030', valueType: 'numeric' },
-      { key: 'protein', label: 'Protein', unit: '-', range: '', valueType: 'text' },
-      { key: 'glucose', label: 'Glucose', unit: '-', range: '', valueType: 'text' },
+      { key: 'protein', label: 'Protein', unit: '-', range: '', valueType: 'select', options: ['Negative', 'Trace', '1+', '2+', '3+', '4+'] },
+      { key: 'glucose', label: 'Glucose', unit: '-', range: '', valueType: 'select', options: ['Negative', 'Trace', '1+', '2+', '3+', '4+'] },
     ],
   },
   {
@@ -60,6 +60,7 @@ export const medicalTechnologistTests = [
     category: 'Microbiology',
     specimenType: 'Urine',
     fields: [
+      { key: 'growth-status', label: 'Growth status', valueType: 'select', options: ['Pending', 'No growth observed', 'Growth observed'] },
       { key: 'findings', label: 'Findings', valueType: 'text' },
       { key: 'impression', label: 'Impression', valueType: 'text' },
     ],
@@ -81,13 +82,13 @@ const testsFor = (...names) => names.map((name) =>
 )
 
 export const initialTechnologistRequests = [
-  { id: 'REQ-2026-0205', patient: 'Ramos, Jose M.', patientId: 'PID-000101', age: 45, sex: 'Male', queueNo: 'Q-006', paidAt: '2026-10-23T07:58:00', receiptNo: 'OR-5512', tests: testsFor('Skin Biopsy') },
-  { id: 'REQ-2026-0203', patient: 'Santos, Pedro S.', patientId: 'PID-000119', age: 52, sex: 'Male', queueNo: 'Q-009', paidAt: '2026-10-23T08:15:00', receiptNo: 'OR-5518', tests: testsFor('Urine Culture and Sensitivity') },
-  { id: 'REQ-2026-0201', patient: 'Dela Cruz, Juan A.', patientId: 'PID-000123', age: 19, sex: 'Male', queueNo: 'Q-012', paidAt: '2026-10-23T08:42:00', receiptNo: 'OR-5521', tests: testsFor('Fasting Blood Sugar', 'Creatinine', 'Cholesterol') },
-  { id: 'REQ-2026-0202', patient: 'Reyes, Maria L.', patientId: 'PID-000124', age: 34, sex: 'Female', queueNo: 'Q-013', paidAt: '2026-10-23T08:50:00', receiptNo: 'OR-5522', tests: testsFor('CBC with Platelet Count', 'Complete Urinalysis') },
-  { id: 'REQ-2026-0204', patient: 'Garcia, Ana B.', patientId: 'PID-000125', age: 27, sex: 'Female', queueNo: 'Q-014', paidAt: '2026-10-23T09:05:00', receiptNo: 'OR-5524', tests: testsFor('CBC with Platelet Count') },
-  { id: 'REQ-2026-0206', patient: 'Mendoza, Liza P.', patientId: 'PID-000126', age: 61, sex: 'Female', queueNo: 'Q-015', paidAt: '2026-10-23T09:12:00', receiptNo: 'OR-5526', tests: testsFor('Cholesterol', 'Triglycerides') },
-  { id: 'REQ-2026-0207', patient: 'Bautista, Carlo D.', patientId: 'PID-000127', age: 30, sex: 'Male', queueNo: 'Q-016', paidAt: '2026-10-23T09:20:00', receiptNo: 'OR-5528', tests: testsFor('Fasting Blood Sugar') },
+  { id: 'REQ-2026-0205', patient: 'Ramos, Jose M.', patientId: 'PID-000101', age: 45, sex: 'Male', queueNo: 'Q-006', paidAt: '2026-10-23T07:58:00', receiptNo: 'OR-5512', pathologist: 'Dr. Andrea Villanueva', tests: testsFor('Skin Biopsy') },
+  { id: 'REQ-2026-0203', patient: 'Santos, Pedro S.', patientId: 'PID-000119', age: 52, sex: 'Male', queueNo: 'Q-009', paidAt: '2026-10-23T08:15:00', receiptNo: 'OR-5518', pathologist: 'Dr. Miguel Navarro', tests: testsFor('Urine Culture and Sensitivity') },
+  { id: 'REQ-2026-0201', patient: 'Dela Cruz, Juan A.', patientId: 'PID-000123', age: 19, sex: 'Male', queueNo: 'Q-012', paidAt: '2026-10-23T08:42:00', receiptNo: 'OR-5521', pathologist: 'Dr. Miguel Navarro', tests: testsFor('Fasting Blood Sugar', 'Creatinine', 'Cholesterol') },
+  { id: 'REQ-2026-0202', patient: 'Reyes, Maria L.', patientId: 'PID-000124', age: 34, sex: 'Female', queueNo: 'Q-013', paidAt: '2026-10-23T08:50:00', receiptNo: 'OR-5522', pathologist: 'Dr. Andrea Villanueva', tests: testsFor('CBC with Platelet Count', 'Complete Urinalysis') },
+  { id: 'REQ-2026-0204', patient: 'Garcia, Ana B.', patientId: 'PID-000125', age: 27, sex: 'Female', queueNo: 'Q-014', paidAt: '2026-10-23T09:05:00', receiptNo: 'OR-5524', pathologist: 'Dr. Miguel Navarro', tests: testsFor('CBC with Platelet Count') },
+  { id: 'REQ-2026-0206', patient: 'Mendoza, Liza P.', patientId: 'PID-000126', age: 61, sex: 'Female', queueNo: 'Q-015', paidAt: '2026-10-23T09:12:00', receiptNo: 'OR-5526', pathologist: 'Dr. Andrea Villanueva', tests: testsFor('Cholesterol', 'Triglycerides') },
+  { id: 'REQ-2026-0207', patient: 'Bautista, Carlo D.', patientId: 'PID-000127', age: 30, sex: 'Male', queueNo: 'Q-016', paidAt: '2026-10-23T09:20:00', receiptNo: 'OR-5528', pathologist: 'Dr. Miguel Navarro', tests: testsFor('Fasting Blood Sugar') },
 ]
 
 export const initialTechnologistSpecimens = [

@@ -3,6 +3,9 @@ import SearchInput from '../../components/data/SearchInput.jsx'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
+import SummaryCard from '../../components/reports/SummaryCard.jsx'
+import TablePagination from '../../components/data/TablePagination.jsx'
+import useTablePagination from '../../components/data/useTablePagination.js'
 import './WorkQueue.css'
 
 const statusOptions = ['All', 'Paid', 'Specimen Received', 'Processing']
@@ -25,20 +28,31 @@ export default function WorkQueue() {
   const { requests, specimens, getRequestStatus, goToSpecimens } = useTechnologist()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('All')
+  const [testFilter, setTestFilter] = useState('All tests')
   const [selectedRequestId, setSelectedRequestId] = useState('')
+  const testOptions = [...new Set(requests.flatMap((request) => request.tests.map((test) => test.name)))].sort()
+  const requestStatuses = requests.map((request) => ({ request, status: getRequestStatus(request) }))
 
   const visibleRequests = useMemo(() => requests
     .map((request) => ({ ...request, status: getRequestStatus(request) }))
     .filter((request) => ['Paid', 'Specimen Received', 'Processing'].includes(request.status))
     .filter((request) => status === 'All' || request.status === status)
+    .filter((request) => testFilter === 'All tests' || request.tests.some((test) => test.name === testFilter))
     .filter((request) => {
       const searchText = `${request.id} ${request.patient} ${request.tests.map((test) => test.name).join(' ')}`.toLowerCase()
       return searchText.includes(query.trim().toLowerCase())
     })
     .sort((first, second) => new Date(first.paidAt) - new Date(second.paidAt)),
-  [requests, getRequestStatus, query, status])
+  [requests, getRequestStatus, query, status, testFilter])
 
   const selectedRequest = requests.find((request) => request.id === selectedRequestId)
+  const { currentPage, pageSize, setCurrentPage, visibleItems: pageRequests } = useTablePagination(visibleRequests)
+  const {
+    currentPage: testsPage,
+    pageSize: testsPageSize,
+    setCurrentPage: setTestsPage,
+    visibleItems: pageTests,
+  } = useTablePagination(selectedRequest?.tests ?? [])
   const selectedStatus = selectedRequest ? getRequestStatus(selectedRequest) : ''
   const requestSpecimens = selectedRequest
     ? specimens.filter((specimen) => specimen.requestId === selectedRequest.id)
@@ -57,10 +71,16 @@ export default function WorkQueue() {
 
   return (
     <section className="medtech-page" aria-label="Medical technologist work queue">
+      <div className="medtech-summary-cards">
+        <SummaryCard title="Active requests" value={String(requestStatuses.filter(({ status: current }) => ['Paid', 'Specimen Received', 'Processing'].includes(current)).length).padStart(2, '0')} helperText="Ready for laboratory handling" />
+        <SummaryCard title="Awaiting specimens" value={String(requestStatuses.filter(({ status: current }) => current === 'Paid').length).padStart(2, '0')} helperText="Payment complete" />
+        <SummaryCard title="Specimens received" value={String(requestStatuses.filter(({ status: current }) => current === 'Specimen Received').length).padStart(2, '0')} helperText="Collection started" />
+        <SummaryCard title="In processing" value={String(requestStatuses.filter(({ status: current }) => current === 'Processing').length).padStart(2, '0')} helperText="Accepted specimens in progress" />
+      </div>
       <section className="medtech-panel" aria-labelledby="work-queue-title">
         <div className="medtech-panel__heading">
           <div>
-            <h2 id="work-queue-title">Requests ready for processing</h2>
+            <h2 id="work-queue-title">Ready requests</h2>
             <p>Start with the earliest payment. Review details before handling specimens.</p>
           </div>
         </div>
@@ -71,12 +91,19 @@ export default function WorkQueue() {
             label="Search work queue"
             placeholder="Request ID, patient name, or test"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); setCurrentPage(1) }}
           />
           <label className="medtech-select-field">
             <span>Status</span>
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <select value={status} onChange={(event) => { setStatus(event.target.value); setCurrentPage(1) }}>
               {statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <label className="medtech-select-field">
+            <span>Test</span>
+            <select value={testFilter} onChange={(event) => { setTestFilter(event.target.value); setCurrentPage(1) }}>
+              <option>All tests</option>
+              {testOptions.map((test) => <option key={test}>{test}</option>)}
             </select>
           </label>
         </div>
@@ -100,7 +127,7 @@ export default function WorkQueue() {
               </tr>
             </thead>
             <tbody>
-              {visibleRequests.map((request) => {
+              {pageRequests.map((request) => {
                 const recollectionNeeded = needsRecollection(request)
                 const testSummary = request.tests.slice(0, 2).map((test) => test.name).join(', ')
                 const moreTests = request.tests.length > 2 ? ` +${request.tests.length - 2}` : ''
@@ -136,12 +163,12 @@ export default function WorkQueue() {
           </table>
           {visibleRequests.length === 0 && <p className="medtech-empty">No requests match your filters.</p>}
         </div>
+        <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={visibleRequests.length} onPageChange={setCurrentPage} />
       </section>
 
       {selectedRequest && (
-        <TechnologistDialog title={`Request ${selectedRequest.id}`} onClose={() => setSelectedRequestId('')} className="medtech-dialog--wide">
+        <TechnologistDialog title={<span className="medtech-request-dialog-title"><span>Request {selectedRequest.id}</span><TechnologistStatusBadge status={selectedStatus} /></span>} onClose={() => setSelectedRequestId('')} className="medtech-dialog--wide">
           <div className="medtech-dialog__body">
-            <TechnologistStatusBadge status={selectedStatus} />
             <section className="medtech-detail-section" aria-labelledby="request-patient-title">
               <h3 id="request-patient-title">Patient</h3>
               <dl className="medtech-detail-grid">
@@ -151,6 +178,7 @@ export default function WorkQueue() {
                 <div><dt>Queue No.</dt><dd>{selectedRequest.queueNo}</dd></div>
                 <div><dt>Paid</dt><dd>{formatDateTime(selectedRequest.paidAt)}</dd></div>
                 <div><dt>Receipt No.</dt><dd>{selectedRequest.receiptNo}</dd></div>
+                <div><dt>Pathologist</dt><dd>{selectedRequest.pathologist || 'To be assigned'}</dd></div>
               </dl>
             </section>
 
@@ -160,12 +188,13 @@ export default function WorkQueue() {
                 <table className="medtech-table">
                   <thead><tr><th scope="col">Test</th><th scope="col">Category</th><th scope="col">Specimen</th></tr></thead>
                   <tbody>
-                    {selectedRequest.tests.map((test) => (
+                    {pageTests.map((test) => (
                       <tr key={test.name}><td>{test.name}</td><td>{test.category}</td><td>{test.specimenType}</td></tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              <TablePagination currentPage={testsPage} pageSize={testsPageSize} totalItems={selectedRequest.tests.length} onPageChange={setTestsPage} />
             </section>
 
             <section className="medtech-detail-section" aria-labelledby="request-specimens-title">
@@ -173,7 +202,7 @@ export default function WorkQueue() {
               <ul className="medtech-specimen-summary">
                 {requestSpecimens.map((specimen) => (
                   <li key={specimen.label}>
-                    <span>{specimen.label} · {specimen.type}</span>
+                    <span className="medtech-specimen-summary__name">{specimen.label} · {specimen.type}</span>
                     <TechnologistStatusBadge status={specimen.status} />
                   </li>
                 ))}
