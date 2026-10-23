@@ -9,7 +9,7 @@ import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
 import './Specimens.css'
 
-const statusOptions = ['All', 'Expected', 'Received', 'Accepted', 'Rejected']
+const statusOptions = ['All', 'Expected', 'Received', 'Accepted', 'Rejected', 'For Recollection']
 
 function localDateTimeValue(date = new Date()) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -106,7 +106,7 @@ export default function Specimens() {
         <SummaryCard title="Expected" value={String(specimens.filter((item) => item.status === 'Expected').length).padStart(2, '0')} helperText="Awaiting collection" />
         <SummaryCard title="Received" value={String(specimens.filter((item) => item.status === 'Received').length).padStart(2, '0')} helperText="Needs quality check" />
         <SummaryCard title="Accepted" value={String(specimens.filter((item) => item.status === 'Accepted').length).padStart(2, '0')} helperText="Ready for processing" />
-        <SummaryCard title="Rejected" value={String(specimens.filter((item) => item.status === 'Rejected').length).padStart(2, '0')} helperText="Recollection required" />
+        <SummaryCard title="For recollection" value={String(specimens.filter((item) => item.status === 'For Recollection').length).padStart(2, '0')} helperText="New specimen needed" />
       </div>
       <section className="medtech-panel" aria-labelledby="specimens-title">
         <div className="medtech-panel__heading">
@@ -114,6 +114,7 @@ export default function Specimens() {
             <h2 id="specimens-title">Specimens</h2>
             <p>Record arrivals, then check specimen quality before processing.</p>
           </div>
+          <span className="medtech-panel__count">{visibleSpecimens.length} {visibleSpecimens.length === 1 ? 'specimen' : 'specimens'}</span>
         </div>
 
         <div className="medtech-toolbar">
@@ -138,10 +139,6 @@ export default function Specimens() {
             </select>
           </label>
         </div>
-
-        <p className="medtech-count">
-          <strong>{visibleSpecimens.length}</strong> {visibleSpecimens.length === 1 ? 'specimen' : 'specimens'}
-        </p>
 
         <div className="medtech-table-wrap" role="region" aria-label="Specimens" tabIndex="0">
           <table className="medtech-table medtech-table--specimens">
@@ -187,7 +184,7 @@ export default function Specimens() {
                         </div>
                       )}
                       {specimen.status === 'Accepted' && <span className="medtech-table__note">Sent to Results in Progress</span>}
-                      {specimen.status === 'Rejected' && <span className="medtech-table__note">{specimen.reason}</span>}
+                      {['Rejected', 'For Recollection'].includes(specimen.status) && <span className="medtech-table__note">{specimen.reason}</span>}
                     </td>
                   </tr>
                 )

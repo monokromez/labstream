@@ -1,6 +1,8 @@
 export function getRequestStatus(request, specimens, results) {
   const requestSpecimens = specimens.filter((specimen) => specimen.requestId === request.id)
-  const activeSpecimens = requestSpecimens.filter((specimen) => specimen.status !== 'Rejected')
+  const activeSpecimens = requestSpecimens.filter((specimen) => !['Rejected', 'For Recollection'].includes(specimen.status))
+
+  if (activeSpecimens.some((specimen) => specimen.recollectionOf && ['Expected', 'Received'].includes(specimen.status))) return 'For Recollection'
 
   if (activeSpecimens.length > 0 && activeSpecimens.every((specimen) => specimen.status === 'Accepted')) {
     const requestResults = activeSpecimens.map((specimen) =>
@@ -11,7 +13,7 @@ export function getRequestStatus(request, specimens, results) {
       : 'Processing'
   }
 
-  return requestSpecimens.some((specimen) => specimen.status !== 'Expected')
+  return requestSpecimens.some((specimen) => !['Expected', 'Rejected', 'For Recollection'].includes(specimen.status))
     ? 'Specimen Received'
     : 'Paid'
 }

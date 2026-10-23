@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
@@ -6,9 +6,10 @@ import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
+import { readCatalog, subscribeCatalog } from '../../data/administratorCatalog.js'
 import './WorkQueue.css'
 
-const statusOptions = ['All', 'Paid', 'Specimen Received', 'Processing']
+const statusOptions = ['All', 'Paid', 'For Recollection', 'Specimen Received', 'Processing']
 
 function formatTime(value) {
   return new Date(value).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
@@ -30,14 +31,16 @@ export default function WorkQueue() {
   const [status, setStatus] = useState('All')
   const [testFilter, setTestFilter] = useState('All tests')
   const [selectedRequestId, setSelectedRequestId] = useState('')
-  const testOptions = [...new Set(requests.flatMap((request) => request.tests.map((test) => test.name)))].sort()
+  const [catalog, setCatalog] = useState(readCatalog)
+  useEffect(() => subscribeCatalog(() => setCatalog(readCatalog())), [])
+  const testOptions = [...new Set(catalog.tests.filter((test) => test.availability === 'Available').map((test) => test.name))].sort()
   const requestStatuses = requests.map((request) => ({ request, status: getRequestStatus(request) }))
 
   const visibleRequests = useMemo(() => requests
     .map((request) => ({ ...request, status: getRequestStatus(request) }))
-    .filter((request) => ['Paid', 'Specimen Received', 'Processing'].includes(request.status))
+    .filter((request) => ['Paid', 'For Recollection', 'Specimen Received', 'Processing'].includes(request.status))
     .filter((request) => status === 'All' || request.status === status)
-    .filter((request) => testFilter === 'All tests' || request.tests.some((test) => test.name === testFilter))
+    .filter((request) => testFilter === 'All tests' || request.tests.some((test) => test.name === testFilter || test.name.replace(/\s*\([^)]*\)$/, '') === testFilter))
     .filter((request) => {
       const searchText = `${request.id} ${request.patient} ${request.tests.map((test) => test.name).join(' ')}`.toLowerCase()
       return searchText.includes(query.trim().toLowerCase())
@@ -58,21 +61,10 @@ export default function WorkQueue() {
     ? specimens.filter((specimen) => specimen.requestId === selectedRequest.id)
     : []
 
-  function needsRecollection(request) {
-    return specimens.some((specimen) =>
-      specimen.requestId === request.id
-      && specimen.status === 'Rejected'
-      && specimens.some((recollection) =>
-        recollection.recollectionOf === (specimen.recollectionOf || specimen.label)
-        && recollection.status !== 'Accepted',
-      ),
-    )
-  }
-
   return (
     <section className="medtech-page" aria-label="Medical technologist work queue">
       <div className="medtech-summary-cards">
-        <SummaryCard title="Active requests" value={String(requestStatuses.filter(({ status: current }) => ['Paid', 'Specimen Received', 'Processing'].includes(current)).length).padStart(2, '0')} helperText="Ready for laboratory handling" />
+        <SummaryCard title="Active requests" value={String(requestStatuses.filter(({ status: current }) => ['Paid', 'For Recollection', 'Specimen Received', 'Processing'].includes(current)).length).padStart(2, '0')} helperText="Ready for laboratory handling" />
         <SummaryCard title="Awaiting specimens" value={String(requestStatuses.filter(({ status: current }) => current === 'Paid').length).padStart(2, '0')} helperText="Payment complete" />
         <SummaryCard title="Specimens received" value={String(requestStatuses.filter(({ status: current }) => current === 'Specimen Received').length).padStart(2, '0')} helperText="Collection started" />
         <SummaryCard title="In processing" value={String(requestStatuses.filter(({ status: current }) => current === 'Processing').length).padStart(2, '0')} helperText="Accepted specimens in progress" />
@@ -83,6 +75,7 @@ export default function WorkQueue() {
             <h2 id="work-queue-title">Ready requests</h2>
             <p>Start with the earliest payment. Review details before handling specimens.</p>
           </div>
+          <span className="medtech-panel__count">{visibleRequests.length} {visibleRequests.length === 1 ? 'request' : 'requests'}</span>
         </div>
 
         <div className="medtech-toolbar">
@@ -108,10 +101,6 @@ export default function WorkQueue() {
           </label>
         </div>
 
-        <p className="medtech-count">
-          <strong>{visibleRequests.length}</strong> {visibleRequests.length === 1 ? 'request' : 'requests'}, oldest payment first
-        </p>
-
         <div className="medtech-table-wrap" role="region" aria-label="Work queue requests" tabIndex="0">
           <table className="medtech-table medtech-table--queue">
             <thead>
@@ -128,7 +117,6 @@ export default function WorkQueue() {
             </thead>
             <tbody>
               {pageRequests.map((request) => {
-                const recollectionNeeded = needsRecollection(request)
                 const testSummary = request.tests.slice(0, 2).map((test) => test.name).join(', ')
                 const moreTests = request.tests.length > 2 ? ` +${request.tests.length - 2}` : ''
                 return (
@@ -142,10 +130,7 @@ export default function WorkQueue() {
                     </td>
                     <td>{formatTime(request.paidAt)}</td>
                     <td>
-                      <div className="medtech-status-cell">
-                        <TechnologistStatusBadge status={request.status} />
-                        {recollectionNeeded && <span className="medtech-table__note">Recollection needed</span>}
-                      </div>
+                      <div className="medtech-status-cell"><TechnologistStatusBadge status={request.status} /></div>
                     </td>
                     <td>
                       <button

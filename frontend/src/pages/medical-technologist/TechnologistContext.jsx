@@ -83,7 +83,7 @@ export function TechnologistProvider({ children, onNavigate }) {
       const originalLabel = rejected.recollectionOf || rejected.label
       return [
         ...current.map((specimen) => specimen.label === label
-          ? { ...specimen, status: 'Rejected', reason: notes.trim() ? `${reason}: ${notes.trim()}` : reason }
+          ? { ...specimen, status: 'For Recollection', reason: notes.trim() ? `${reason}: ${notes.trim()}` : reason }
           : specimen),
         {
           label: `${originalLabel}-R${nextRecollection}`,
@@ -107,14 +107,16 @@ export function TechnologistProvider({ children, onNavigate }) {
     setNotice('Draft saved.')
   }, [])
 
-  const submitResult = useCallback((specimenLabel, values) => {
-    setResults((current) => current.map((result) =>
-      result.specimenLabel === specimenLabel
-        ? { ...result, state: 'validation', values, feedback: '', submittedAt: new Date().toISOString() }
-        : result,
-    ))
-    setNotice('Submitted to the pathologist.')
-  }, [])
+  const submitRequest = useCallback((requestId, valuesBySpecimen = {}) => {
+    const acceptedLabels = new Set(specimens
+      .filter((specimen) => specimen.requestId === requestId && specimen.status === 'Accepted')
+      .map((specimen) => specimen.label))
+    setResults((current) => current.map((result) => acceptedLabels.has(result.specimenLabel)
+      && result.state !== 'validation'
+      ? { ...result, state: 'validation', values: valuesBySpecimen[result.specimenLabel] ?? result.values, feedback: '', submittedAt: new Date().toISOString() }
+      : result))
+    setNotice('All completed tests in the request were submitted to the assigned pathologist.')
+  }, [specimens])
 
   const value = useMemo(() => ({
     requests,
@@ -127,13 +129,13 @@ export function TechnologistProvider({ children, onNavigate }) {
     acceptSpecimen,
     rejectSpecimen,
     saveDraft,
-    submitResult,
+    submitRequest,
     getRequestStatus: (request) => getRequestStatus(request, specimens, results),
     goToSpecimens: (requestId) => {
       setSpecimenSearch(requestId)
       onNavigate?.('specimens')
     },
-  }), [requests, specimens, results, notice, specimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen, saveDraft, submitResult, onNavigate])
+  }), [requests, specimens, results, notice, specimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen, saveDraft, submitRequest, onNavigate])
 
   return (
     <TechnologistContext.Provider value={value}>

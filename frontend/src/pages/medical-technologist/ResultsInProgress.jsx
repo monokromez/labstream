@@ -9,8 +9,8 @@ import './ResultsInProgress.css'
 const stateFilters = [
   { value: 'all', label: 'All' },
   { value: 'awaiting', label: 'Awaiting result' },
-  { value: 'draft', label: 'Draft saved' },
-  { value: 'returned', label: 'Returned by pathologist' },
+  { value: 'draft', label: 'Drafted' },
+  { value: 'returned', label: 'Returned' },
   { value: 'validation', label: 'For validation' },
 ]
 
@@ -128,13 +128,14 @@ function getNumericChartRows(fields, values) {
 }
 
 export default function ResultsInProgress() {
-  const { requests, specimens, results, saveDraft, submitResult } = useTechnologist()
+  const { requests, specimens, results, saveDraft, submitRequest } = useTechnologist()
   const [filter, setFilter] = useState('all')
   const [selectedLabel, setSelectedLabel] = useState('')
   const [draftValues, setDraftValues] = useState({})
   const [showFieldErrors, setShowFieldErrors] = useState(false)
   const [validationError, setValidationError] = useState('')
   const [confirmSubmit, setConfirmSubmit] = useState(false)
+  const [pendingSubmissionValues, setPendingSubmissionValues] = useState({})
 
   const visibleResults = useMemo(() => results
     .filter((result) => filter === 'all' || result.state === filter)
@@ -170,20 +171,45 @@ export default function ResultsInProgress() {
   function requestSubmission(event) {
     event.preventDefault()
     if (!selectedResult || isLocked) return
-    const emptyFields = resultFields.filter((field) => !String(values[field.key] ?? '').trim())
-    if (emptyFields.length > 0) {
+    const requestSpecimens = specimens.filter((specimen) => specimen.requestId === selectedResult.request.id)
+    const requiredTypes = [...new Set(selectedResult.request.tests.map((test) => test.specimenType))]
+    const acceptedTypes = new Set(requestSpecimens.filter((specimen) => specimen.status === 'Accepted').map((specimen) => specimen.type))
+    const missingTypes = requiredTypes.filter((type) => !acceptedTypes.has(type))
+    if (missingTypes.length) {
+      setValidationError(`This request is not ready to submit. Receive and accept all required specimen types first: ${missingTypes.join(', ')}.`)
+      return
+    }
+
+    const valuesBySpecimen = {}
+    const missingResults = []
+    requestSpecimens.filter((specimen) => specimen.status === 'Accepted').forEach((specimen) => {
+      const specimenResult = results.find((result) => result.specimenLabel === specimen.label)
+      if (!specimenResult) {
+        missingResults.push(`${specimen.type} result`)
+        return
+      }
+      const specimenValues = specimen.label === selectedResult.specimenLabel
+        ? values
+        : draftValues[specimen.label] ?? specimenResult.values
+      valuesBySpecimen[specimen.label] = specimenValues
+      const tests = selectedResult.request.tests.filter((test) => test.specimenType === specimen.type)
+      tests.flatMap((test) => test.fields).forEach((field) => {
+        if (!String(specimenValues[field.key] ?? '').trim()) missingResults.push(`${specimen.type}: ${field.label}`)
+      })
+    })
+    if (missingResults.length > 0) {
       setShowFieldErrors(true)
-      setValidationError(`Complete all result fields before submitting (${emptyFields.length} empty). You can save a draft instead.`)
-      document.getElementById(`result-${selectedResult.specimenLabel}-${emptyFields[0].key}`)?.focus()
+      setValidationError(`Complete every test result in this request before submitting. Still missing: ${missingResults.slice(0, 3).join(', ')}${missingResults.length > 3 ? ` and ${missingResults.length - 3} more` : ''}. You can save this specimen as a draft.`)
       return
     }
     setValidationError('')
+    setPendingSubmissionValues(valuesBySpecimen)
     setConfirmSubmit(true)
   }
 
   function confirmSubmission() {
     if (!selectedResult) return
-    submitResult(selectedResult.specimenLabel, values)
+    submitRequest(selectedResult.request.id, pendingSubmissionValues)
     setConfirmSubmit(false)
   }
 

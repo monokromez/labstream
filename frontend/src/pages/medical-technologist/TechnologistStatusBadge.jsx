@@ -7,16 +7,17 @@ const tones = {
   Received: 'warning',
   Accepted: 'primary',
   Rejected: 'danger',
+  'For Recollection': 'danger',
   'Awaiting result': 'neutral',
-  'Draft saved': 'warning',
-  'Returned by pathologist': 'danger',
+  Drafted: 'warning',
+  Returned: 'danger',
   'For validation': 'primary',
 }
 
 const labels = {
   awaiting: 'Awaiting result',
-  draft: 'Draft saved',
-  returned: 'Returned by pathologist',
+  draft: 'Drafted',
+  returned: 'Returned',
   validation: 'For validation',
 }
 
