@@ -1,251 +1,351 @@
--- Labstream base schema for a NEW, EMPTY Supabase PostgreSQL project.
--- Run this file, then run 002_tenant_accounts.sql to apply the current
--- clinic-scoped account model. For an existing database, run only the
--- 002_tenant_accounts.sql upgrade after confirming it matches your schema.
+-- Labstream end-to-end workflow schema (fresh Supabase project).
+-- Run reset.sql only when intentionally discarding Labstream data, then run this file.
+-- Do not expose password_hash or account_tokens through client APIs. Backend code
+-- must enforce roles, clinic scope, assignments, validation, and state transitions.
 
-create type public.user_role as enum (
-  'cashier',
-  'medical_technologist',
-  'pathologist',
-  'administrator',
-  'patient'
-);
+create extension if not exists pgcrypto;
 
-create type public.result_type as enum ('numeric', 'text');
-
-create type public.request_status as enum (
-  'queued',
-  'paid',
-  'specimen_received',
-  'processing',
-  'for_validation',
-  'released',
-  'cancelled'
-);
-
-create type public.queue_status as enum (
-  'waiting',
-  'called',
-  'serving',
-  'completed',
-  'cancelled'
-);
-
-create type public.payment_method as enum ('cash', 'card', 'other');
+create type public.user_role as enum ('administrator', 'cashier', 'medical_technologist', 'pathologist', 'patient');
+create type public.request_status as enum ('awaiting_payment', 'paid', 'specimen_collection', 'processing', 'for_validation', 'correction', 'released', 'cancelled');
+create type public.request_item_status as enum ('awaiting_specimen', 'specimen_received', 'processing', 'drafted', 'submitted', 'returned', 'for_recollection', 'approved', 'released', 'cancelled');
+create type public.specimen_status as enum ('expected', 'received', 'accepted', 'rejected', 'for_recollection', 'consumed');
+create type public.result_value_type as enum ('numeric', 'text', 'select', 'boolean');
+create type public.result_status as enum ('draft', 'submitted', 'returned', 'approved');
 create type public.review_decision as enum ('approved', 'returned');
+create type public.payment_method as enum ('cash');
+
+create table public.clinics (
+  id uuid primary key default gen_random_uuid(),
+  code varchar(24) not null unique,
+  name varchar(180) not null,
+  registration_number varchar(100),
+  email varchar(254), phone varchar(32),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+
+create table public.clinic_branches (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  code varchar(24) not null, name varchar(180) not null,
+  country varchar(100) not null, city varchar(120) not null,
+  house_number varchar(80), street varchar(160), phone varchar(32), email varchar(254),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (clinic_id, code), unique (id, clinic_id)
+);
 
 create table public.users (
   id uuid primary key default gen_random_uuid(),
-  email varchar(254) unique,
-  password_hash varchar(255) not null,
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  branch_id uuid,
   role public.user_role not null,
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint users_staff_email_required
-    check (role = 'patient' or email is not null)
+  staff_number integer generated always as identity,
+  username varchar(80), email varchar(254), password_hash varchar(255),
+  is_active boolean not null default false,
+  must_change_password boolean not null default true,
+  last_sign_in_at timestamptz,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id),
+  unique (clinic_id, username), unique (clinic_id, staff_number), unique (clinic_id, email),
+  foreign key (branch_id, clinic_id) references public.clinic_branches(id, clinic_id) on delete restrict,
+  check ((role = 'patient') or (username is not null and email is not null))
 );
+
+create function public.set_staff_username() returns trigger language plpgsql as $$
+declare role_prefix text;
+begin
+  if new.role = 'patient' then new.username := null; return new; end if;
+  role_prefix := case new.role
+    when 'cashier' then 'CSH' when 'medical_technologist' then 'MLT'
+    when 'pathologist' then 'PTH' when 'administrator' then 'ADM' end;
+  new.username := role_prefix || '-' || lpad(new.staff_number::text, 6, '0');
+  return new;
+end $$;
+create trigger users_set_staff_username before insert or update of role, staff_number
+on public.users for each row execute function public.set_staff_username();
+
+create table public.staff_profiles (
+  user_id uuid primary key,
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  first_name varchar(100) not null, middle_name varchar(100), last_name varchar(100) not null,
+  date_of_birth date, phone varchar(32), email varchar(254),
+  country varchar(100), city varchar(120), house_number varchar(80), street varchar(160),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  foreign key (user_id, clinic_id) references public.users(id, clinic_id) on delete restrict
+);
+
+create table public.account_tokens (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  user_id uuid not null,
+  token_hash varchar(64) not null unique,
+  purpose varchar(24) not null check (purpose in ('activation', 'password_reset')),
+  expires_at timestamptz not null, consumed_at timestamptz,
+  created_at timestamptz not null default now(),
+  foreign key (user_id, clinic_id) references public.users(id, clinic_id) on delete restrict
+);
+create index account_tokens_user_idx on public.account_tokens(user_id, purpose, expires_at);
 
 create table public.patients (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null unique references public.users(id) on delete restrict,
-  pid varchar(32) not null unique,
-  first_name varchar(100) not null,
-  last_name varchar(100) not null,
-  date_of_birth date,
-  sex varchar(32),
-  phone varchar(32),
-  address text,
-  registered_by uuid not null references public.users(id) on delete restrict,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  branch_id uuid,
+  portal_user_id uuid unique,
+  pid varchar(32) not null,
+  first_name varchar(100) not null, middle_name varchar(100), last_name varchar(100) not null,
+  date_of_birth date not null, sex varchar(32) not null,
+  email varchar(254), phone varchar(32) not null,
+  country varchar(100) not null, city varchar(120) not null,
+  house_number varchar(80), street varchar(160),
+  valid_id_type varchar(100) not null, valid_id_number varchar(120) not null,
+  registered_by uuid not null,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (clinic_id, pid),
+  foreign key (branch_id, clinic_id) references public.clinic_branches(id, clinic_id) on delete restrict,
+  foreign key (portal_user_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (registered_by, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
+create index patients_name_idx on public.patients(clinic_id, last_name, first_name);
 
-create index patients_name_idx on public.patients(last_name, first_name);
+create table public.test_categories (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  name varchar(120) not null, description text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (clinic_id, name)
+);
 
 create table public.test_catalog (
   id uuid primary key default gen_random_uuid(),
-  code varchar(40) not null unique,
-  name varchar(160) not null,
-  description text,
-  result_type public.result_type not null,
-  unit varchar(40),
-  price numeric(10, 2) not null check (price >= 0),
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  category_id uuid not null,
+  code varchar(40) not null, name varchar(160) not null, description text,
+  price numeric(10,2) not null check (price >= 0),
+  turnaround_minutes integer check (turnaround_minutes is null or turnaround_minutes > 0),
+  is_available boolean not null default true,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (clinic_id, code),
+  foreign key (category_id, clinic_id) references public.test_categories(id, clinic_id) on delete restrict
+);
+create index test_catalog_category_idx on public.test_catalog(clinic_id, category_id, is_available);
+
+create table public.test_analytes (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  test_id uuid not null,
+  key varchar(80) not null, label varchar(160) not null,
+  value_type public.result_value_type not null,
+  options jsonb not null default '[]'::jsonb,
+  unit varchar(40), sort_order integer not null default 0,
+  is_required boolean not null default true,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (test_id, key),
+  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  check (jsonb_typeof(options) = 'array')
 );
 
 create table public.reference_ranges (
   id uuid primary key default gen_random_uuid(),
-  test_id uuid not null references public.test_catalog(id) on delete restrict,
-  min_age_days integer,
-  max_age_days integer,
-  sex varchar(32),
-  numeric_min numeric(14, 4),
-  numeric_max numeric(14, 4),
-  text_guidance text,
-  unit varchar(40),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  analyte_id uuid not null,
+  sex varchar(32), min_age_days integer, max_age_days integer,
+  lower_limit numeric(14,4), upper_limit numeric(14,4), unit varchar(40), guidance text,
   is_active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint reference_ranges_age_order
-    check (min_age_days is null or max_age_days is null or min_age_days <= max_age_days),
-  constraint reference_ranges_numeric_order
-    check (numeric_min is null or numeric_max is null or numeric_min <= numeric_max)
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  foreign key (analyte_id, clinic_id) references public.test_analytes(id, clinic_id) on delete restrict,
+  check (min_age_days is null or max_age_days is null or min_age_days <= max_age_days),
+  check (lower_limit is null or upper_limit is null or lower_limit <= upper_limit)
 );
-
-create index reference_ranges_test_active_idx
-  on public.reference_ranges(test_id, is_active);
+create index reference_ranges_analyte_idx on public.reference_ranges(analyte_id, is_active);
 
 create table public.test_requests (
   id uuid primary key default gen_random_uuid(),
-  patient_id uuid not null references public.patients(id) on delete restrict,
-  created_by uuid not null references public.users(id) on delete restrict,
-  status public.request_status not null default 'queued',
-  total_amount numeric(10, 2) not null default 0 check (total_amount >= 0),
-  paid_at timestamptz,
-  released_at timestamptz,
-  released_by uuid references public.users(id) on delete restrict,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  branch_id uuid,
+  request_number varchar(32) not null,
+  patient_id uuid not null,
+  created_by uuid not null,
+  status public.request_status not null default 'awaiting_payment',
+  priority varchar(16) not null default 'routine' check (priority in ('routine','urgent')),
+  total_amount numeric(10,2) not null default 0 check (total_amount >= 0),
+  assigned_technologist_id uuid,
+  assigned_pathologist_id uuid,
+  requested_at timestamptz not null default now(), paid_at timestamptz,
+  released_at timestamptz, cancelled_at timestamptz, cancellation_reason text,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (clinic_id, request_number),
+  foreign key (branch_id, clinic_id) references public.clinic_branches(id, clinic_id) on delete restrict,
+  foreign key (patient_id, clinic_id) references public.patients(id, clinic_id) on delete restrict,
+  foreign key (created_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (assigned_technologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (assigned_pathologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
-
-create index test_requests_patient_created_idx
-  on public.test_requests(patient_id, created_at);
-create index test_requests_status_created_idx
-  on public.test_requests(status, created_at);
+create index test_requests_patient_idx on public.test_requests(patient_id, requested_at desc);
+create index test_requests_status_idx on public.test_requests(clinic_id, status, requested_at);
 
 create table public.request_items (
   id uuid primary key default gen_random_uuid(),
-  request_id uuid not null references public.test_requests(id) on delete restrict,
-  test_id uuid not null references public.test_catalog(id) on delete restrict,
-  test_name_snapshot varchar(160) not null,
-  price_snapshot numeric(10, 2) not null check (price_snapshot >= 0),
-  result_type_snapshot public.result_type not null,
-  unit_snapshot varchar(40),
-  created_at timestamptz not null default now()
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  request_id uuid not null, test_id uuid not null,
+  test_code_snapshot varchar(40) not null, test_name_snapshot varchar(160) not null,
+  category_name_snapshot varchar(120) not null,
+  price_snapshot numeric(10,2) not null check (price_snapshot >= 0),
+  status public.request_item_status not null default 'awaiting_specimen',
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id),
+  foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
+  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict
 );
+create index request_items_request_idx on public.request_items(request_id, status);
 
-create index request_items_request_idx on public.request_items(request_id);
-
-create table public.queue_entries (
-  id uuid primary key default gen_random_uuid(),
-  request_id uuid not null unique references public.test_requests(id) on delete restrict,
-  queue_date date not null default current_date,
-  queue_number integer not null check (queue_number > 0),
-  status public.queue_status not null default 'waiting',
-  called_at timestamptz,
-  completed_at timestamptz,
-  called_by uuid references public.users(id) on delete restrict,
-  created_at timestamptz not null default now(),
-  constraint queue_entries_date_number_unique unique (queue_date, queue_number)
-);
-
-create index queue_entries_date_status_idx
-  on public.queue_entries(queue_date, status);
+-- This is the cashier payment queue. Physical walk-in/service queue is separate
+-- and intentionally not conflated with test requests or payment state.
+create view public.cashier_payment_queue with (security_invoker = true) as
+select r.id, r.clinic_id, r.request_number, r.patient_id, p.pid,
+       concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
+       r.total_amount, r.priority, r.requested_at
+from public.test_requests r join public.patients p on p.id = r.patient_id
+where r.status = 'awaiting_payment';
 
 create table public.payments (
   id uuid primary key default gen_random_uuid(),
-  request_id uuid not null references public.test_requests(id) on delete restrict,
-  amount numeric(10, 2) not null check (amount > 0),
-  method public.payment_method not null,
-  receipt_number varchar(64) not null unique,
-  recorded_by uuid not null references public.users(id) on delete restrict,
-  paid_at timestamptz not null default now(),
-  created_at timestamptz not null default now()
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  request_id uuid not null unique,
+  amount numeric(10,2) not null check (amount > 0),
+  method public.payment_method not null default 'cash',
+  recorded_by uuid not null, paid_at timestamptz not null default now(),
+  voided_at timestamptz, voided_by uuid, void_reason text,
+  created_at timestamptz not null default now(),
+  foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
+  foreign key (recorded_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (voided_by, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
+create index payments_date_idx on public.payments(clinic_id, paid_at desc);
 
-create index payments_request_idx on public.payments(request_id);
-create index payments_paid_at_idx on public.payments(paid_at);
+create table public.invoices (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  payment_id uuid not null unique references public.payments(id) on delete restrict,
+  invoice_number varchar(64) not null,
+  issued_at timestamptz not null default now(),
+  unique (clinic_id, invoice_number)
+);
 
 create table public.specimens (
   id uuid primary key default gen_random_uuid(),
-  request_id uuid not null references public.test_requests(id) on delete restrict,
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  request_id uuid not null,
   specimen_type varchar(100) not null,
-  received_by uuid not null references public.users(id) on delete restrict,
-  received_at timestamptz not null default now(),
-  notes text,
-  created_at timestamptz not null default now()
+  attempt_number integer not null default 1 check (attempt_number > 0),
+  replaces_specimen_id uuid,
+  status public.specimen_status not null default 'expected',
+  collected_at timestamptz, received_at timestamptz, received_by uuid,
+  accepted_at timestamptz, rejected_at timestamptz, rejection_reason text,
+  notes text, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (request_id, specimen_type, attempt_number),
+  foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
+  foreign key (replaces_specimen_id, clinic_id) references public.specimens(id, clinic_id) on delete restrict,
+  foreign key (received_by, clinic_id) references public.users(id, clinic_id) on delete restrict
+);
+create index specimens_worklist_idx on public.specimens(clinic_id, status, created_at);
+
+create table public.specimen_request_items (
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  specimen_id uuid not null, request_item_id uuid not null,
+  primary key (specimen_id, request_item_id),
+  foreign key (specimen_id, clinic_id) references public.specimens(id, clinic_id) on delete restrict,
+  foreign key (request_item_id, clinic_id) references public.request_items(id, clinic_id) on delete restrict
 );
 
-create index specimens_request_idx on public.specimens(request_id);
-
-create table public.results (
+create table public.result_submissions (
   id uuid primary key default gen_random_uuid(),
-  request_item_id uuid not null unique references public.request_items(id) on delete restrict,
-  numeric_value numeric(14, 4),
-  text_value text,
-  unit varchar(40),
-  reference_min_snapshot numeric(14, 4),
-  reference_max_snapshot numeric(14, 4),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  request_item_id uuid not null, specimen_id uuid not null,
+  revision_number integer not null check (revision_number > 0),
+  status public.result_status not null default 'draft',
+  entered_by uuid not null, entered_at timestamptz not null default now(),
+  submitted_at timestamptz, pathologist_interpretation text,
+  supersedes_result_id uuid,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (id, clinic_id), unique (request_item_id, revision_number),
+  foreign key (request_item_id, clinic_id) references public.request_items(id, clinic_id) on delete restrict,
+  foreign key (specimen_id, clinic_id) references public.specimens(id, clinic_id) on delete restrict,
+  foreign key (supersedes_result_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
+  foreign key (entered_by, clinic_id) references public.users(id, clinic_id)
+);
+create index result_submissions_worklist_idx on public.result_submissions(clinic_id, status, submitted_at);
+
+create table public.result_values (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  result_submission_id uuid not null, analyte_id uuid not null,
+  numeric_value numeric(14,4), text_value text, unit_snapshot varchar(40),
+  lower_limit_snapshot numeric(14,4), upper_limit_snapshot numeric(14,4),
   is_abnormal boolean not null default false,
-  remarks text,
-  encoded_by uuid not null references public.users(id) on delete restrict,
-  encoded_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint results_exactly_one_value
-    check (num_nonnulls(numeric_value, text_value) = 1),
-  constraint results_reference_order
-    check (
-      reference_min_snapshot is null
-      or reference_max_snapshot is null
-      or reference_min_snapshot <= reference_max_snapshot
-    )
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (result_submission_id, analyte_id),
+  foreign key (result_submission_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
+  foreign key (analyte_id, clinic_id) references public.test_analytes(id, clinic_id) on delete restrict,
+  check (num_nonnulls(numeric_value, text_value) = 1),
+  check (lower_limit_snapshot is null or upper_limit_snapshot is null or lower_limit_snapshot <= upper_limit_snapshot)
 );
 
 create table public.result_reviews (
   id uuid primary key default gen_random_uuid(),
-  request_id uuid not null references public.test_requests(id) on delete restrict,
-  reviewed_by uuid not null references public.users(id) on delete restrict,
-  decision public.review_decision not null,
-  comments text,
-  reviewed_at timestamptz not null default now()
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  result_submission_id uuid not null,
+  reviewed_by uuid not null, decision public.review_decision not null,
+  remarks text, requires_retest boolean not null default false,
+  reviewed_at timestamptz not null default now(),
+  foreign key (result_submission_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
+  foreign key (reviewed_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  check (decision <> 'returned' or nullif(btrim(remarks), '') is not null)
 );
-
-create index result_reviews_request_time_idx
-  on public.result_reviews(request_id, reviewed_at);
+create index result_reviews_result_time_idx on public.result_reviews(result_submission_id, reviewed_at desc);
 
 create table public.request_status_history (
   id uuid primary key default gen_random_uuid(),
-  request_id uuid not null references public.test_requests(id) on delete restrict,
-  old_status public.request_status,
-  new_status public.request_status not null,
-  changed_by uuid references public.users(id) on delete restrict,
-  changed_at timestamptz not null default now(),
-  note text
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  request_id uuid not null, old_status public.request_status, new_status public.request_status not null,
+  changed_by uuid, note text, changed_at timestamptz not null default now(),
+  foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
+  foreign key (changed_by, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
-
-create index request_status_history_request_time_idx
-  on public.request_status_history(request_id, changed_at);
 
 create table public.audit_logs (
   id uuid primary key default gen_random_uuid(),
-  actor_user_id uuid references public.users(id) on delete set null,
-  action varchar(100) not null,
-  entity_type varchar(100) not null,
-  entity_id uuid,
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  actor_user_id uuid, action varchar(100) not null,
+  entity_type varchar(100) not null, entity_id uuid,
   details jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  foreign key (actor_user_id, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
+create index audit_logs_clinic_time_idx on public.audit_logs(clinic_id, created_at desc);
+create index audit_logs_entity_idx on public.audit_logs(entity_type, entity_id);
 
-create index audit_logs_actor_time_idx
-  on public.audit_logs(actor_user_id, created_at);
-create index audit_logs_entity_idx
-  on public.audit_logs(entity_type, entity_id);
-
--- Defense in depth: deny direct Supabase Data API access until policies are
--- deliberately designed. The server-side backend must still enforce roles.
+-- Deliberately enable RLS without client policies. Until policies are designed,
+-- client-side Supabase Data API access is denied; privileged access stays server-side.
+alter table public.clinics enable row level security;
+alter table public.clinic_branches enable row level security;
 alter table public.users enable row level security;
+alter table public.staff_profiles enable row level security;
+alter table public.account_tokens enable row level security;
 alter table public.patients enable row level security;
+alter table public.test_categories enable row level security;
 alter table public.test_catalog enable row level security;
+alter table public.test_analytes enable row level security;
 alter table public.reference_ranges enable row level security;
 alter table public.test_requests enable row level security;
 alter table public.request_items enable row level security;
-alter table public.queue_entries enable row level security;
 alter table public.payments enable row level security;
+alter table public.invoices enable row level security;
 alter table public.specimens enable row level security;
-alter table public.results enable row level security;
+alter table public.specimen_request_items enable row level security;
+alter table public.result_submissions enable row level security;
+alter table public.result_values enable row level security;
 alter table public.result_reviews enable row level security;
 alter table public.request_status_history enable row level security;
 alter table public.audit_logs enable row level security;

@@ -1,3 +1,7 @@
+// Legacy Drizzle model. The current target schema is backend/supabase/schema.sql.
+// Do not generate/apply migrations from this file until it has been reconciled
+// with that SQL design and the backend integration work begins.
+
 import { sql } from "drizzle-orm";
 import {
   boolean,

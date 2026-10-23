@@ -1,5 +1,6 @@
--- Upgrade an existing Labstream schema to clinic-scoped data and safer account
--- provisioning. Run once in Supabase SQL Editor after schema.sql has been used.
+-- LEGACY ONLY: upgrade the previous base schema, not the current schema.sql.
+-- The current fresh-install workflow is schema.sql alone; do not run this file
+-- after it. Retained only as a historical upgrade path for the old schema.
 -- Existing rows are assigned to one tenant (LAB001); rename it before opening
 -- onboarding. No existing business rows are dropped.
 
