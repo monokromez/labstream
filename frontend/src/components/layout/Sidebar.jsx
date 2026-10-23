@@ -49,8 +49,8 @@ const roleNavigation = {
     },
     {
       id: 'payments',
-      label: 'Payments & Receipts',
-      description: 'Manage payments and generate receipts.',
+      label: 'Payments & Invoice',
+      description: 'Manage patient payments and invoices.',
       icon: paymentReceiptIcon,
     },
   ],
