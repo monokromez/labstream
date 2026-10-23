@@ -57,15 +57,16 @@ export default function ReferenceRanges() {
           <SearchInput className="admin-toolbar__search" label="Search reference ranges" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
           <label className="admin-toolbar__field">Filter by gender<select value={genderFilter} onChange={(event) => { setGenderFilter(event.target.value); setPage(1) }}><option>All genders</option><option>All</option><option>Female</option><option>Male</option></select></label>
         </div>
-        <button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> REFERENCE RANGE</button>
       </div>
+      <section className="admin-list-card" aria-labelledby="reference-ranges-title">
+      <header className="admin-list-card__heading"><div><h2 id="reference-ranges-title">REFERENCE RANGES</h2><p>Maintain result boundaries by test, gender, and age.</p></div><div><span>{visibleRanges.length} {visibleRanges.length === 1 ? 'range' : 'ranges'}</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> REFERENCE RANGE</button></div></header>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Test</th><th>Gender</th><th>Age range</th><th>Boundary limits</th><th>Unit</th><th>Actions</th></tr></thead>
         <tbody>
           {pageRows.map((range) => <tr key={range.id}><td className="admin-table__primary">{range.test}</td><td>{range.gender}</td><td>{range.minAge}–{range.maxAge}</td><td>{range.lower}–{range.upper}</td><td>{range.unit}</td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => openEdit(range)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'delete', range })}>Delete</button></td></tr>)}
           {visibleRanges.length === 0 && <tr><td className="admin-empty" colSpan="6">No reference ranges match your filters.</td></tr>}
         </tbody>
-      </table></div>
+      </table></div></section>
       <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleRanges.length} onPageChange={setPage} />
 
       {dialog?.type === 'form' && <AdminDialog title={dialog.editingId ? 'Edit reference range' : 'Add reference change'} description="Enter the applicable demographic range and result boundaries." onClose={() => setDialog(null)} size="large">

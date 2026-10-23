@@ -1,3 +1,22 @@
 @import './Administrator.css';
 
 /* Add page-specific styles below. */
+.test-catalog__table-card { overflow: hidden; border: 1px solid var(--border); border-radius: .55rem; background: #fff; }
+.test-catalog__table-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; }
+.test-catalog__table-heading h2 { margin: 0; color: var(--text-lightbg); font-size: 1rem; }
+.test-catalog__table-heading p { margin: .25rem 0 0; color: var(--text-muted-lightbg); font-size: .86rem; }
+.test-catalog__table-actions { display: flex; align-items: center; justify-content: end; gap: .75rem; }
+.test-catalog__table-actions > span { padding: .35rem .65rem; border-radius: 999px; background: #d9f2ee; color: var(--text-lightbg); font-size: .8rem; white-space: nowrap; }
+.test-catalog__table-card .admin-table-wrap { border: 0; border-top: 1px solid var(--border); border-radius: 0; background: #fff; }
+.test-catalog__category-list,
+.test-catalog__category-tests { display: grid; gap: .55rem; list-style: none; padding: 0; margin: .65rem 0 0; }
+.test-catalog__category-list li,
+.test-catalog__category-tests label { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: .45rem; }
+.test-catalog__category-list small { color: var(--text-muted-lightbg); }
+.test-catalog__category-tests select { min-width: 12rem; }
+@media (max-width: 560px) {
+  .test-catalog__table-heading { align-items: stretch; flex-direction: column; }
+  .test-catalog__table-actions { justify-content: space-between; }
+  .test-catalog__category-tests label { align-items: stretch; flex-direction: column; }
+  .test-catalog__category-tests select { min-width: 0; width: 100%; }
+}

@@ -66,8 +66,9 @@ export default function StaffAccounts() {
           <label className="admin-toolbar__field">Filter by post<select value={postFilter} onChange={(event) => { setPostFilter(event.target.value); setPage(1) }}><option>All posts</option>{posts.map((post) => <option key={post}>{post}</option>)}</select></label>
           <label className="admin-toolbar__field">Filter by account status<select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }}><option>All statuses</option><option>Active</option><option>Inactive</option></select></label>
         </div>
-        <button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button>
       </div>
+      <section className="admin-list-card" aria-labelledby="staff-table-title">
+      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div><span>{visibleStaff.length} {visibleStaff.length === 1 ? 'staff member' : 'staff members'}</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Name</th><th>Post</th><th>Last sign in</th><th>Account status</th><th><span className="visually-hidden">Account action</span></th></tr></thead>
         <tbody>
@@ -79,7 +80,7 @@ export default function StaffAccounts() {
           </tr>)}
           {visibleStaff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
-      </table></div>
+      </table></div></section>
       <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleStaff.length} onPageChange={setPage} />
 
       {dialog?.type === 'add' && <AdminDialog title="Add staff member" description="Enter the staff member’s details and assign an eligible post." onClose={() => setDialog(null)} size="large">

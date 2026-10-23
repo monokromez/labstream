@@ -76,6 +76,8 @@ export default function AuditLog() {
         </label>
       </div>
 
+      <section className="admin-list-card" aria-labelledby="audit-log-table-title">
+        <header className="admin-list-card__heading"><div><h2 id="audit-log-table-title">AUDIT LOG</h2><p>Review staff actions and the records they changed.</p></div><div><span>{visibleEvents.length} {visibleEvents.length === 1 ? 'event' : 'events'}</span></div></header>
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead>
@@ -102,7 +104,7 @@ export default function AuditLog() {
             )}
           </tbody>
         </table>
-      </div>
+      </div></section>
       <TablePagination
         currentPage={currentPage}
         pageSize={PAGE_SIZE}

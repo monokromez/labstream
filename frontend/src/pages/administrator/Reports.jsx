@@ -98,6 +98,7 @@ export default function Reports() {
             <h2>Performance</h2>
             <p>Operational indicators for the selected reporting period</p>
           </div>
+          <span className="admin-dashboard__activity-caption">{performanceRows.length} measures</span>
         </div>
         <div className="admin-table-wrap">
           <table className="admin-table">

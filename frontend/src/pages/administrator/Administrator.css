@@ -332,6 +332,19 @@
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
+  background: #fff;
+}
+
+.admin-list-card { overflow: hidden; border: 1px solid var(--border); border-radius: .55rem; background: #fff; }
+.admin-list-card__heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; }
+.admin-list-card__heading h2 { margin: 0; color: var(--text-lightbg); font-size: 1rem; text-transform: uppercase; }
+.admin-list-card__heading p { margin: .25rem 0 0; color: var(--text-muted-lightbg); font-size: .86rem; }
+.admin-list-card__heading > div:last-child { display: flex; align-items: center; gap: .75rem; }
+.admin-list-card__heading > div:last-child > span { padding: .35rem .65rem; border-radius: 999px; background: #d9f2ee; color: var(--text-lightbg); font-size: .8rem; white-space: nowrap; }
+.admin-list-card .admin-table-wrap { border: 0; border-top: 1px solid var(--border); border-radius: 0; }
+@media (max-width: 640px) {
+  .admin-list-card__heading { align-items: stretch; flex-direction: column; }
+  .admin-list-card__heading > div:last-child { justify-content: space-between; }
 }
 
 .admin-table {

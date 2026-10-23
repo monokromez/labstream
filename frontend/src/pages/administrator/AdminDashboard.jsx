@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
+import { readCatalog, subscribeCatalog } from '../../data/administratorCatalog.js'
 import './AdminDashboard.css'
 
 const summary = [
@@ -11,12 +12,8 @@ const summary = [
   { label: 'Revenue', value: '₱84,650', helperText: 'From recorded payments this month' },
 ]
 
-const testCategories = [
-  { label: 'Hematology', color: 'hematology' },
-  { label: 'Clinical Chemistry', color: 'chemistry' },
-  { label: 'Clinical Microscopy', color: 'microscopy' },
-  { label: 'Immunology', color: 'immunology' },
-]
+const chartColors = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#0891b2', '#be123c', '#4d7c0f', '#9333ea']
+const volumeCategoryLabels = ['Hematology', 'Clinical Chemistry', 'Clinical Microscopy', 'Immunology']
 
 const testVolumeByPeriod = {
   Weekly: [
@@ -63,14 +60,20 @@ const recentActivity = [
 export default function AdminDashboard() {
   const [chartType, setChartType] = useState('Bar')
   const [period, setPeriod] = useState('Weekly')
-  const chartData = testVolumeByPeriod[period]
-  const chartMaximum = Math.max(...chartData.flatMap((item) => item.values))
+  const [catalog, setCatalog] = useState(readCatalog)
+  useEffect(() => subscribeCatalog(() => setCatalog(readCatalog())), [])
+  const testCategories = catalog.categories.map((label, index) => ({ label, color: chartColors[index % chartColors.length] }))
+  const chartData = testVolumeByPeriod[period].map((item) => ({ ...item, values: testCategories.map(({ label }) => {
+    const historicalIndex = volumeCategoryLabels.indexOf(label)
+    return historicalIndex < 0 ? 0 : item.values[historicalIndex] ?? 0
+  }) }))
+  const chartMaximum = Math.max(1, ...chartData.flatMap((item) => item.values))
   const chartTotal = chartData.reduce((sum, item) => sum + item.values.reduce((rowTotal, value) => rowTotal + value, 0), 0)
   const chartDescription = `${period} test volume by category: ${chartData.map((item) => `${item.label}, ${testCategories.map((category, index) => `${category.label} ${item.values[index]}`).join(', ')}`).join('; ')}`
   const lineSeries = useMemo(() => testCategories.map((category, categoryIndex) => ({
     ...category,
     points: chartData.map((item) => item.values[categoryIndex]),
-  })), [chartData])
+  })), [chartData, testCategories])
   const totalWorkflowRequests = workflow.reduce((sum, item) => sum + item.value, 0)
   const { currentPage, pageSize, setCurrentPage, visibleItems: pageActivity } = useTablePagination(recentActivity)
 
@@ -120,7 +123,7 @@ export default function AdminDashboard() {
                     <div className="admin-dashboard__chart-column" key={item.label}>
                       <div className="admin-dashboard__bar-group">
                         {testCategories.map((category, index) => (
-                          <span key={category.label} className={`admin-dashboard__bar admin-dashboard__bar--${category.color}`} style={{ height: `${(item.values[index] / chartMaximum) * 100}%` }} title={`${category.label}: ${item.values[index]}`} />
+                          <span key={category.label} className="admin-dashboard__bar" style={{ height: `${(item.values[index] / chartMaximum) * 100}%`, backgroundColor: category.color }} title={`${category.label}: ${item.values[index]}`} />
                         ))}
                       </div>
                       <span className="admin-dashboard__chart-label">{item.label}</span>
@@ -137,12 +140,12 @@ export default function AdminDashboard() {
                   return <g key={step}><line x1="54" x2="700" y1={y} y2={y} className="admin-dashboard__grid-line" /><text x="44" y={y + 4} textAnchor="end" className="admin-dashboard__axis-label">{Math.round((chartMaximum * step) / 4)}</text></g>
                 })}
                 {lineSeries.map((series) => (
-                  <g key={series.label} className={`admin-dashboard__line-series admin-dashboard__line-series--${series.color}`}>
-                    <polyline points={getLinePoints(series.points)} fill="none" />
+                  <g key={series.label} className="admin-dashboard__line-series">
+                    <polyline points={getLinePoints(series.points)} fill="none" style={{ stroke: series.color }} />
                     {series.points.map((value, index) => {
                       const x = 54 + (series.points.length === 1 ? 0 : index * (646 / (series.points.length - 1)))
                       const y = 184 - (value / chartMaximum) * 164
-                      return <circle key={`${series.label}-${chartData[index].label}`} cx={x} cy={y} r="3.5"><title>{`${chartData[index].label} · ${series.label}: ${value}`}</title></circle>
+                      return <circle key={`${series.label}-${chartData[index].label}`} cx={x} cy={y} r="3.5" style={{ fill: series.color }}><title>{`${chartData[index].label} · ${series.label}: ${value}`}</title></circle>
                     })}
                   </g>
                 ))}
@@ -154,7 +157,7 @@ export default function AdminDashboard() {
             </div>
           )}
           <ul className="admin-dashboard__chart-legend" aria-label="Test category legend">
-            {testCategories.map((category) => <li key={category.label}><span className={`admin-dashboard__legend-swatch admin-dashboard__legend-swatch--${category.color}`} aria-hidden="true" />{category.label}</li>)}
+            {testCategories.map((category) => <li key={category.label}><span className="admin-dashboard__legend-swatch" style={{ backgroundColor: category.color }} aria-hidden="true" />{category.label}</li>)}
           </ul>
           <p className="admin-dashboard__chart-note">
             Average turnaround time <strong>4h 18m</strong>
@@ -199,7 +202,7 @@ export default function AdminDashboard() {
             <h2>System activity</h2>
             <p>Latest workflow events across staff roles</p>
           </div>
-          <span className="admin-dashboard__activity-caption">Today</span>
+          <span className="admin-dashboard__activity-caption">{recentActivity.length} events · Today</span>
         </div>
         <div className="admin-table-wrap">
           <table className="admin-table">
