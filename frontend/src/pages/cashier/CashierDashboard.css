@@ -9,10 +9,14 @@
   gap: 1rem;
 }
 
+.cashier-dashboard__recent > h2 {
+  text-transform: uppercase;
+}
+
 .cashier-dashboard__table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
+  border-radius: 0.625rem;
   background: var(--surface);
 }
 
@@ -62,27 +66,35 @@
 .cashier-dashboard__payment-status,
 .cashier-dashboard__workflow-status {
   display: inline-flex;
+  min-height: 1.55rem;
   align-items: center;
-  border-radius: 999px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.78rem;
+  width: fit-content;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .cashier-dashboard__payment-status--paid {
-  background: #d1fae5;
-  color: var(--success);
+  border-color: var(--status-success);
+  background: var(--status-success);
+  color: var(--status-text);
 }
 
 .cashier-dashboard__payment-status--unpaid {
-  background: #fef3c7;
-  color: var(--warning);
+  border-color: var(--status-warning);
+  background: var(--status-warning);
+  color: var(--status-text);
 }
 
 .cashier-dashboard__workflow-status {
-  background: #ccfbf1;
-  color: var(--primary);
+  border-color: var(--status-neutral);
+  background: var(--status-neutral);
+  color: var(--status-text);
 }
 
 @media (max-width: 1050px) {

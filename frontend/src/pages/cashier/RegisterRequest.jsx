@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
+import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { testCategories } from '../../data/testCatalog.js'
 import { formatDate } from '../../utils/dateFormat.js'
@@ -88,6 +89,9 @@ export default function RegisterRequest() {
   const [selectedTestIds, setSelectedTestIds] = useState([])
   const [requestSubmitted, setRequestSubmitted] = useState(false)
   const [showRequestPrompt, setShowRequestPrompt] = useState(false)
+  const [showPatientConfirm, setShowPatientConfirm] = useState(false)
+  const [patientConfirmData, setPatientConfirmData] = useState(null)
+  const [showRequestConfirm, setShowRequestConfirm] = useState(false)
   const [transactions, setTransactions] = useState(getCashierTransactions)
 
   useEffect(() => subscribeToCashierTransactions(() => setTransactions(getCashierTransactions())), [])
@@ -96,12 +100,15 @@ export default function RegisterRequest() {
     if (!activeModal) return undefined
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setActiveModal(null)
+      if (event.key !== 'Escape') return
+      if (showPatientConfirm) setShowPatientConfirm(false)
+      else if (showRequestConfirm) setShowRequestConfirm(false)
+      else setActiveModal(null)
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [activeModal])
+  }, [activeModal, showPatientConfirm, showRequestConfirm])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -113,6 +120,9 @@ export default function RegisterRequest() {
     setSelectedTestIds([])
     setRequestSubmitted(false)
     setShowRequestPrompt(false)
+    setShowPatientConfirm(false)
+    setPatientConfirmData(null)
+    setShowRequestConfirm(false)
     if (type === 'add') {
       setPatientCountry('')
       setPatientCity('')
@@ -130,8 +140,13 @@ export default function RegisterRequest() {
   }
 
   const handleCreateTestRequest = () => {
+    setShowRequestConfirm(true)
+  }
+
+  const confirmCreateTestRequest = () => {
     const transaction = createCashierTransaction({ patient: selectedPatient, testIds: selectedTestIds })
     if (transaction) setRequestSubmitted(true)
+    setShowRequestConfirm(false)
   }
 
   const patientHasActiveRequest = (patientPid) => transactions.some(
@@ -141,6 +156,13 @@ export default function RegisterRequest() {
   const handleRegisterPatient = (event) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
+    setPatientConfirmData(formData)
+    setShowPatientConfirm(true)
+  }
+
+  const confirmRegisterPatient = () => {
+    if (!patientConfirmData) return
+    const formData = patientConfirmData
     const nextNumber = patients.reduce((highest, patient) => {
       const patientNumber = Number(patient.pid.split('-').at(-1)) || 0
       return Math.max(highest, patientNumber)
@@ -170,6 +192,8 @@ export default function RegisterRequest() {
     setSexFilter('all')
     setPreviousVisitFilter('')
     setCurrentPage(1)
+    setPatientConfirmData(null)
+    setShowPatientConfirm(false)
     setShowRequestPrompt(true)
   }
 
@@ -238,13 +262,13 @@ export default function RegisterRequest() {
       <section className='register-request__registry' aria-labelledby='patient-registry-title'>
         <div className='register-request__registry-heading'>
           <div>
-            <h2 id='patient-registry-title'>Patient Registry</h2>
+            <h2 id='patient-registry-title'>Patients</h2>
             <p>Select an existing patient to continue with their test request.</p>
           </div>
           <div className='register-request__registry-actions'>
             <span className='register-request__count'>{filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}</span>
             <button className='register-request__add-button' type='button' onClick={() => openPatientModal('add')}>
-              <span aria-hidden='true'>+</span> Add New Patient
+              <PlusIcon /> PATIENT
             </button>
           </div>
         </div>
@@ -483,7 +507,7 @@ export default function RegisterRequest() {
               )}
               {activeModal === 'request' && (
                 <button className='register-request__modal-primary' type='button' disabled={!requestSubmitted && selectedTestIds.length === 0} onClick={requestSubmitted ? () => setActiveModal(null) : handleCreateTestRequest}>
-                  {requestSubmitted ? 'Done' : `Create Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
+                  {requestSubmitted ? 'Done' : `Review Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
                 </button>
               )}
               {activeModal === 'add' && !showRequestPrompt && (
@@ -498,6 +522,32 @@ export default function RegisterRequest() {
                   }}>Proceed to Request</button>
                 </>
               )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showPatientConfirm && patientConfirmData && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-patient-title'>
+            <h2 id='confirm-patient-title'>Confirm Patient Registration?</h2>
+            <p>Register <strong>{[patientConfirmData.get('firstName'), patientConfirmData.get('middleName'), patientConfirmData.get('lastName')].filter(Boolean).join(' ')}</strong> in the patient registry?</p>
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' onClick={() => setShowPatientConfirm(false)}>Back to Form</button>
+              <button className='register-request__modal-primary' type='button' onClick={confirmRegisterPatient}>Confirm Registration</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showRequestConfirm && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-request-title'>
+            <h2 id='confirm-request-title'>Confirm Test Request?</h2>
+            <p>Create a request for <strong>{getPatientName(selectedPatient ?? {})}</strong> with <strong>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'}</strong>? It will appear in Payments &amp; Receipts as pending.</p>
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' onClick={() => setShowRequestConfirm(false)}>Back to Tests</button>
+              <button className='register-request__modal-primary' type='button' onClick={confirmCreateTestRequest}>Confirm Request</button>
             </div>
           </section>
         </div>

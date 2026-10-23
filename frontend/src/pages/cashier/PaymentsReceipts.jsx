@@ -88,7 +88,7 @@ export default function PaymentsReceipts() {
       <section className='payments-receipts__table-card' aria-labelledby='payments-table-title'>
         <div className='payments-receipts__table-heading'>
           <div>
-            <h2 id='payments-table-title'>Payment Transactions</h2>
+            <h2 id='payments-table-title'>Payments</h2>
             <p>Pending requests can be processed after cash has been received.</p>
           </div>
           <span className='payments-receipts__count'>{filteredTransactions.length} {filteredTransactions.length === 1 ? 'transaction' : 'transactions'}</span>

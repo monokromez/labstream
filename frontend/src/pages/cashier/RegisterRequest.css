@@ -44,7 +44,7 @@
   min-width: 8.5rem;
   padding: 0 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   color: var(--text-lightbg);
   font: inherit;
@@ -68,7 +68,7 @@
   height: 2.875rem;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   cursor: pointer;
   -webkit-user-select: none !important;
@@ -123,7 +123,7 @@
   margin-top: 1.25rem;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
+  border-radius: 0.625rem;
   background: var(--surface);
   box-shadow: 0 3px 12px rgb(19 78 74 / 6%);
 }
@@ -234,7 +234,7 @@
   justify-content: center;
   gap: 0.35rem;
   border: 1px solid var(--primary);
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   font: inherit;
   font-size: 0.8rem;
   font-weight: 700;
@@ -249,15 +249,10 @@
   color: var(--surface);
 }
 
-.register-request__add-button span {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
 .register-request__add-button:hover,
 .register-request__add-button:focus-visible {
-  border-color: var(--hover);
-  background: var(--hover);
+  border-color: var(--success);
+  background: var(--success);
 }
 
 .register-request__row-actions {
@@ -288,8 +283,8 @@
 
 .register-request__action-button--request:hover,
 .register-request__action-button--request:focus-visible {
-  border-color: var(--hover);
-  background: var(--hover);
+  border-color: var(--success);
+  background: var(--success);
 }
 
 .register-request__action-button--request:disabled {
@@ -340,7 +335,7 @@
   max-height: min(90vh, 48rem);
   overflow-y: auto;
   border: 1px solid rgb(255 255 255 / 65%);
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   background: var(--surface);
   box-shadow: 0 24px 70px rgb(0 0 0 / 28%);
   animation: register-request-modal-in 180ms ease-out;
@@ -384,7 +379,7 @@
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   background: transparent;
   color: var(--text-muted-lightbg);
   font: inherit;
@@ -427,7 +422,7 @@
   min-width: 0;
   padding: 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--background);
 }
 
@@ -464,7 +459,7 @@
   min-height: 2.875rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   color: var(--text-lightbg);
   font: inherit;
@@ -494,7 +489,7 @@
   margin: 0;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
 }
 
 .register-request__test-selection legend {
@@ -522,7 +517,7 @@
   min-width: 0;
   padding: 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--background);
 }
 
@@ -608,7 +603,7 @@
   min-height: 2.625rem;
   padding: 0.55rem 1rem;
   border: 1px solid var(--primary);
-  border-radius: 0.55rem;
+  border-radius: 0.3rem;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 700;
@@ -628,13 +623,62 @@
 }
 
 .register-request__modal-primary:hover {
-  border-color: var(--hover);
-  background: var(--hover);
+  border-color: var(--success);
+  background: var(--success);
 }
 
 .register-request__modal-secondary {
   background: var(--surface);
   color: var(--primary);
+}
+
+.register-request__modal-secondary:hover {
+  border-color: var(--error);
+  background: var(--error);
+  color: var(--surface);
+}
+
+.register-request__confirm-backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(8 28 27 / 58%);
+  backdrop-filter: blur(4px);
+}
+
+.register-request__confirm-dialog {
+  display: grid;
+  width: min(100%, 28rem);
+  gap: 1rem;
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--surface);
+  box-shadow: 0 1.5rem 4rem rgb(8 28 27 / 28%);
+}
+
+.register-request__confirm-dialog h2 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 1.05rem/1.35 var(--main-font);
+}
+
+.register-request__confirm-dialog p {
+  margin: 0;
+  color: var(--text-muted-lightbg);
+  line-height: 1.55;
+}
+
+.register-request__confirm-dialog strong { color: var(--text-lightbg); }
+
+.register-request__confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
 }
 
 .register-request__modal-primary:focus-visible,
@@ -706,7 +750,7 @@
 
   .register-request__modal {
     max-height: 92vh;
-    border-radius: 1rem 1rem 0.75rem 0.75rem;
+    border-radius: 0.75rem 0.75rem 0.5rem 0.5rem;
   }
 
   .register-request__modal-header,
