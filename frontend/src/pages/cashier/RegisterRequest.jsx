@@ -1,25 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { City, Country } from 'country-state-city'
 import SearchInput from '../../components/data/SearchInput.jsx'
+import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTestCatalog from '../../data/useTestCatalog.js'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
 import { formatDate } from '../../utils/dateFormat.js'
-import {
-  createCashierTransaction,
-  getCashierTransactions,
-  subscribeToCashierTransactions,
-} from '../../utils/cashierTransactions.js'
 import './RegisterRequest.css'
 
 const ROWS_PER_PAGE = 10
 
-const samplePatients = [
-  { pid: 'PID-2026-00124', firstName: 'Ariana', middleName: 'Mae', lastName: 'Santos', houseNumber: '18', street: 'Rizal Street', city: 'Quezon City', country: 'Philippines', email: 'ariana.santos@example.com', sex: 'Female', dateOfBirth: '1998-04-16', contact: '0917 234 6810', previousVisitDate: '2026-10-18', validId: 'Philippine National ID', validIdNumber: '•••• •••• 4812' },
-  { pid: 'PID-2026-00123', firstName: 'Miguel', middleName: 'Luis', lastName: 'Reyes', houseNumber: '204', street: 'Mabini Avenue', city: 'Manila', country: 'Philippines', email: 'miguel.reyes@example.com', sex: 'Male', dateOfBirth: '1987-11-02', contact: '0928 517 4403', previousVisitDate: '2026-10-18', validId: 'Driver’s License', validIdNumber: 'N02-••••-451267' },
-  { pid: 'PID-2026-00122', firstName: 'Leah', middleName: 'Anne', lastName: 'Dela Cruz', houseNumber: '7B', street: 'Sampaguita Road', city: 'Pasig City', country: 'Philippines', email: 'leah.delacruz@example.com', sex: 'Female', dateOfBirth: '2001-07-29', contact: '0916 802 1957', previousVisitDate: '2026-10-17', validId: 'Passport', validIdNumber: 'P•••••731' },
-  { pid: 'PID-2026-00121', firstName: 'Noah', middleName: 'Rafael', lastName: 'Garcia', houseNumber: '55', street: 'Bonifacio Street', city: 'Makati City', country: 'Philippines', email: 'noah.garcia@example.com', sex: 'Male', dateOfBirth: '1975-02-11', contact: '0995 310 7624', previousVisitDate: '2026-10-16', validId: 'PhilHealth ID', validIdNumber: '12-••••••••-3' },
-]
 const validIdLabels = {
   'national-id': 'Philippine National ID',
   'drivers-license': 'Driver’s License',
@@ -67,20 +58,11 @@ const handleDatePickerKeyDown = (event) => {
     openDatePicker(event)
   }
 }
-const getTodayISODate = () => {
-  const today = new Date()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-  return `${today.getFullYear()}-${month}-${day}`
-}
-
 export default function RegisterRequest() {
-  const [patients, setPatients] = useState(samplePatients)
   const [searchQuery, setSearchQuery] = useState('')
   const [sexFilter, setSexFilter] = useState('all')
   const [previousVisitFilter, setPreviousVisitFilter] = useState('')
   const [patientCountry, setPatientCountry] = useState('')
-  const [patientCountryCode, setPatientCountryCode] = useState('')
   const [patientCity, setPatientCity] = useState('')
   const [patientDateOfBirth, setPatientDateOfBirth] = useState('')
   const [validIdSelection, setValidIdSelection] = useState('')
@@ -94,35 +76,42 @@ export default function RegisterRequest() {
   const [showPatientConfirm, setShowPatientConfirm] = useState(false)
   const [patientConfirmData, setPatientConfirmData] = useState(null)
   const [showRequestConfirm, setShowRequestConfirm] = useState(false)
-  const [transactions, setTransactions] = useState(getCashierTransactions)
+  const [showPortalConfirm, setShowPortalConfirm] = useState(false)
+  const [portalActivation, setPortalActivation] = useState(null)
+  const [actionError, setActionError] = useState('')
+  const { result: patientResult, refresh: refreshPatients, error: patientLoadError } = useApiResource(
+    () => api.patients.list({ page: 1, pageSize: 100, q: searchQuery }), [searchQuery],
+  )
+  const patients = (patientResult?.data ?? []).map((patient) => ({
+    ...patient,
+    contact: patient.phone,
+    previousVisitDate: patient.previousVisit?.slice(0, 10) ?? patient.createdAt?.slice(0, 10),
+    validId: patient.validIdType?.toLowerCase() === 'other' ? 'Other' : patient.validIdType,
+    hasPendingRequest: patient.hasPendingRequest,
+  }))
   const { categories: testCategories } = useTestCatalog({ availableOnly: true })
-  const countries = useMemo(() => Country.getAllCountries().sort((first, second) => first.name.localeCompare(second.name)), [])
-  const cities = useMemo(() => patientCountryCode
-    ? [...new Set(City.getCitiesOfCountry(patientCountryCode).map((city) => city.name))].sort((first, second) => first.localeCompare(second))
-    : [], [patientCountryCode])
-
-  useEffect(() => subscribeToCashierTransactions(() => setTransactions(getCashierTransactions())), [])
-
   useEffect(() => {
     if (!activeModal) return undefined
 
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape') return
-      if (showPatientConfirm) setShowPatientConfirm(false)
+      if (showPortalConfirm) setShowPortalConfirm(false)
+      else if (showPatientConfirm) setShowPatientConfirm(false)
       else if (showRequestConfirm) setShowRequestConfirm(false)
       else setActiveModal(null)
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [activeModal, showPatientConfirm, showRequestConfirm])
+  }, [activeModal, showPatientConfirm, showRequestConfirm, showPortalConfirm])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, sexFilter, previousVisitFilter])
 
   const openPatientModal = (type, patient = null) => {
-    if (type === 'request' && transactions.some((transaction) => transaction.pid === patient?.pid && transaction.status === 'pending')) return
+    if (type === 'request' && patient?.hasPendingRequest) return
+    setActionError('')
     setSelectedPatient(patient)
     setSelectedTestIds([])
     setRequestSubmitted(false)
@@ -130,9 +119,10 @@ export default function RegisterRequest() {
     setShowPatientConfirm(false)
     setPatientConfirmData(null)
     setShowRequestConfirm(false)
+    setShowPortalConfirm(false)
+    setPortalActivation(null)
     if (type === 'add') {
       setPatientCountry('')
-      setPatientCountryCode('')
       setPatientCity('')
       setPatientDateOfBirth('')
       setValidIdSelection('')
@@ -151,15 +141,19 @@ export default function RegisterRequest() {
     setShowRequestConfirm(true)
   }
 
-  const confirmCreateTestRequest = () => {
-    const transaction = createCashierTransaction({ patient: selectedPatient, testIds: selectedTestIds })
-    if (transaction) setRequestSubmitted(true)
-    setShowRequestConfirm(false)
+  const confirmCreateTestRequest = async () => {
+    try {
+      await api.cashier.createRequest({ patientId: selectedPatient.id, testIds: selectedTestIds, priority: 'routine' })
+      setRequestSubmitted(true)
+      await refreshPatients()
+    } catch (requestError) {
+      setActionError(requestError.message || 'Unable to create the test request.')
+    } finally {
+      setShowRequestConfirm(false)
+    }
   }
 
-  const patientHasActiveRequest = (patientPid) => transactions.some(
-    (transaction) => transaction.pid === patientPid && transaction.status === 'pending',
-  )
+  const patientHasActiveRequest = (patient) => Boolean(patient?.hasPendingRequest)
 
   const handleRegisterPatient = (event) => {
     event.preventDefault()
@@ -168,15 +162,23 @@ export default function RegisterRequest() {
     setShowPatientConfirm(true)
   }
 
-  const confirmRegisterPatient = () => {
+  const issuePortalActivation = async () => {
+    if (!selectedPatient) return
+    try {
+      const response = await api.cashier.issuePatientPortalActivation(selectedPatient.id)
+      setPortalActivation({ pid: selectedPatient.pid, code: response.activation.code, expiresInHours: response.activation.expiresInHours })
+      setShowPortalConfirm(false)
+      setActionError('')
+    } catch (requestError) {
+      setActionError(requestError.message || 'Unable to issue patient portal activation.')
+      setShowPortalConfirm(false)
+    }
+  }
+
+  const confirmRegisterPatient = async () => {
     if (!patientConfirmData) return
     const formData = patientConfirmData
-    const nextNumber = patients.reduce((highest, patient) => {
-      const patientNumber = Number(patient.pid.split('-').at(-1)) || 0
-      return Math.max(highest, patientNumber)
-    }, 0) + 1
-    const patient = {
-      pid: `PID-${new Date().getFullYear()}-${String(nextNumber).padStart(5, '0')}`,
+    const patientDetails = {
       firstName: String(formData.get('firstName') ?? '').trim(),
       middleName: String(formData.get('middleName') ?? '').trim(),
       lastName: String(formData.get('lastName') ?? '').trim(),
@@ -187,30 +189,33 @@ export default function RegisterRequest() {
       email: String(formData.get('email') ?? '').trim(),
       sex: String(formData.get('sex') ?? ''),
       dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
-      contact: String(formData.get('contact') ?? '').trim(),
-      previousVisitDate: getTodayISODate(),
-      validId: validIdSelection === 'other' ? 'Other' : validIdLabels[validIdSelection],
-      validIdType: validIdSelection === 'other' ? validIdType.trim() : '',
+      phone: String(formData.get('contact') ?? '').trim(),
+      validIdType: validIdSelection === 'other' ? validIdType.trim() : validIdLabels[validIdSelection],
       validIdNumber: String(formData.get('validIdNumber') ?? '').trim(),
     }
-
-    setPatients((currentPatients) => [patient, ...currentPatients])
-    setSelectedPatient(patient)
-    setSearchQuery('')
-    setSexFilter('all')
-    setPreviousVisitFilter('')
-    setCurrentPage(1)
-    setPatientConfirmData(null)
-    setShowPatientConfirm(false)
-    setShowRequestPrompt(true)
+    try {
+      const response = await api.cashier.registerPatient(patientDetails)
+      const patient = { ...patientDetails, ...response.data, id: response.data.id, contact: patientDetails.phone, previousVisitDate: response.data.createdAt?.slice(0, 10), validId: validIdSelection === 'other' ? 'Other' : patientDetails.validIdType, validIdType: validIdSelection === 'other' ? validIdType.trim() : '' }
+      await refreshPatients()
+      setSelectedPatient(patient)
+      setSearchQuery('')
+      setSexFilter('all')
+      setPreviousVisitFilter('')
+      setCurrentPage(1)
+      setPatientConfirmData(null)
+      setShowPatientConfirm(false)
+      setShowRequestPrompt(true)
+    } catch (requestError) {
+      setActionError(requestError.message || 'Unable to register the patient.')
+    }
   }
 
   const filteredPatients = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return patients.filter((patient) => {
       const matchesQuery = !query || [patient.pid, getPatientName(patient), patient.contact, patient.email]
-        .some((value) => value.toLowerCase().includes(query))
-      const matchesSex = sexFilter === 'all' || patient.sex.toLowerCase() === sexFilter
+        .some((value) => String(value ?? '').toLowerCase().includes(query))
+      const matchesSex = sexFilter === 'all' || String(patient.sex ?? '').toLowerCase() === sexFilter
       const matchesPreviousVisit = !previousVisitFilter || patient.previousVisitDate === previousVisitFilter
 
       return matchesQuery && matchesSex && matchesPreviousVisit
@@ -223,6 +228,7 @@ export default function RegisterRequest() {
 
   return (
     <section className='register-request' aria-label='Find a patient'>
+      {(actionError || patientLoadError) && <p className='register-request__modal-note' role='alert'>{actionError || patientLoadError}</p>}
       <div className='register-request__toolbar'>
         <SearchInput
           className='register-request__search'
@@ -307,12 +313,12 @@ export default function RegisterRequest() {
                       <button
                         className='register-request__action-button register-request__action-button--request'
                         type='button'
-                        disabled={patientHasActiveRequest(patient.pid)}
-                        title={patientHasActiveRequest(patient.pid) ? 'This patient has a pending request. Process or cancel it before creating another.' : undefined}
-                        aria-label={patientHasActiveRequest(patient.pid) ? `Request unavailable for ${getPatientName(patient)}: an active request is pending` : `Create request for ${getPatientName(patient)}`}
+                        disabled={patientHasActiveRequest(patient)}
+                        title={patientHasActiveRequest(patient) ? 'This patient has a pending request. Process or cancel it before creating another.' : undefined}
+                        aria-label={patientHasActiveRequest(patient) ? `Request unavailable for ${getPatientName(patient)}: an active request is pending` : `Create request for ${getPatientName(patient)}`}
                         onClick={() => openPatientModal('request', patient)}
                       >
-                        {patientHasActiveRequest(patient.pid) ? 'Request Pending' : 'Request'}
+                        {patientHasActiveRequest(patient) ? 'Request Pending' : 'Request'}
                       </button>
                     </div>
                   </td>
@@ -360,6 +366,7 @@ export default function RegisterRequest() {
 
             <div className='register-request__modal-body'>
               {activeModal === 'details' && selectedPatient && (
+                <>
                 <dl className='register-request__details-grid'>
                   <div className='register-request__details-row'>
                     <div><dt>PID</dt><dd>{selectedPatient.pid}</dd></div>
@@ -389,6 +396,8 @@ export default function RegisterRequest() {
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
                 </dl>
+                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>Expires in {portalActivation.expiresInHours} hours. Share it privately; the patient sets their own password during activation.</p></div>}
+                </>
               )}
 
               {activeModal === 'request' && (
@@ -432,7 +441,6 @@ export default function RegisterRequest() {
                 </form>
                 )
               )}
-
               {activeModal === 'add' && !showRequestPrompt && (
                 <form className='register-request__modal-form' id='new-patient-form' onSubmit={handleRegisterPatient}>
                   <div className='register-request__form-row register-request__form-row--three'>
@@ -440,15 +448,15 @@ export default function RegisterRequest() {
                     <label htmlFor='new-patient-middle-name'>Middle name<input id='new-patient-middle-name' name='middleName' type='text' placeholder='Middle name' /></label>
                     <label htmlFor='new-patient-last-name'>Surname<input id='new-patient-last-name' name='lastName' type='text' placeholder='Surname' required /></label>
                   </div>
-                  <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-country'>Country<select id='new-patient-country' name='country' autoComplete='country-name' value={patientCountry} onChange={(event) => {
-                      const country = countries.find((item) => item.name === event.target.value)
-                      setPatientCountry(country?.name ?? '')
-                      setPatientCountryCode(country?.isoCode ?? '')
-                      setPatientCity('')
-                    }} required><option value='' disabled>Select a country</option>{countries.map((country) => <option key={country.isoCode} value={country.name}>{country.name}</option>)}</select></label>
-                    <label htmlFor='new-patient-city'>City<select id='new-patient-city' name='city' autoComplete='address-level2' disabled={!patientCountryCode} value={patientCity} onChange={(event) => setPatientCity(event.target.value)} required><option value='' disabled>{patientCountryCode ? 'Select a city' : 'Select a country first'}</option>{cities.map((city) => <option key={city} value={city}>{city}</option>)}</select></label>
-                  </div>
+                  <CountryCityFields
+                    className='register-request__form-row'
+                    fieldClassName='register-request__field'
+                    idPrefix='new-patient'
+                    country={patientCountry}
+                    city={patientCity}
+                    onCountryChange={setPatientCountry}
+                    onCityChange={setPatientCity}
+                  />
                   <div className='register-request__form-row'>
                     <label htmlFor='new-patient-house-number'>House no.<input id='new-patient-house-number' name='houseNumber' type='text' placeholder='House number' /></label>
                     <label htmlFor='new-patient-street'>Street<input id='new-patient-street' name='street' type='text' placeholder='Street' /></label>
@@ -499,7 +507,7 @@ export default function RegisterRequest() {
                     </label>
                   </div>
                   <label htmlFor='new-patient-contact'>Contact number<input id='new-patient-contact' name='contact' type='tel' placeholder='Enter contact number' required /></label>
-                  <p className='register-request__modal-note'>A sample PID will be generated. This prototype keeps the new record in page state; it is not saved to the database.</p>
+                  <p className='register-request__modal-note'>A PID is generated by the system after the patient is saved.</p>
                 </form>
               )}
 
@@ -520,6 +528,7 @@ export default function RegisterRequest() {
                   {requestSubmitted ? 'Done' : `Review Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
                 </button>
               )}
+              {activeModal === 'details' && selectedPatient && !portalActivation && <button className='register-request__modal-primary' type='button' onClick={() => setShowPortalConfirm(true)}>Issue Portal Activation</button>}
               {activeModal === 'add' && !showRequestPrompt && (
                 <button className='register-request__modal-primary' type='submit' form='new-patient-form'>Register Patient</button>
               )}
@@ -558,6 +567,19 @@ export default function RegisterRequest() {
             <div className='register-request__confirm-actions'>
               <button className='register-request__modal-secondary' type='button' onClick={() => setShowRequestConfirm(false)}>Back to Tests</button>
               <button className='register-request__modal-primary' type='button' onClick={confirmCreateTestRequest}>Confirm Request</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showPortalConfirm && selectedPatient && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-portal-title'>
+            <h2 id='confirm-portal-title'>Issue patient portal access?</h2>
+            <p>Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? The code is shown once and expires after 24 hours.</p>
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' onClick={() => setShowPortalConfirm(false)}>Cancel</button>
+              <button className='register-request__modal-primary' type='button' onClick={issuePortalActivation}>Issue Code</button>
             </div>
           </section>
         </div>

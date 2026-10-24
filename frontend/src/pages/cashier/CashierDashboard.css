@@ -67,6 +67,12 @@
   background: var(--background);
 }
 
+.cashier-dashboard__empty {
+  padding: 2rem 1rem !important;
+  color: var(--text-muted-lightbg) !important;
+  text-align: center;
+}
+
 .cashier-dashboard__payment-status,
 .cashier-dashboard__workflow-status {
   display: inline-flex;

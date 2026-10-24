@@ -26,7 +26,7 @@ export default function AppShell({ children, role = 'administrator', userName = 
   const pathologistPages = {
     'pending-validation': <PathologistPages.PendingValidation />,
     'returned-results': <PathologistPages.ReturnedResults />,
-    'released-results': <PathologistPages.ReleasedResults userName={userName === 'User' ? 'Dr. A. Santos' : userName} />,
+    'released-results': <PathologistPages.ReleasedResults />,
   }
 
   const adminPages = {

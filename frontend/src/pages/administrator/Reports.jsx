@@ -1,36 +1,32 @@
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
 import './Reports.css'
 
-const reportMetrics = [
-  ['Tests processed', '248'],
-  ['Results pending validation', '12'],
-  ['Results released', '216'],
-  ['Revenue collected', '₱84,650'],
-  ['Average turnaround time', '4h 18m'],
-]
-
-const performanceRows = [
-  ['Average turnaround time', '4h 18m'],
-  ['Requests completed', '216'],
-  ['Requests awaiting validation', '12'],
-  ['Payments recorded', '₱84,650'],
-]
-
-const testVolume = [
-  { category: 'Hematology', value: 92 },
-  { category: 'Clinical Chemistry', value: 76 },
-  { category: 'Clinical Microscopy', value: 48 },
-  { category: 'Immunology', value: 32 },
-]
-
 export default function Reports() {
+  const { result: summaryResult, error: summaryError } = useApiResource(() => api.administrator.dashboard(), [])
+  const { result: volumeResult, error: volumeError } = useApiResource(() => api.administrator.testVolume({ period: 'monthly' }), [])
+  const report = summaryResult?.data
+  const requestCounts = report?.requests ?? {}
+  const series = volumeResult?.data?.series ?? []
+  const testVolume = series.map((category) => ({ category: category.label, value: category.values.reduce((sum, value) => sum + Number(value), 0) }))
+  const volumeScale = Math.max(1, ...testVolume.map((item) => item.value))
+  const reportMetrics = [
+    ['Requests this month', String(requestCounts.totalRequests ?? 0)],
+    ['Awaiting payment', String(requestCounts.awaitingPayment ?? 0)],
+    ['In progress', String(requestCounts.inProgress ?? 0)],
+    ['Awaiting validation', String(requestCounts.forValidation ?? 0)],
+    ['Released requests', String(requestCounts.released ?? 0)],
+    ['Released tests', String(report?.releasedTests ?? 0)],
+  ]
+  const performanceRows = reportMetrics
   const { currentPage, pageSize, setCurrentPage, visibleItems: pageRows } = useTablePagination(performanceRows)
 
   function exportForExcel() {
     const rows = [
-      ['October 2026 Laboratory Operations Report'],
+      ['Laboratory Operations Report'],
       ['Metric', 'Value'],
       ...reportMetrics,
       [],
@@ -45,15 +41,16 @@ export default function Reports() {
     const url = URL.createObjectURL(file)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'labstream-operations-report-october-2026.csv'
+    link.download = 'labstream-operations-report.csv'
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   return (
     <section className="admin-page" aria-label="Laboratory reports">
+      {(summaryError || volumeError) && <p role="alert">{summaryError || volumeError}</p>}
       <div className="admin-page__title-row">
-        <p>Reporting period · October 1–31, 2026</p>
+        <p>Select a reporting period to review recorded clinic activity.</p>
         <div className="admin-toolbar">
           <button className="admin-button admin-button--positive" type="button" onClick={exportForExcel}>
             Export Spreadsheet
@@ -65,10 +62,10 @@ export default function Reports() {
       </div>
 
       <div className="admin-dashboard__summary">
-        <SummaryCard title="Tests processed" value="248" helperText="Across all test categories" />
-        <SummaryCard title="Pending results" value="12" helperText="Awaiting validation" />
-        <SummaryCard title="Released results" value="216" helperText="This reporting period" />
-        <SummaryCard title="Revenue collected" value="₱84,650" helperText="Recorded payments" />
+        <SummaryCard title="Tests processed" value={String(volumeResult?.data?.total ?? 0)} helperText="Released this month" />
+        <SummaryCard title="Pending results" value={String(requestCounts.forValidation ?? 0)} helperText="Awaiting validation" />
+        <SummaryCard title="Released results" value={String(report?.releasedTests ?? 0)} helperText="Individual tests released this month" />
+        <SummaryCard title="Requests" value={String(requestCounts.totalRequests ?? 0)} helperText="Registered this month" />
       </div>
 
       <section className="admin-panel admin-report">
@@ -77,18 +74,19 @@ export default function Reports() {
             <h2>Category Volume</h2>
             <p>Distribution of processed tests this month</p>
           </div>
-          <span className="admin-badge">248 tests</span>
+          <span className="admin-badge">{volumeResult?.data?.total ?? 0} tests</span>
         </div>
         <div className="admin-report__chart">
           {testVolume.map((item) => (
             <div className="admin-report__row" key={item.category}>
               <span>{item.category}</span>
               <div className="admin-report__track" role="img" aria-label={`${item.category}: ${item.value} tests`}>
-                <span className="admin-report__bar" style={{ width: `${(item.value / 248) * 100}%` }} />
+                <span className="admin-report__bar" style={{ width: `${(item.value / volumeScale) * 100}%` }} />
               </div>
               <span className="admin-report__value">{item.value}</span>
             </div>
           ))}
+          {testVolume.length === 0 && <p className="admin-empty">{volumeResult ? 'No processed tests are available for this reporting period.' : 'Loading report data…'}</p>}
         </div>
       </section>
 
@@ -107,6 +105,7 @@ export default function Reports() {
             </thead>
             <tbody>
               {pageRows.map(([measure, result]) => <tr key={measure}><td className="admin-table__primary">{measure}</td><td>{result}</td></tr>)}
+              {pageRows.length === 0 && <tr><td className="admin-empty" colSpan="2">No report data is available for this period.</td></tr>}
             </tbody>
           </table>
         </div>

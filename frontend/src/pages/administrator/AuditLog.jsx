@@ -1,26 +1,27 @@
 import { useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
+import { formatDateTime } from '../../utils/dateFormat.js'
 import './AuditLog.css'
 
 const PAGE_SIZE = 10
-
-const auditEvents = [
-  { id: 1, timestamp: 'Oct 22, 2026 · 10:42 AM', user: 'Dr. Ana Reyes', role: 'Pathologist', action: 'Result released', record: 'REQ-2026-0248' },
-  { id: 2, timestamp: 'Oct 22, 2026 · 10:18 AM', user: 'Leo Cruz', role: 'Medical Technologist', action: 'Result encoded', record: 'REQ-2026-0246' },
-  { id: 3, timestamp: 'Oct 22, 2026 · 09:56 AM', user: 'Mia Santos', role: 'Cashier', action: 'Payment recorded', record: 'REQ-2026-0247' },
-  { id: 4, timestamp: 'Oct 22, 2026 · 09:31 AM', user: 'Dr. Ana Reyes', role: 'Pathologist', action: 'Result returned', record: 'REQ-2026-0244' },
-  { id: 5, timestamp: 'Oct 22, 2026 · 09:14 AM', user: 'Nico Garcia', role: 'Cashier', action: 'Request registered', record: 'REQ-2026-0248' },
-  { id: 6, timestamp: 'Oct 21, 2026 · 04:46 PM', user: 'Leo Cruz', role: 'Medical Technologist', action: 'Specimen received', record: 'REQ-2026-0246' },
-  { id: 7, timestamp: 'Oct 21, 2026 · 04:28 PM', user: 'Mia Santos', role: 'Cashier', action: 'Payment recorded', record: 'REQ-2026-0245' },
-  { id: 8, timestamp: 'Oct 21, 2026 · 03:52 PM', user: 'Dr. Ana Reyes', role: 'Pathologist', action: 'Result validated', record: 'REQ-2026-0243' },
-]
 
 export default function AuditLog() {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('All activity')
   const [roleFilter, setRoleFilter] = useState('All roles')
   const [currentPage, setCurrentPage] = useState(1)
+  const { result, loading, error } = useApiResource(() => api.administrator.auditLogs({ page: 1, pageSize: 100, role: roleFilter === 'All roles' ? '' : roleFilter.toLowerCase().replaceAll(' ', '_') }), [roleFilter])
+  const auditEvents = (result?.data ?? []).map((event) => ({
+    id: event.id,
+    timestamp: formatDateTime(event.createdAt),
+    user: event.actor,
+    role: (event.role ?? 'system').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    action: event.action,
+    record: `${event.entityType}${event.entityId ? ` · ${event.entityId}` : ''}`,
+  }))
 
   const visibleEvents = useMemo(() => auditEvents.filter((event) => {
     const matchesSearch = `${event.user} ${event.role} ${event.action} ${event.record}`.toLowerCase().includes(search.toLowerCase())
@@ -33,6 +34,7 @@ export default function AuditLog() {
 
   return (
     <section className="admin-page" aria-label="Audit log">
+      {error && <p role="alert">{error}</p>}
       <div className="admin-page__title-row admin-page__actions-row">
         <span className="admin-badge">Audit trail</span>
       </div>
@@ -100,7 +102,7 @@ export default function AuditLog() {
               </tr>
             ))}
             {pagedEvents.length === 0 && (
-              <tr><td className="admin-empty" colSpan="5">No audit events match these filters.</td></tr>
+              <tr><td className="admin-empty" colSpan="5">{loading ? 'Loading activity…' : 'No audit events match these filters.'}</td></tr>
             )}
           </tbody>
         </table>
@@ -108,7 +110,7 @@ export default function AuditLog() {
       <TablePagination
         currentPage={currentPage}
         pageSize={PAGE_SIZE}
-        totalItems={visibleEvents.length}
+        totalItems={result?.pagination?.total ?? visibleEvents.length}
         onPageChange={setCurrentPage}
       />
     </section>

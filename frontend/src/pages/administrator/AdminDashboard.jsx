@@ -2,73 +2,43 @@ import { useEffect, useMemo, useState } from 'react'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
-import { readCatalog, subscribeCatalog } from '../../data/administratorCatalog.js'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
+import { formatDateTime } from '../../utils/dateFormat.js'
 import './AdminDashboard.css'
 
-const summary = [
-  { label: 'Tests', value: '248', helperText: 'Across all test requests this month' },
-  { label: 'For validation', value: '12', helperText: 'Results need pathologist review' },
-  { label: 'Released', value: '216', helperText: 'Completed this month' },
-  { label: 'Revenue', value: '₱84,650', helperText: 'From recorded payments this month' },
-]
-
 const chartColors = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#0891b2', '#be123c', '#4d7c0f', '#9333ea']
-const volumeCategoryLabels = ['Hematology', 'Clinical Chemistry', 'Clinical Microscopy', 'Immunology']
-
-const testVolumeByPeriod = {
-  Weekly: [
-    { label: 'Mon', values: [6, 5, 3, 2] },
-    { label: 'Tue', values: [8, 6, 6, 4] },
-    { label: 'Wed', values: [7, 7, 4, 3] },
-    { label: 'Thu', values: [10, 8, 5, 5] },
-    { label: 'Fri', values: [9, 6, 4, 3] },
-    { label: 'Sat', values: [7, 4, 2, 1] },
-    { label: 'Sun', values: [4, 3, 2, 2] },
-  ],
-  Monthly: [
-    { label: 'Jan', values: [45, 38, 22, 14] }, { label: 'Feb', values: [42, 35, 20, 13] },
-    { label: 'Mar', values: [49, 40, 24, 15] }, { label: 'Apr', values: [47, 39, 23, 15] },
-    { label: 'May', values: [52, 43, 27, 17] }, { label: 'Jun', values: [50, 42, 25, 16] },
-    { label: 'Jul', values: [55, 45, 28, 18] }, { label: 'Aug', values: [54, 44, 27, 18] },
-    { label: 'Sep', values: [58, 48, 30, 19] }, { label: 'Oct', values: [62, 51, 32, 21] },
-    { label: 'Nov', values: [57, 47, 29, 18] }, { label: 'Dec', values: [64, 53, 34, 22] },
-  ],
-  Annual: [
-    { label: '2021', values: [420, 350, 210, 135] },
-    { label: '2022', values: [465, 382, 232, 148] },
-    { label: '2023', values: [510, 425, 258, 166] },
-    { label: '2024', values: [552, 458, 281, 179] },
-    { label: '2025', values: [598, 494, 306, 196] },
-    { label: '2026', values: [626, 516, 324, 208] },
-  ],
-}
-
-const workflow = [
-  { label: 'Queued', value: 8, tone: 'muted' },
-  { label: 'Processing', value: 19, tone: 'info' },
-  { label: 'For validation', value: 12, tone: 'warning' },
-  { label: 'Released', value: 216, tone: 'success' },
-]
-
-const recentActivity = [
-  { time: '10:42 AM', user: 'Dr. Ana Reyes', role: 'Pathologist', action: 'Released result', record: 'REQ-2026-0248' },
-  { time: '10:18 AM', user: 'Leo Cruz', role: 'Medical Technologist', action: 'Encoded result', record: 'REQ-2026-0246' },
-  { time: '09:56 AM', user: 'Mia Santos', role: 'Cashier', action: 'Recorded payment', record: 'REQ-2026-0247' },
-  { time: '09:31 AM', user: 'Dr. Ana Reyes', role: 'Pathologist', action: 'Returned result', record: 'REQ-2026-0244' },
-]
 
 export default function AdminDashboard() {
   const [chartType, setChartType] = useState('Bar')
   const [period, setPeriod] = useState('Weekly')
-  const [catalog, setCatalog] = useState(readCatalog)
-  useEffect(() => subscribeCatalog(() => setCatalog(readCatalog())), [])
-  const testCategories = catalog.categories.map((label, index) => ({ label, color: chartColors[index % chartColors.length] }))
-  const chartData = testVolumeByPeriod[period].map((item) => ({ ...item, values: testCategories.map(({ label }) => {
-    const historicalIndex = volumeCategoryLabels.indexOf(label)
-    return historicalIndex < 0 ? 0 : item.values[historicalIndex] ?? 0
-  }) }))
+  const { result: summaryResult, error: summaryError } = useApiResource(() => api.administrator.dashboard(), [])
+  const { result: volumeResult, error: volumeError } = useApiResource(() => api.administrator.testVolume({ period: period.toLowerCase() }), [period])
+  const { result: activityResult } = useApiResource(() => api.administrator.auditLogs({ page: 1, pageSize: 10 }), [])
+  const report = summaryResult?.data
+  const volume = volumeResult?.data
+  const testCategories = (volume?.series ?? []).map((category, index) => ({ ...category, color: chartColors[index % chartColors.length] }))
+  const chartData = (volume?.buckets ?? []).map((bucket, bucketIndex) => ({ label: bucket.label, values: testCategories.map((category) => Number(category.values[bucketIndex] ?? 0)) }))
+  const requestCounts = report?.requests ?? {}
+  const summary = [
+    { label: 'TOTAL REQUESTS', value: String(requestCounts.totalRequests ?? 0), helperText: 'Requested this month' },
+    { label: 'IN PROGRESS', value: String(requestCounts.inProgress ?? 0), helperText: 'Paid and being processed' },
+    { label: 'FOR VALIDATION', value: String(requestCounts.forValidation ?? 0), helperText: 'Awaiting pathologist review' },
+    { label: 'RELEASED TESTS', value: String(report?.releasedTests ?? 0), helperText: 'Completed this month' },
+  ]
+  const workflow = [
+    { label: 'Queued', value: Number(requestCounts.awaitingPayment ?? 0), tone: 'muted' },
+    { label: 'Processing', value: Number(requestCounts.inProgress ?? 0), tone: 'info' },
+    { label: 'For validation', value: Number(requestCounts.forValidation ?? 0), tone: 'warning' },
+    { label: 'Released', value: Number(requestCounts.released ?? 0), tone: 'success' },
+  ]
+  const recentActivity = (activityResult?.data ?? []).map((event) => ({
+    time: formatDateTime(event.createdAt), user: event.actor,
+    role: (event.role ?? 'system').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    action: event.action, record: `${event.entityType}${event.entityId ? ` · ${event.entityId}` : ''}`,
+  }))
   const chartMaximum = Math.max(1, ...chartData.flatMap((item) => item.values))
-  const chartTotal = chartData.reduce((sum, item) => sum + item.values.reduce((rowTotal, value) => rowTotal + value, 0), 0)
+  const chartTotal = Number(volume?.total ?? 0)
   const chartDescription = `${period} test volume by category: ${chartData.map((item) => `${item.label}, ${testCategories.map((category, index) => `${category.label} ${item.values[index]}`).join(', ')}`).join('; ')}`
   const lineSeries = useMemo(() => testCategories.map((category, categoryIndex) => ({
     ...category,
@@ -91,6 +61,7 @@ export default function AdminDashboard() {
 
   return (
     <section className="admin-dashboard" aria-label="Administrator dashboard">
+      {(summaryError || volumeError) && <p role="alert">{summaryError || volumeError}</p>}
       <div className="admin-dashboard__summary">
         {summary.map((item) => (
           <SummaryCard
@@ -173,7 +144,7 @@ export default function AdminDashboard() {
           </div>
           <ul className="admin-dashboard__workflow-list">
             {workflow.map((item) => {
-              const share = (item.value / totalWorkflowRequests) * 100
+              const share = totalWorkflowRequests ? (item.value / totalWorkflowRequests) * 100 : 0
               return (
                 <li key={item.label}>
                   <div className="admin-dashboard__workflow-row">
@@ -188,11 +159,7 @@ export default function AdminDashboard() {
               )
             })}
           </ul>
-          <div className="admin-dashboard__workflow-insight">
-            <span className="admin-dashboard__workflow-insight-label">Needs attention <span>Sample data</span></span>
-            <strong>3 requests are over 24 hours old</strong>
-            <span>Oldest open request: 31h 12m</span>
-          </div>
+          <div className="admin-dashboard__workflow-insight"><strong>No workflow requests yet.</strong><span>Request counts will appear here as the clinic processes work.</span></div>
         </section>
       </div>
 
@@ -225,6 +192,7 @@ export default function AdminDashboard() {
                   <td>{item.record}</td>
                 </tr>
               ))}
+              {pageActivity.length === 0 && <tr><td className="admin-empty" colSpan="5">No system activity has been recorded.</td></tr>}
             </tbody>
           </table>
         </div>

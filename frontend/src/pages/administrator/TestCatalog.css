@@ -14,6 +14,12 @@
 .test-catalog__category-tests label { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .65rem .75rem; border: 1px solid var(--border); border-radius: .45rem; }
 .test-catalog__category-list small { color: var(--text-muted-lightbg); }
 .test-catalog__category-tests select { min-width: 12rem; }
+.test-catalog__turnaround-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.test-catalog__turnaround-field legend { margin-bottom: .4rem; padding: 0; color: var(--text-muted-lightbg); font-size: .8rem; font-weight: 700; }
+.test-catalog__turnaround-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.test-catalog__turnaround-inputs label { display: grid; gap: .35rem; color: var(--text-muted-lightbg); font-size: .78rem; font-weight: 700; }
+.test-catalog__turnaround-inputs input { width: 100%; min-height: 2.65rem; padding: .55rem .7rem; border: 1px solid var(--border); border-radius: .25rem; background: white; color: var(--text-lightbg); font: inherit; font-size: .9rem; }
+.admin-dialog__field-hint { color: var(--text-muted-lightbg); font-size: .76rem; font-weight: 400; line-height: 1.4; }
 @media (max-width: 560px) {
   .test-catalog__table-heading { align-items: stretch; flex-direction: column; }
   .test-catalog__table-actions { justify-content: space-between; }

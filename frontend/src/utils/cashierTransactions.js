@@ -11,27 +11,6 @@ const todayISO = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-const sampleTransactions = [
-  {
-    id: 'sample-txn-001', pid: 'PID-2026-00124', patientName: 'Ariana Mae Santos',
-    tests: [{ id: 1, name: 'Complete Blood Count (CBC)', category: 'Hematology', price: 450 }, { id: 2, name: 'Fasting Blood Sugar', category: 'Clinical Chemistry', price: 250 }],
-    fee: 700, paymentMethod: 'cash', status: 'pending', transactionDate: null, receiptNumber: null,
-    requestedAt: '2026-10-23T10:42:00',
-  },
-  {
-    id: 'sample-txn-002', pid: 'PID-2026-00123', patientName: 'Miguel Luis Reyes',
-    tests: [{ id: 3, name: 'Urinalysis', category: 'Clinical Microscopy', price: 300 }],
-    fee: 300, paymentMethod: 'cash', status: 'paid', transactionDate: '2026-10-18', receiptNumber: 'LS-20261018-0002',
-    requestedAt: '2026-10-18T09:15:00',
-  },
-  {
-    id: 'sample-txn-003', pid: 'PID-2026-00122', patientName: 'Leah Anne Dela Cruz',
-    tests: [{ id: 4, name: 'Lipid Profile', category: 'Clinical Chemistry', price: 850 }],
-    fee: 850, paymentMethod: 'cash', status: 'pending', transactionDate: null, receiptNumber: null,
-    requestedAt: '2026-10-17T14:20:00',
-  },
-]
-
 const readTransactions = () => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -39,11 +18,10 @@ const readTransactions = () => {
       const parsed = JSON.parse(stored)
       if (Array.isArray(parsed)) return parsed
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sampleTransactions))
   } catch {
-    return [...sampleTransactions]
+    return []
   }
-  return [...sampleTransactions]
+  return []
 }
 
 const writeTransactions = (transactions) => {

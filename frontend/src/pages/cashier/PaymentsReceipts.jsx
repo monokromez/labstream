@@ -1,60 +1,42 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { formatDate } from '../../utils/dateFormat.js'
-import {
-  getCashierTransactions,
-  subscribeToCashierTransactions,
-} from '../../utils/cashierTransactions.js'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
 import './PaymentsReceipts.css'
 
 const ROWS_PER_PAGE = 10
 const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
 
 export default function PaymentsReceipts() {
-  const [transactions, setTransactions] = useState(getCashierTransactions)
   const [searchQuery, setSearchQuery] = useState('')
   const [dateFilter, setDateFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [dialog, setDialog] = useState(null)
-
-  useEffect(() => subscribeToCashierTransactions(() => setTransactions(getCashierTransactions())), [])
+  const { result, loading, error } = useApiResource(() => api.cashier.invoices({ page: currentPage, pageSize: ROWS_PER_PAGE, q: searchQuery, period: dateFilter === 'all' ? '' : dateFilter }), [currentPage, searchQuery, dateFilter])
+  const transactions = (result?.data ?? []).map((invoice) => ({
+    id: invoice.id,
+    pid: invoice.pid,
+    patientName: invoice.patientName,
+    receiptNumber: invoice.invoiceNumber,
+    fee: Number(invoice.amount),
+    transactionDate: invoice.paidAt?.slice(0, 10),
+    tests: (invoice.tests ?? []).map((test) => ({ ...test, price: Number(test.price) })),
+    issuedAt: invoice.issuedAt,
+  }))
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, dateFilter])
 
-  const filteredTransactions = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    return transactions.filter((transaction) => {
-      if (transaction.status !== 'paid') return false
-      const matchesQuery = !query || [transaction.pid, transaction.patientName, transaction.receiptNumber ?? '']
-        .some((value) => value.toLowerCase().includes(query))
-      const today = new Date()
-      const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-      const weekStartDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6)
-      const weekStart = `${weekStartDate.getFullYear()}-${String(weekStartDate.getMonth() + 1).padStart(2, '0')}-${String(weekStartDate.getDate()).padStart(2, '0')}`
-      const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
-      const date = transaction.transactionDate
-      const matchesDate = dateFilter === 'all' || transaction.status === 'pending'
-        || Boolean(date && (dateFilter === 'today' ? date === todayKey
-          : dateFilter === '7days' ? date >= weekStart && date <= todayKey
-            : dateFilter === 'month' ? date >= monthStart && date <= todayKey : true))
-      return matchesQuery && matchesDate
-    })
-  }, [transactions, searchQuery, dateFilter])
-
-  const visibleTransactions = filteredTransactions.slice(
-    (currentPage - 1) * ROWS_PER_PAGE,
-    currentPage * ROWS_PER_PAGE,
-  )
+  const filteredTransactions = transactions
+  const visibleTransactions = transactions
 
   return (
     <section className='payments-receipts' aria-label='Payments and invoice'>
-      <div className='payments-receipts__intro'>
-        <p>Review paid requests and view or print their invoices.</p>
-        <span className='payments-receipts__prototype-note'>Prototype data is stored in this browser only.</span>
-      </div>
+      <div className='payments-receipts__intro'><p>Review paid requests and view or print their invoices.</p></div>
+      {error && <p role='alert'>{error}</p>}
 
       <div className='payments-receipts__toolbar'>
         <SearchInput
@@ -81,7 +63,7 @@ export default function PaymentsReceipts() {
             <h2 id='payments-table-title'>Payments and Invoices</h2>
             <p>Completed cash payments and their issued invoices.</p>
           </div>
-          <span className='payments-receipts__count'>{filteredTransactions.length} {filteredTransactions.length === 1 ? 'transaction' : 'transactions'}</span>
+          <span className='payments-receipts__count'>{result?.pagination?.total ?? filteredTransactions.length} {result?.pagination?.total === 1 ? 'transaction' : 'transactions'}</span>
         </div>
 
         <div className='payments-receipts__table-wrap'>
@@ -110,13 +92,13 @@ export default function PaymentsReceipts() {
                   </td>
                 </tr>
               ))}
-              {visibleTransactions.length === 0 && (
-                <tr><td className='payments-receipts__empty' colSpan='5'>No paid transactions match your search or date filter.</td></tr>
+              {(loading || visibleTransactions.length === 0) && (
+                <tr><td className='payments-receipts__empty' colSpan='5'>{loading ? 'Loading invoices…' : 'No paid transactions match your search or date filter.'}</td></tr>
               )}
             </tbody>
           </table>
         </div>
-        <TablePagination currentPage={currentPage} pageSize={ROWS_PER_PAGE} totalItems={filteredTransactions.length} onPageChange={setCurrentPage} />
+        <TablePagination currentPage={currentPage} pageSize={ROWS_PER_PAGE} totalItems={result?.pagination?.total ?? filteredTransactions.length} onPageChange={setCurrentPage} />
       </section>
 
       {dialog && (

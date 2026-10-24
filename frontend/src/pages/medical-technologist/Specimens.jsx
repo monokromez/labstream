@@ -28,7 +28,7 @@ function formatDateTime(value) {
 }
 
 export default function Specimens() {
-  const { requests, specimens, specimenSearch, setSpecimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen } = useTechnologist()
+  const { requests, specimens, specimenSearch, setSpecimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen, loadError } = useTechnologist()
   const [status, setStatus] = useState('All')
   const [specimenType, setSpecimenType] = useState('All types')
   const [activeSpecimen, setActiveSpecimen] = useState(null)
@@ -102,6 +102,7 @@ export default function Specimens() {
 
   return (
     <section className="medtech-page" aria-label="Specimen tracking">
+      {loadError && <p className="medtech-page__error" role="alert">{loadError}</p>}
       <div className="medtech-summary-cards">
         <SummaryCard title="Expected" value={String(specimens.filter((item) => item.status === 'Expected').length).padStart(2, '0')} helperText="Awaiting collection" />
         <SummaryCard title="Received" value={String(specimens.filter((item) => item.status === 'Received').length).padStart(2, '0')} helperText="Needs quality check" />
@@ -168,7 +169,7 @@ export default function Specimens() {
                     <td>{formatDateTime(specimen.collectedAt)}</td>
                     <td><TechnologistStatusBadge status={specimen.status} /></td>
                     <td className="medtech-table__action-cell">
-                      {specimen.status === 'Expected' && (
+                      {['Expected', 'For Recollection'].includes(specimen.status) && (
                         <button className="medtech-button medtech-button--positive medtech-button--small" type="button" onClick={() => openReceiveDialog(specimen)}>
                           Mark as received
                         </button>

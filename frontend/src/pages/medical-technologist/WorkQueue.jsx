@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
@@ -6,7 +6,7 @@ import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
-import { readCatalog, subscribeCatalog } from '../../data/administratorCatalog.js'
+import useTestCatalog from '../../data/useTestCatalog.js'
 import './WorkQueue.css'
 
 const statusOptions = ['All', 'Paid', 'For Recollection', 'Specimen Received', 'Processing']
@@ -26,14 +26,13 @@ function formatDateTime(value) {
 }
 
 export default function WorkQueue() {
-  const { requests, specimens, getRequestStatus, goToSpecimens } = useTechnologist()
+  const { requests, specimens, getRequestStatus, goToSpecimens, loadError } = useTechnologist()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState('All')
   const [testFilter, setTestFilter] = useState('All tests')
   const [selectedRequestId, setSelectedRequestId] = useState('')
-  const [catalog, setCatalog] = useState(readCatalog)
-  useEffect(() => subscribeCatalog(() => setCatalog(readCatalog())), [])
-  const testOptions = [...new Set(catalog.tests.filter((test) => test.availability === 'Available').map((test) => test.name))].sort()
+  const { catalog } = useTestCatalog({ availableOnly: true })
+  const testOptions = [...new Set(catalog.tests.map((test) => test.name))].sort()
   const requestStatuses = requests.map((request) => ({ request, status: getRequestStatus(request) }))
 
   const visibleRequests = useMemo(() => requests
@@ -63,6 +62,7 @@ export default function WorkQueue() {
 
   return (
     <section className="medtech-page" aria-label="Medical technologist work queue">
+      {loadError && <p className="medtech-page__error" role="alert">{loadError}</p>}
       <div className="medtech-summary-cards">
         <SummaryCard title="Active requests" value={String(requestStatuses.filter(({ status: current }) => ['Paid', 'For Recollection', 'Specimen Received', 'Processing'].includes(current)).length).padStart(2, '0')} helperText="Ready for laboratory handling" />
         <SummaryCard title="Awaiting specimens" value={String(requestStatuses.filter(({ status: current }) => current === 'Paid').length).padStart(2, '0')} helperText="Payment complete" />

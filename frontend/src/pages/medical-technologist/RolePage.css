@@ -653,6 +653,60 @@
   gap: 0.55rem;
 }
 
+.medtech-result-request-group {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.medtech-result-request-group:not(:last-child) {
+  margin-bottom: 0.3rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.medtech-result-request-group__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0.1rem;
+}
+
+.medtech-result-request-group__heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.medtech-result-request-group__heading strong {
+  color: var(--text-lightbg);
+  font-size: 0.78rem;
+}
+
+.medtech-result-request-group__heading > div span {
+  overflow: hidden;
+  color: var(--text-muted-lightbg);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.medtech-result-request-group__status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  background: #fff0d5;
+  color: #865300;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.medtech-result-request-group__status.is-complete {
+  background: #dff4e9;
+  color: #116348;
+}
+
 .medtech-result-card {
   display: grid;
   min-width: 0;
@@ -977,3 +1031,4 @@
     flex: 1;
   }
 }
+.medtech-page__error { margin: 0 0 1rem; padding: 0.75rem 1rem; border: 1px solid var(--error); border-radius: 0.4rem; color: var(--error); background: color-mix(in srgb, var(--error) 7%, white); }

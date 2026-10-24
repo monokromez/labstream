@@ -566,6 +566,10 @@
   gap: 1rem;
 }
 
+.country-city-fields.register-request__form-row {
+  display: grid;
+}
+
 .register-request__form-row--three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -583,6 +587,10 @@
   font-family: var(--main-font);
   font-size: 1.1rem;
   font-weight: 700;
+}
+
+.register-request__confirmation--portal {
+  margin-top: 1.25rem;
 }
 
 .register-request__confirmation p {

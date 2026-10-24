@@ -128,7 +128,7 @@ function getNumericChartRows(fields, values) {
 }
 
 export default function ResultsInProgress() {
-  const { requests, specimens, results, saveDraft, submitRequest } = useTechnologist()
+  const { requests, specimens, results, saveDraft, submitRequest, loadError } = useTechnologist()
   const [filter, setFilter] = useState('all')
   const [selectedLabel, setSelectedLabel] = useState('')
   const [draftValues, setDraftValues] = useState({})
@@ -146,6 +146,22 @@ export default function ResultsInProgress() {
     })
     .filter((result) => result.specimen?.status === 'Accepted' && result.request),
   [results, specimens, requests, filter])
+
+  const requestGroups = useMemo(() => {
+    const grouped = new Map()
+    visibleResults.forEach((result) => {
+      if (!grouped.has(result.request.id)) grouped.set(result.request.id, { request: result.request, items: [] })
+      grouped.get(result.request.id).items.push(result)
+    })
+    return [...grouped.values()].map((group) => {
+      const complete = group.request.tests.length > 0 && group.request.tests.every((test) => {
+        const specimen = specimens.find((item) => item.requestId === group.request.id && item.status === 'Accepted' && item.linkedItemIds.includes(test.requestItemId))
+        const specimenResult = specimen && results.find((item) => item.specimenLabel === specimen.label)
+        return Boolean(specimenResult && test.fields.every((field) => String(specimenResult.values[field.key] ?? '').trim()))
+      })
+      return { ...group, complete }
+    })
+  }, [visibleResults, specimens, results])
 
   const selectedResult = visibleResults.find((result) => result.specimenLabel === selectedLabel) ?? visibleResults[0]
   const selectedTests = selectedResult
@@ -246,6 +262,7 @@ export default function ResultsInProgress() {
 
   return (
     <section className="medtech-page medtech-results" aria-label="Results in progress">
+      {loadError && <p className="medtech-page__error" role="alert">{loadError}</p>}
       <div className="medtech-result-layout">
         <section className="medtech-panel medtech-result-list" aria-labelledby="result-list-title">
           <div className="medtech-panel__heading">
@@ -265,7 +282,13 @@ export default function ResultsInProgress() {
             ))}
           </div>
           <div className="medtech-result-cards">
-            {visibleResults.map((result) => {
+            {requestGroups.map((group) => (
+              <section className="medtech-result-request-group" key={group.request.id}>
+                <div className="medtech-result-request-group__heading">
+                  <div><strong>{group.request.id}</strong><span>{group.request.patient}</span></div>
+                  <span className={`medtech-result-request-group__status${group.complete ? ' is-complete' : ''}`}>{group.complete ? 'Tests complete' : 'Tests in progress'}</span>
+                </div>
+                {group.items.map((result) => {
               const tests = result.request.tests.filter((test) => test.specimenType === result.specimen.type)
               const testSummary = tests.slice(0, 2).map((test) => test.name).join(', ')
               const moreTests = tests.length > 2 ? ` +${tests.length - 2}` : ''
@@ -281,11 +304,12 @@ export default function ResultsInProgress() {
                     <strong>{result.specimenLabel}</strong>
                     <TechnologistStatusBadge status={result.state} />
                   </span>
-                  <span className="medtech-result-card__patient">{result.request.patient}</span>
+                  <span className="medtech-result-card__patient">{result.specimen.type}</span>
                   <span className="medtech-result-card__tests">{testSummary}{moreTests}</span>
                 </button>
-              )
-            })}
+                )})}
+              </section>
+            ))}
             {visibleResults.length === 0 && <p className="medtech-empty medtech-empty--compact">No specimens in this list.</p>}
           </div>
         </section>

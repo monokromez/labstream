@@ -131,6 +131,21 @@ create table public.test_catalog (
 );
 create index test_catalog_category_idx on public.test_catalog(clinic_id, category_id, is_available);
 
+-- Tests may require more than one specimen. This relation lets payment create
+-- the correct specimen work items for each requested test.
+create table public.test_specimen_requirements (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  test_id uuid not null, specimen_type varchar(100) not null,
+  collection_instructions text, minimum_quantity numeric(10,2), quantity_unit varchar(40),
+  is_required boolean not null default true,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  unique (test_id, specimen_type),
+  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  check (minimum_quantity is null or minimum_quantity > 0)
+);
+create index test_specimen_requirements_test_idx on public.test_specimen_requirements(clinic_id, test_id);
+
 create table public.test_analytes (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
@@ -182,8 +197,40 @@ create table public.test_requests (
   foreign key (assigned_technologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
   foreign key (assigned_pathologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
+
+-- Assignment foreign keys prove tenant membership; this trigger additionally
+-- verifies that assigned accounts have the correct active role and branch.
+create function public.validate_request_assignments() returns trigger language plpgsql as $$
+declare assigned_role public.user_role; assigned_active boolean; assigned_branch uuid;
+begin
+  if new.assigned_technologist_id is not null then
+    select role, is_active, branch_id into assigned_role, assigned_active, assigned_branch
+      from public.users where id = new.assigned_technologist_id and clinic_id = new.clinic_id;
+    if assigned_role <> 'medical_technologist' or not assigned_active then
+      raise exception 'Assigned technologist must be an active medical technologist in this clinic';
+    end if;
+    if assigned_branch is not null and assigned_branch is distinct from new.branch_id then
+      raise exception 'Assigned technologist must belong to the request branch';
+    end if;
+  end if;
+  if new.assigned_pathologist_id is not null then
+    select role, is_active, branch_id into assigned_role, assigned_active, assigned_branch
+      from public.users where id = new.assigned_pathologist_id and clinic_id = new.clinic_id;
+    if assigned_role <> 'pathologist' or not assigned_active then
+      raise exception 'Assigned pathologist must be an active pathologist in this clinic';
+    end if;
+    if assigned_branch is not null and assigned_branch is distinct from new.branch_id then
+      raise exception 'Assigned pathologist must belong to the request branch';
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger test_requests_validate_assignments before insert or update of assigned_technologist_id, assigned_pathologist_id, branch_id
+on public.test_requests for each row execute function public.validate_request_assignments();
 create index test_requests_patient_idx on public.test_requests(patient_id, requested_at desc);
 create index test_requests_status_idx on public.test_requests(clinic_id, status, requested_at);
+create unique index test_requests_one_unpaid_per_patient
+  on public.test_requests(clinic_id, patient_id) where status = 'awaiting_payment';
 
 create table public.request_items (
   id uuid primary key default gen_random_uuid(),
@@ -194,7 +241,7 @@ create table public.request_items (
   price_snapshot numeric(10,2) not null check (price_snapshot >= 0),
   status public.request_item_status not null default 'awaiting_specimen',
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (id, clinic_id),
+  unique (id, clinic_id), unique (id, request_id, clinic_id),
   foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
   foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict
 );
@@ -244,7 +291,8 @@ create table public.specimens (
   collected_at timestamptz, received_at timestamptz, received_by uuid,
   accepted_at timestamptz, rejected_at timestamptz, rejection_reason text,
   notes text, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (id, clinic_id), unique (request_id, specimen_type, attempt_number),
+  unique (id, clinic_id), unique (id, request_id, clinic_id),
+  unique (request_id, specimen_type, attempt_number),
   foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
   foreign key (replaces_specimen_id, clinic_id) references public.specimens(id, clinic_id) on delete restrict,
   foreign key (received_by, clinic_id) references public.users(id, clinic_id) on delete restrict
@@ -253,44 +301,102 @@ create index specimens_worklist_idx on public.specimens(clinic_id, status, creat
 
 create table public.specimen_request_items (
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  specimen_id uuid not null, request_item_id uuid not null,
+  request_id uuid not null, specimen_id uuid not null, request_item_id uuid not null,
   primary key (specimen_id, request_item_id),
-  foreign key (specimen_id, clinic_id) references public.specimens(id, clinic_id) on delete restrict,
-  foreign key (request_item_id, clinic_id) references public.request_items(id, clinic_id) on delete restrict
+  foreign key (specimen_id, request_id, clinic_id) references public.specimens(id, request_id, clinic_id) on delete restrict,
+  foreign key (request_item_id, request_id, clinic_id) references public.request_items(id, request_id, clinic_id) on delete restrict
 );
 
 create table public.result_submissions (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  request_item_id uuid not null, specimen_id uuid not null,
+  request_id uuid not null, request_item_id uuid not null, specimen_id uuid not null,
   revision_number integer not null check (revision_number > 0),
   status public.result_status not null default 'draft',
   entered_by uuid not null, entered_at timestamptz not null default now(),
   submitted_at timestamptz, pathologist_interpretation text,
   supersedes_result_id uuid,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (id, clinic_id), unique (request_item_id, revision_number),
-  foreign key (request_item_id, clinic_id) references public.request_items(id, clinic_id) on delete restrict,
-  foreign key (specimen_id, clinic_id) references public.specimens(id, clinic_id) on delete restrict,
+  unique (id, clinic_id), unique (id, request_id, clinic_id), unique (request_item_id, revision_number),
+  foreign key (request_item_id, request_id, clinic_id) references public.request_items(id, request_id, clinic_id) on delete restrict,
+  foreign key (specimen_id, request_id, clinic_id) references public.specimens(id, request_id, clinic_id) on delete restrict,
   foreign key (supersedes_result_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
   foreign key (entered_by, clinic_id) references public.users(id, clinic_id)
 );
 create index result_submissions_worklist_idx on public.result_submissions(clinic_id, status, submitted_at);
 
+-- A test may require multiple specimen types; this records every specimen used
+-- for one test result while specimen_id remains its primary specimen reference.
+create table public.result_submission_specimens (
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  request_id uuid not null, result_submission_id uuid not null, specimen_id uuid not null,
+  primary key (result_submission_id, specimen_id),
+  foreign key (result_submission_id, request_id, clinic_id) references public.result_submissions(id, request_id, clinic_id) on delete restrict,
+  foreign key (specimen_id, request_id, clinic_id) references public.specimens(id, request_id, clinic_id) on delete restrict
+);
+
+create function public.validate_result_submission_actor() returns trigger language plpgsql as $$
+declare assigned_technologist uuid; actor_role public.user_role; actor_active boolean;
+begin
+  select r.assigned_technologist_id, u.role, u.is_active
+    into assigned_technologist, actor_role, actor_active
+    from public.test_requests r
+    join public.users u on u.id = new.entered_by and u.clinic_id = new.clinic_id
+   where r.id = new.request_id and r.clinic_id = new.clinic_id;
+  if assigned_technologist is distinct from new.entered_by
+     or actor_role <> 'medical_technologist' or not actor_active then
+    raise exception 'Only the active assigned medical technologist may enter request results';
+  end if;
+  return new;
+end $$;
+create trigger result_submissions_validate_actor before insert or update of entered_by, request_id
+on public.result_submissions for each row execute function public.validate_result_submission_actor();
+
 create table public.result_values (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
   result_submission_id uuid not null, analyte_id uuid not null,
-  numeric_value numeric(14,4), text_value text, unit_snapshot varchar(40),
+  numeric_value numeric(14,4), text_value text, select_value text, boolean_value boolean,
+  unit_snapshot varchar(40),
   lower_limit_snapshot numeric(14,4), upper_limit_snapshot numeric(14,4),
   is_abnormal boolean not null default false,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (result_submission_id, analyte_id),
   foreign key (result_submission_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
   foreign key (analyte_id, clinic_id) references public.test_analytes(id, clinic_id) on delete restrict,
-  check (num_nonnulls(numeric_value, text_value) = 1),
+  check (num_nonnulls(numeric_value, text_value, select_value, boolean_value) = 1),
   check (lower_limit_snapshot is null or upper_limit_snapshot is null or lower_limit_snapshot <= upper_limit_snapshot)
 );
+
+-- A result's selected analyte must belong to the test represented by its
+-- request item, and its value column must match the catalog analyte's type.
+create function public.validate_result_value() returns trigger language plpgsql as $$
+declare expected_test uuid; expected_type public.result_value_type; expected_options jsonb;
+begin
+  select ri.test_id, a.value_type, a.options into expected_test, expected_type, expected_options
+    from public.result_submissions rs
+    join public.request_items ri on ri.id = rs.request_item_id and ri.clinic_id = rs.clinic_id
+    join public.test_analytes a on a.id = new.analyte_id and a.clinic_id = new.clinic_id
+   where rs.id = new.result_submission_id and rs.clinic_id = new.clinic_id;
+  if expected_test is null or not exists (
+    select 1 from public.test_analytes a
+     where a.id = new.analyte_id and a.test_id = expected_test and a.clinic_id = new.clinic_id
+  ) then
+    raise exception 'Result analyte does not belong to the requested test';
+  end if;
+  if (expected_type = 'numeric' and num_nonnulls(new.numeric_value) <> 1)
+     or (expected_type = 'text' and num_nonnulls(new.text_value) <> 1)
+     or (expected_type = 'select' and num_nonnulls(new.select_value) <> 1)
+     or (expected_type = 'boolean' and num_nonnulls(new.boolean_value) <> 1) then
+    raise exception 'Result value does not match the analyte value type';
+  end if;
+  if expected_type = 'select' and not (expected_options ? new.select_value) then
+    raise exception 'Selected result is not one of the analyte options';
+  end if;
+  return new;
+end $$;
+create trigger result_values_validate before insert or update on public.result_values
+for each row execute function public.validate_result_value();
 
 create table public.result_reviews (
   id uuid primary key default gen_random_uuid(),
@@ -304,6 +410,24 @@ create table public.result_reviews (
   check (decision <> 'returned' or nullif(btrim(remarks), '') is not null)
 );
 create index result_reviews_result_time_idx on public.result_reviews(result_submission_id, reviewed_at desc);
+
+create function public.validate_result_reviewer() returns trigger language plpgsql as $$
+declare request_id_value uuid; assigned_pathologist uuid; actor_role public.user_role; actor_active boolean;
+begin
+  select rs.request_id, r.assigned_pathologist_id, u.role, u.is_active
+    into request_id_value, assigned_pathologist, actor_role, actor_active
+    from public.result_submissions rs
+    join public.test_requests r on r.id = rs.request_id and r.clinic_id = rs.clinic_id
+    join public.users u on u.id = new.reviewed_by and u.clinic_id = new.clinic_id
+   where rs.id = new.result_submission_id and rs.clinic_id = new.clinic_id;
+  if assigned_pathologist is distinct from new.reviewed_by
+     or actor_role <> 'pathologist' or not actor_active then
+    raise exception 'Only the active assigned pathologist may review request results';
+  end if;
+  return new;
+end $$;
+create trigger result_reviews_validate_actor before insert or update on public.result_reviews
+for each row execute function public.validate_result_reviewer();
 
 create table public.request_status_history (
   id uuid primary key default gen_random_uuid(),
@@ -326,6 +450,24 @@ create table public.audit_logs (
 create index audit_logs_clinic_time_idx on public.audit_logs(clinic_id, created_at desc);
 create index audit_logs_entity_idx on public.audit_logs(entity_type, entity_id);
 
+-- Keep update timestamps consistent for tables that expose updated_at.
+create function public.touch_updated_at() returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+do $$
+declare target record;
+begin
+  for target in
+    select table_name from information_schema.columns
+     where table_schema = 'public' and column_name = 'updated_at'
+  loop
+    execute format('create trigger %I before update on public.%I for each row execute function public.touch_updated_at()',
+      target.table_name || '_touch_updated_at', target.table_name);
+  end loop;
+end $$;
+
 -- Deliberately enable RLS without client policies. Until policies are designed,
 -- client-side Supabase Data API access is denied; privileged access stays server-side.
 alter table public.clinics enable row level security;
@@ -336,6 +478,7 @@ alter table public.account_tokens enable row level security;
 alter table public.patients enable row level security;
 alter table public.test_categories enable row level security;
 alter table public.test_catalog enable row level security;
+alter table public.test_specimen_requirements enable row level security;
 alter table public.test_analytes enable row level security;
 alter table public.reference_ranges enable row level security;
 alter table public.test_requests enable row level security;
@@ -345,6 +488,7 @@ alter table public.invoices enable row level security;
 alter table public.specimens enable row level security;
 alter table public.specimen_request_items enable row level security;
 alter table public.result_submissions enable row level security;
+alter table public.result_submission_specimens enable row level security;
 alter table public.result_values enable row level security;
 alter table public.result_reviews enable row level security;
 alter table public.request_status_history enable row level security;

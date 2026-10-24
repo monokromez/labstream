@@ -2,14 +2,8 @@ const STORAGE_KEY = 'labstream-admin-test-catalog'
 const CHANGE_EVENT = 'labstream-admin-test-catalog-change'
 
 export const defaultCatalog = {
-  categories: ['Hematology', 'Clinical Chemistry', 'Clinical Microscopy', 'Immunology', 'Microbiology'],
-  tests: [
-    { id: 1, name: 'Complete Blood Count (CBC)', category: 'Hematology', price: 450, turnaround: 'Same day', availability: 'Available' },
-    { id: 2, name: 'Fasting Blood Sugar', category: 'Clinical Chemistry', price: 250, turnaround: 'Same day', availability: 'Available' },
-    { id: 3, name: 'Urinalysis', category: 'Clinical Microscopy', price: 300, turnaround: 'Same day', availability: 'Available' },
-    { id: 4, name: 'Lipid Profile', category: 'Clinical Chemistry', price: 850, turnaround: '1 day', availability: 'Available' },
-    { id: 5, name: 'Thyroid Stimulating Hormone', category: 'Immunology', price: 700, turnaround: '2 days', availability: 'Unavailable' },
-  ],
+  categories: [],
+  tests: [],
 }
 
 export function readCatalog() {

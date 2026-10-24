@@ -13,6 +13,7 @@ drop table if exists
   public.request_status_history,
   public.result_reviews,
   public.result_values,
+  public.result_submission_specimens,
   public.result_submissions,
   public.results,
   public.specimen_request_items,
@@ -24,6 +25,7 @@ drop table if exists
   public.test_requests,
   public.reference_ranges,
   public.test_analytes,
+  public.test_specimen_requirements,
   public.test_catalog,
   public.test_categories,
   public.patients,
@@ -36,6 +38,11 @@ restrict;
 
 drop function if exists public.assign_staff_username();
 drop function if exists public.set_staff_username();
+drop function if exists public.validate_request_assignments();
+drop function if exists public.validate_result_value();
+drop function if exists public.validate_result_submission_actor();
+drop function if exists public.validate_result_reviewer();
+drop function if exists public.touch_updated_at();
 
 drop type if exists public.queue_status;
 drop type if exists public.result_type;

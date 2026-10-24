@@ -1,18 +1,46 @@
-import { useEffect, useMemo, useState } from 'react'
-import { readCatalog, subscribeCatalog } from './administratorCatalog.js'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { api, subscribeToCatalogChanges } from '../api/client.js'
+
+const emptyCatalog = { categories: [], tests: [] }
 
 export default function useTestCatalog({ availableOnly = false } = {}) {
-  const [catalog, setCatalog] = useState(readCatalog)
+  const [catalog, setCatalog] = useState(emptyCatalog)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  useEffect(() => subscribeCatalog(() => setCatalog(readCatalog())), [])
+  const refresh = useCallback(async () => {
+    try {
+      const result = await api.catalog.list({ includeUnavailable: !availableOnly })
+      const data = result.data ?? { categories: [], tests: [] }
+      setCatalog({
+        categories: data.categories ?? [],
+        tests: (data.tests ?? []).map((test) => ({
+          ...test,
+          category: test.categoryName,
+          availability: test.isAvailable ? 'Available' : 'Unavailable',
+        })),
+      })
+      setError('')
+    } catch (requestError) {
+      setError(requestError.message || 'Unable to load the test catalog.')
+    } finally {
+      setLoading(false)
+    }
+  }, [availableOnly])
+
+  useEffect(() => {
+    refresh()
+    const unsubscribe = subscribeToCatalogChanges(refresh)
+    return unsubscribe
+  }, [refresh])
 
   const categories = useMemo(() => catalog.categories
-    .map((name) => ({
-      name,
-      tests: catalog.tests.filter((test) => test.category === name
-        && (!availableOnly || test.availability === 'Available')),
+    .map((category) => ({
+      ...category,
+      tests: catalog.tests.filter((test) => test.categoryId === category.id
+        && (!availableOnly || test.isAvailable)),
     }))
     .filter((category) => category.tests.length > 0), [catalog, availableOnly])
 
-  return { catalog, categories }
+  return { catalog, categories, loading, error, refresh }
 }

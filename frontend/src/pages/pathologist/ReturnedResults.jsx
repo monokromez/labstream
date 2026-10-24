@@ -1,17 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import PathologistResultTable from './PathologistResultTable.jsx'
-import { readCatalog, subscribeCatalog } from '../../data/administratorCatalog.js'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
+import useTestCatalog from '../../data/useTestCatalog.js'
+import { formatDateTime } from '../../utils/dateFormat.js'
 import './ReturnedResults.css'
-
-const returned = [
-  { id: 'REQ-2026-0137', patient: 'Lara Villanueva', test: 'Complete Blood Count (CBC)', date: '10/23/2026 08:42 AM', priority: 'Routine', reason: 'Please verify the platelet count and repeat the manual differential.', results: [{ name: 'Hemoglobin', value: '12.4 g/dL', range: '12.0–16.0', flag: '' }, { name: 'Platelets', value: '118 ×10⁹/L', range: '150–400', flag: 'Low' }] },
-  { id: 'REQ-2026-0129', patient: 'Paolo Garcia', test: 'Urinalysis', date: '10/22/2026 04:16 PM', priority: 'Urgent', reason: 'Please confirm the specimen notes and review the reported protein value.', results: [{ name: 'Protein', value: '2+', range: 'Negative', flag: 'High' }, { name: 'Glucose', value: 'Negative', range: 'Negative', flag: '' }] },
-  { id: 'REQ-2026-0124', patient: 'Ava Ramos', test: 'Fasting Blood Sugar', date: '10/22/2026 02:08 PM', priority: 'Routine', reason: 'Result is missing the collection time. Please complete and resubmit.', results: [{ name: 'Glucose', value: '104 mg/dL', range: '70–99', flag: 'High' }] },
-]
 
 export default function ReturnedResults() {
   const [query, setQuery] = useState('')
@@ -19,21 +16,26 @@ export default function ReturnedResults() {
   const [priorityFilter, setPriorityFilter] = useState('All priorities')
   const [activeResult, setActiveResult] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [catalog, setCatalog] = useState(readCatalog)
   const pageSize = 10
-  useEffect(() => subscribeCatalog(() => setCatalog(readCatalog())), [])
-  const testOptions = [...new Set(catalog.tests.filter((test) => test.availability === 'Available').map((test) => test.name))].sort()
+  const { result, error } = useApiResource(() => api.pathologist.returned({ page: 1, pageSize: 100 }), [])
+  const returned = (result?.data ?? []).map((request) => {
+    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ name: `${test.testName} · ${value.label}`, value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—', range: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '' })) }))
+    return { ...request, id: request.requestNumber, patient: request.patientName, priority: request.priority.replace(/\b\w/g, (char) => char.toUpperCase()), test: tests.map((test) => test.testName).join(', '), date: formatDateTime(request.requestedAt), reason: tests.map((test) => test.reviewRemarks).filter(Boolean).join('; '), results: tests.flatMap((test) => test.results) }
+  })
+  const { catalog } = useTestCatalog({ availableOnly: true })
+  const testOptions = [...new Set(catalog.tests.map((test) => test.name))].sort()
 
   const filtered = useMemo(() => returned.filter((item) => {
     const matchesSearch = `${item.id} ${item.patient} ${item.test}`.toLowerCase().includes(query.toLowerCase())
-    return matchesSearch && (testFilter === 'All tests' || item.test === testFilter)
+    return matchesSearch && (testFilter === 'All tests' || item.test.split(', ').includes(testFilter))
       && (priorityFilter === 'All priorities' || item.priority === priorityFilter)
-  }), [priorityFilter, query, testFilter])
+  }), [returned, priorityFilter, query, testFilter])
   const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
     <section className="admin-page pathologist-page" aria-label="Returned results">
-      <div className="admin-dashboard__summary"><SummaryCard title="Returned for correction" value={String(returned.length).padStart(2, '0')} helperText="Awaiting technologist updates" /><SummaryCard title="Resubmitted today" value="03" helperText="Ready for another review" /><SummaryCard title="Reviewed today" value="12" helperText="Across all result types" /><SummaryCard title="Urgent reviews" value={String(returned.filter((item) => item.priority === 'Urgent').length).padStart(2, '0')} helperText="Prioritize these cases" /></div>
+      {error && <p role="alert">{error}</p>}
+      <div className="admin-dashboard__summary"><SummaryCard title="Returned for correction" value={String(returned.length).padStart(2, '0')} helperText="Awaiting technologist updates" /><SummaryCard title="Resubmitted today" value="00" helperText="Ready for another review" /><SummaryCard title="Reviewed today" value="00" helperText="Across all result types" /><SummaryCard title="Urgent reviews" value={String(returned.filter((item) => item.priority === 'Urgent').length).padStart(2, '0')} helperText="Prioritize these cases" /></div>
 
       <section className="pathologist-list" aria-labelledby="returned-title">
         <div className="pathologist-list__heading"><div><h2 id="returned-title">For Review</h2><p>Review results returned to the technologist and check their correction status.</p></div><span className="pathologist-list__count">{filtered.length} {filtered.length === 1 ? 'result' : 'results'}</span></div>
@@ -50,7 +52,7 @@ export default function ReturnedResults() {
             <td><span className={`admin-badge ${item.priority === 'Urgent' ? 'admin-badge--warning' : 'admin-badge--muted'}`}>{item.priority}</span></td>
             <td><button className="admin-button admin-button--positive admin-button--small" type="button" onClick={() => setActiveResult(item)}>View Results <span aria-hidden="true">→</span></button></td>
           </tr>)}
-          {visible.length === 0 && <tr><td className="admin-empty" colSpan="6">No returned results match your filters.</td></tr>}</tbody>
+          {visible.length === 0 && <tr><td className="admin-empty" colSpan="6">{result ? 'No returned results match your filters.' : 'Loading returned results…'}</td></tr>}</tbody>
         </table></div>
         <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={filtered.length} onPageChange={setCurrentPage} />
       </section>

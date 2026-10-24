@@ -1,569 +1,151 @@
-// Legacy Drizzle model. The current target schema is backend/supabase/schema.sql.
-// Do not generate/apply migrations from this file until it has been reconciled
-// with that SQL design and the backend integration work begins.
-
-import { sql } from "drizzle-orm";
 import {
-  boolean,
-  check,
-  date,
-  foreignKey,
-  index,
-  integer,
-  jsonb,
-  numeric,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-  varchar,
+  boolean, date, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid, varchar,
 } from "drizzle-orm/pg-core";
 
-export const userRole = pgEnum("user_role", [
-  "cashier",
-  "medical_technologist",
-  "pathologist",
-  "administrator",
-  "patient",
-]);
+// Runtime Drizzle model mirroring supabase/schema.sql. That SQL remains
+// authoritative because it also defines triggers, functions, RLS, and a view.
+const id = () => uuid("id").primaryKey().defaultRandom();
+const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
+const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
-export const resultType = pgEnum("result_type", ["numeric", "text"]);
-
-export const requestStatus = pgEnum("request_status", [
-  "queued",
-  "paid",
-  "specimen_received",
-  "processing",
-  "for_validation",
-  "released",
-  "cancelled",
-]);
-
-export const queueStatus = pgEnum("queue_status", [
-  "waiting",
-  "called",
-  "serving",
-  "completed",
-  "cancelled",
-]);
-
-export const paymentMethod = pgEnum("payment_method", ["cash", "card", "other"]);
+export const userRole = pgEnum("user_role", ["administrator", "cashier", "medical_technologist", "pathologist", "patient"]);
+export const requestStatus = pgEnum("request_status", ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction", "released", "cancelled"]);
+export const requestItemStatus = pgEnum("request_item_status", ["awaiting_specimen", "specimen_received", "processing", "drafted", "submitted", "returned", "for_recollection", "approved", "released", "cancelled"]);
+export const specimenStatus = pgEnum("specimen_status", ["expected", "received", "accepted", "rejected", "for_recollection", "consumed"]);
+export const resultValueType = pgEnum("result_value_type", ["numeric", "text", "select", "boolean"]);
+export const resultStatus = pgEnum("result_status", ["draft", "submitted", "returned", "approved"]);
 export const reviewDecision = pgEnum("review_decision", ["approved", "returned"]);
+export const paymentMethod = pgEnum("payment_method", ["cash"]);
 
-const createdAt = () => timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
-const updatedAt = () => timestamp("updated_at", { withTimezone: true }).defaultNow().notNull();
-
-// One clinic site per tenant. Multi-branch administration is outside the
-// approved proposal; a separately deployed branch can have its own tenant.
-export const clinics = pgTable(
-  "clinics",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    code: varchar("code", { length: 24 }).notNull().unique(),
-    name: varchar("name", { length: 180 }).notNull(),
-    registrationNumber: varchar("registration_number", { length: 100 }),
-    email: varchar("email", { length: 254 }),
-    phone: varchar("phone", { length: 32 }),
-    address: text("address"),
-    city: varchar("city", { length: 120 }),
-    country: varchar("country", { length: 100 }),
-    isActive: boolean("is_active").default(true).notNull(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-);
-
-// Pending accounts have no password hash until the one-time activation token
-// is redeemed. Active passwords are Argon2id hashes, never plaintext.
-export const users = pgTable(
-  "users",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    username: varchar("username", { length: 80 }),
-    staffNumber: integer("staff_number").generatedAlwaysAsIdentity(),
-    email: varchar("email", { length: 254 }),
-    passwordHash: varchar("password_hash", { length: 255 }),
-    role: userRole("role").notNull(),
-    isActive: boolean("is_active").default(false).notNull(),
-    mustChangePassword: boolean("must_change_password").default(true).notNull(),
-    lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    unique("users_id_clinic_unique").on(table.id, table.clinicId),
-    unique("users_clinic_username_unique").on(table.clinicId, table.username),
-    unique("users_clinic_staff_number_unique").on(table.clinicId, table.staffNumber),
-    unique("users_clinic_email_unique").on(table.clinicId, table.email),
-    check(
-      "users_staff_email_required",
-      sql`${table.role} = 'patient' OR ${table.email} IS NOT NULL`,
-    ),
-    check(
-      "users_staff_username_required",
-      sql`${table.role} = 'patient' OR ${table.username} IS NOT NULL`,
-    ),
-  ],
-);
-
-export const staffProfiles = pgTable(
-  "staff_profiles",
-  {
-    userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "restrict" }),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    firstName: varchar("first_name", { length: 100 }).notNull(),
-    middleName: varchar("middle_name", { length: 100 }),
-    lastName: varchar("last_name", { length: 100 }).notNull(),
-    dateOfBirth: date("date_of_birth"),
-    phone: varchar("phone", { length: 32 }),
-    country: varchar("country", { length: 100 }),
-    city: varchar("city", { length: 120 }),
-    houseNumber: varchar("house_number", { length: 80 }),
-    street: varchar("street", { length: 160 }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.userId, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "staff_profiles_user_same_clinic_fk",
-    }).onDelete("restrict"),
-  ],
-);
-
-// Store only a SHA-256 digest. The raw, high-entropy code is shown/delivered
-// once, expires, and is consumed on activation or password reset.
-export const accountTokens = pgTable(
-  "account_tokens",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
-    tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
-    purpose: varchar("purpose", { length: 24 }).notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    consumedAt: timestamp("consumed_at", { withTimezone: true }),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    index("account_tokens_user_purpose_idx").on(table.userId, table.purpose, table.expiresAt),
-    foreignKey({
-      columns: [table.userId, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "account_tokens_user_same_clinic_fk",
-    }).onDelete("restrict"),
-    check("account_tokens_purpose_check", sql`${table.purpose} IN ('activation', 'password_reset')`),
-  ],
-);
-
-export const patients = pgTable(
-  "patients",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    userId: uuid("user_id")
-      .notNull()
-      .unique()
-      .references(() => users.id, { onDelete: "restrict" }),
-    pid: varchar("pid", { length: 32 }).notNull(),
-    firstName: varchar("first_name", { length: 100 }).notNull(),
-    middleName: varchar("middle_name", { length: 100 }),
-    lastName: varchar("last_name", { length: 100 }).notNull(),
-    dateOfBirth: date("date_of_birth"),
-    sex: varchar("sex", { length: 32 }),
-    phone: varchar("phone", { length: 32 }),
-    address: text("address"),
-    email: varchar("email", { length: 254 }),
-    country: varchar("country", { length: 100 }),
-    city: varchar("city", { length: 120 }),
-    houseNumber: varchar("house_number", { length: 80 }),
-    street: varchar("street", { length: 160 }),
-    validIdType: varchar("valid_id_type", { length: 100 }),
-    validIdNumber: varchar("valid_id_number", { length: 120 }),
-    registeredBy: uuid("registered_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    unique("patients_id_clinic_unique").on(table.id, table.clinicId),
-    unique("patients_clinic_pid_unique").on(table.clinicId, table.pid),
-    index("patients_name_idx").on(table.clinicId, table.lastName, table.firstName),
-    foreignKey({
-      columns: [table.userId, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "patients_user_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.registeredBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "patients_registrar_same_clinic_fk",
-    }).onDelete("restrict"),
-  ],
-);
-
-export const testCatalog = pgTable(
-  "test_catalog",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    code: varchar("code", { length: 40 }).notNull(),
-    name: varchar("name", { length: 160 }).notNull(),
-    description: text("description"),
-    resultType: resultType("result_type").notNull(),
-    unit: varchar("unit", { length: 40 }),
-    price: numeric("price", { precision: 10, scale: 2 }).notNull(),
-    isActive: boolean("is_active").default(true).notNull(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    unique("test_catalog_id_clinic_unique").on(table.id, table.clinicId),
-    unique("test_catalog_clinic_code_unique").on(table.clinicId, table.code),
-    check("test_catalog_price_nonnegative", sql`${table.price} >= 0`),
-  ],
-);
-
-export const referenceRanges = pgTable(
-  "reference_ranges",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    testId: uuid("test_id")
-      .notNull()
-      .references(() => testCatalog.id, { onDelete: "restrict" }),
-    minAgeDays: integer("min_age_days"),
-    maxAgeDays: integer("max_age_days"),
-    sex: varchar("sex", { length: 32 }),
-    numericMin: numeric("numeric_min", { precision: 14, scale: 4 }),
-    numericMax: numeric("numeric_max", { precision: 14, scale: 4 }),
-    textGuidance: text("text_guidance"),
-    unit: varchar("unit", { length: 40 }),
-    isActive: boolean("is_active").default(true).notNull(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    index("reference_ranges_test_active_idx").on(table.testId, table.isActive),
-    foreignKey({
-      columns: [table.testId, table.clinicId],
-      foreignColumns: [testCatalog.id, testCatalog.clinicId],
-      name: "reference_ranges_test_same_clinic_fk",
-    }).onDelete("restrict"),
-    check(
-      "reference_ranges_age_order",
-      sql`${table.minAgeDays} IS NULL OR ${table.maxAgeDays} IS NULL OR ${table.minAgeDays} <= ${table.maxAgeDays}`,
-    ),
-    check(
-      "reference_ranges_numeric_order",
-      sql`${table.numericMin} IS NULL OR ${table.numericMax} IS NULL OR ${table.numericMin} <= ${table.numericMax}`,
-    ),
-  ],
-);
-
-export const testRequests = pgTable(
-  "test_requests",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    patientId: uuid("patient_id")
-      .notNull()
-      .references(() => patients.id, { onDelete: "restrict" }),
-    createdBy: uuid("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    status: requestStatus("status").default("queued").notNull(),
-    totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).default("0").notNull(),
-    paidAt: timestamp("paid_at", { withTimezone: true }),
-    releasedAt: timestamp("released_at", { withTimezone: true }),
-    releasedBy: uuid("released_by").references(() => users.id, { onDelete: "restrict" }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    unique("test_requests_id_clinic_unique").on(table.id, table.clinicId),
-    index("test_requests_patient_created_idx").on(table.patientId, table.createdAt),
-    index("test_requests_status_created_idx").on(table.status, table.createdAt),
-    foreignKey({
-      columns: [table.patientId, table.clinicId],
-      foreignColumns: [patients.id, patients.clinicId],
-      name: "test_requests_patient_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.createdBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "test_requests_creator_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.releasedBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "test_requests_releaser_same_clinic_fk",
-    }).onDelete("restrict"),
-    check("test_requests_total_nonnegative", sql`${table.totalAmount} >= 0`),
-  ],
-);
-
-export const requestItems = pgTable(
-  "request_items",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestId: uuid("request_id")
-      .notNull()
-      .references(() => testRequests.id, { onDelete: "restrict" }),
-    testId: uuid("test_id")
-      .notNull()
-      .references(() => testCatalog.id, { onDelete: "restrict" }),
-    testNameSnapshot: varchar("test_name_snapshot", { length: 160 }).notNull(),
-    priceSnapshot: numeric("price_snapshot", { precision: 10, scale: 2 }).notNull(),
-    resultTypeSnapshot: resultType("result_type_snapshot").notNull(),
-    unitSnapshot: varchar("unit_snapshot", { length: 40 }),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    unique("request_items_id_clinic_unique").on(table.id, table.clinicId),
-    index("request_items_request_idx").on(table.requestId),
-    foreignKey({
-      columns: [table.requestId, table.clinicId],
-      foreignColumns: [testRequests.id, testRequests.clinicId],
-      name: "request_items_request_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.testId, table.clinicId],
-      foreignColumns: [testCatalog.id, testCatalog.clinicId],
-      name: "request_items_test_same_clinic_fk",
-    }).onDelete("restrict"),
-    check("request_items_price_nonnegative", sql`${table.priceSnapshot} >= 0`),
-  ],
-);
-
-export const queueEntries = pgTable(
-  "queue_entries",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestId: uuid("request_id")
-      .notNull()
-      .unique()
-      .references(() => testRequests.id, { onDelete: "restrict" }),
-    queueDate: date("queue_date").default(sql`CURRENT_DATE`).notNull(),
-    queueNumber: integer("queue_number").notNull(),
-    status: queueStatus("status").default("waiting").notNull(),
-    calledAt: timestamp("called_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    calledBy: uuid("called_by").references(() => users.id, { onDelete: "restrict" }),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    unique("queue_entries_date_number_unique").on(table.clinicId, table.queueDate, table.queueNumber),
-    index("queue_entries_date_status_idx").on(table.queueDate, table.status),
-    foreignKey({
-      columns: [table.requestId, table.clinicId],
-      foreignColumns: [testRequests.id, testRequests.clinicId],
-      name: "queue_entries_request_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.calledBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "queue_entries_caller_same_clinic_fk",
-    }).onDelete("restrict"),
-    check("queue_entries_number_positive", sql`${table.queueNumber} > 0`),
-  ],
-);
-
-export const payments = pgTable(
-  "payments",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestId: uuid("request_id")
-      .notNull()
-      .references(() => testRequests.id, { onDelete: "restrict" }),
-    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-    method: paymentMethod("method").notNull(),
-    receiptNumber: varchar("receipt_number", { length: 64 }).notNull(),
-    recordedBy: uuid("recorded_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    paidAt: timestamp("paid_at", { withTimezone: true }).defaultNow().notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    unique("payments_clinic_receipt_number_unique").on(table.clinicId, table.receiptNumber),
-    index("payments_request_idx").on(table.requestId),
-    index("payments_paid_at_idx").on(table.paidAt),
-    foreignKey({
-      columns: [table.requestId, table.clinicId],
-      foreignColumns: [testRequests.id, testRequests.clinicId],
-      name: "payments_request_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.recordedBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "payments_recorder_same_clinic_fk",
-    }).onDelete("restrict"),
-    check("payments_amount_positive", sql`${table.amount} > 0`),
-  ],
-);
-
-export const specimens = pgTable(
-  "specimens",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestId: uuid("request_id")
-      .notNull()
-      .references(() => testRequests.id, { onDelete: "restrict" }),
-    specimenType: varchar("specimen_type", { length: 100 }).notNull(),
-    receivedBy: uuid("received_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    receivedAt: timestamp("received_at", { withTimezone: true }).defaultNow().notNull(),
-    notes: text("notes"),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    index("specimens_request_idx").on(table.requestId),
-    foreignKey({
-      columns: [table.requestId, table.clinicId],
-      foreignColumns: [testRequests.id, testRequests.clinicId],
-      name: "specimens_request_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.receivedBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "specimens_receiver_same_clinic_fk",
-    }).onDelete("restrict"),
-  ],
-);
-
-export const results = pgTable(
-  "results",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestItemId: uuid("request_item_id")
-      .notNull()
-      .unique()
-      .references(() => requestItems.id, { onDelete: "restrict" }),
-    numericValue: numeric("numeric_value", { precision: 14, scale: 4 }),
-    textValue: text("text_value"),
-    unit: varchar("unit", { length: 40 }),
-    referenceMinSnapshot: numeric("reference_min_snapshot", { precision: 14, scale: 4 }),
-    referenceMaxSnapshot: numeric("reference_max_snapshot", { precision: 14, scale: 4 }),
-    isAbnormal: boolean("is_abnormal").default(false).notNull(),
-    remarks: text("remarks"),
-    encodedBy: uuid("encoded_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    encodedAt: timestamp("encoded_at", { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    foreignKey({
-      columns: [table.requestItemId, table.clinicId],
-      foreignColumns: [requestItems.id, requestItems.clinicId],
-      name: "results_request_item_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.encodedBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "results_encoder_same_clinic_fk",
-    }).onDelete("restrict"),
-    check(
-      "results_exactly_one_value",
-      sql`num_nonnulls(${table.numericValue}, ${table.textValue}) = 1`,
-    ),
-    check(
-      "results_reference_order",
-      sql`${table.referenceMinSnapshot} IS NULL OR ${table.referenceMaxSnapshot} IS NULL OR ${table.referenceMinSnapshot} <= ${table.referenceMaxSnapshot}`,
-    ),
-  ],
-);
-
-export const resultReviews = pgTable(
-  "result_reviews",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestId: uuid("request_id")
-      .notNull()
-      .references(() => testRequests.id, { onDelete: "restrict" }),
-    reviewedBy: uuid("reviewed_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    decision: reviewDecision("decision").notNull(),
-    comments: text("comments"),
-    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("result_reviews_request_time_idx").on(table.requestId, table.reviewedAt),
-    foreignKey({
-      columns: [table.requestId, table.clinicId],
-      foreignColumns: [testRequests.id, testRequests.clinicId],
-      name: "result_reviews_request_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.reviewedBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "result_reviews_reviewer_same_clinic_fk",
-    }).onDelete("restrict"),
-  ],
-);
-
-export const requestStatusHistory = pgTable(
-  "request_status_history",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    requestId: uuid("request_id")
-      .notNull()
-      .references(() => testRequests.id, { onDelete: "restrict" }),
-    oldStatus: requestStatus("old_status"),
-    newStatus: requestStatus("new_status").notNull(),
-    changedBy: uuid("changed_by").references(() => users.id, { onDelete: "restrict" }),
-    changedAt: timestamp("changed_at", { withTimezone: true }).defaultNow().notNull(),
-    note: text("note"),
-  },
-  (table) => [
-    index("request_status_history_request_time_idx").on(table.requestId, table.changedAt),
-    foreignKey({
-      columns: [table.requestId, table.clinicId],
-      foreignColumns: [testRequests.id, testRequests.clinicId],
-      name: "status_history_request_same_clinic_fk",
-    }).onDelete("restrict"),
-    foreignKey({
-      columns: [table.changedBy, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "status_history_actor_same_clinic_fk",
-    }).onDelete("restrict"),
-  ],
-);
-
-export const auditLogs = pgTable(
-  "audit_logs",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    clinicId: uuid("clinic_id").notNull().references(() => clinics.id, { onDelete: "restrict" }),
-    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
-    action: varchar("action", { length: 100 }).notNull(),
-    entityType: varchar("entity_type", { length: 100 }).notNull(),
-    entityId: uuid("entity_id"),
-    details: jsonb("details").default({}).notNull(),
-    createdAt: createdAt(),
-  },
-  (table) => [
-    index("audit_logs_actor_time_idx").on(table.actorUserId, table.createdAt),
-    index("audit_logs_entity_idx").on(table.entityType, table.entityId),
-    foreignKey({
-      columns: [table.actorUserId, table.clinicId],
-      foreignColumns: [users.id, users.clinicId],
-      name: "audit_logs_actor_same_clinic_fk",
-    }).onDelete("restrict"),
-  ],
-);
+export const clinics = pgTable("clinics", {
+  id: id(), code: varchar("code", { length: 24 }).notNull(), name: varchar("name", { length: 180 }).notNull(),
+  registrationNumber: varchar("registration_number", { length: 100 }), email: varchar("email", { length: 254 }),
+  phone: varchar("phone", { length: 32 }), isActive: boolean("is_active").notNull().default(true),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const clinicBranches = pgTable("clinic_branches", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), code: varchar("code", { length: 24 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(), country: varchar("country", { length: 100 }).notNull(),
+  city: varchar("city", { length: 120 }).notNull(), houseNumber: varchar("house_number", { length: 80 }),
+  street: varchar("street", { length: 160 }), phone: varchar("phone", { length: 32 }), email: varchar("email", { length: 254 }),
+  isActive: boolean("is_active").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const users = pgTable("users", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), branchId: uuid("branch_id"), role: userRole("role").notNull(),
+  staffNumber: integer("staff_number").generatedAlwaysAsIdentity(), username: varchar("username", { length: 80 }), email: varchar("email", { length: 254 }),
+  passwordHash: varchar("password_hash", { length: 255 }), isActive: boolean("is_active").notNull().default(false),
+  mustChangePassword: boolean("must_change_password").notNull().default(true),
+  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const staffProfiles = pgTable("staff_profiles", {
+  userId: uuid("user_id").primaryKey(), clinicId: uuid("clinic_id").notNull(),
+  firstName: varchar("first_name", { length: 100 }).notNull(), middleName: varchar("middle_name", { length: 100 }),
+  lastName: varchar("last_name", { length: 100 }).notNull(), dateOfBirth: date("date_of_birth"), phone: varchar("phone", { length: 32 }),
+  email: varchar("email", { length: 254 }), country: varchar("country", { length: 100 }), city: varchar("city", { length: 120 }),
+  houseNumber: varchar("house_number", { length: 80 }), street: varchar("street", { length: 160 }), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const accountTokens = pgTable("account_tokens", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), userId: uuid("user_id").notNull(), tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  purpose: varchar("purpose", { length: 24 }).notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }), createdAt: createdAt(),
+});
+export const patients = pgTable("patients", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), branchId: uuid("branch_id"), portalUserId: uuid("portal_user_id"),
+  pid: varchar("pid", { length: 32 }).notNull(), firstName: varchar("first_name", { length: 100 }).notNull(),
+  middleName: varchar("middle_name", { length: 100 }), lastName: varchar("last_name", { length: 100 }).notNull(),
+  dateOfBirth: date("date_of_birth").notNull(), sex: varchar("sex", { length: 32 }).notNull(),
+  email: varchar("email", { length: 254 }), phone: varchar("phone", { length: 32 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(), city: varchar("city", { length: 120 }).notNull(),
+  houseNumber: varchar("house_number", { length: 80 }), street: varchar("street", { length: 160 }),
+  validIdType: varchar("valid_id_type", { length: 100 }).notNull(), validIdNumber: varchar("valid_id_number", { length: 120 }).notNull(),
+  registeredBy: uuid("registered_by").notNull(), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testCategories = pgTable("test_categories", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), name: varchar("name", { length: 120 }).notNull(), description: text("description"),
+  isActive: boolean("is_active").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testCatalog = pgTable("test_catalog", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), categoryId: uuid("category_id").notNull(), code: varchar("code", { length: 40 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(), description: text("description"), price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+  turnaroundMinutes: integer("turnaround_minutes"), isAvailable: boolean("is_available").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testSpecimenRequirements = pgTable("test_specimen_requirements", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), specimenType: varchar("specimen_type", { length: 100 }).notNull(),
+  collectionInstructions: text("collection_instructions"), minimumQuantity: numeric("minimum_quantity", { precision: 10, scale: 2 }),
+  quantityUnit: varchar("quantity_unit", { length: 40 }), isRequired: boolean("is_required").notNull().default(true),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testAnalytes = pgTable("test_analytes", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), key: varchar("key", { length: 80 }).notNull(),
+  label: varchar("label", { length: 160 }).notNull(), valueType: resultValueType("value_type").notNull(),
+  options: jsonb("options").notNull().default([]), unit: varchar("unit", { length: 40 }), sortOrder: integer("sort_order").notNull().default(0),
+  isRequired: boolean("is_required").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const referenceRanges = pgTable("reference_ranges", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), analyteId: uuid("analyte_id").notNull(), sex: varchar("sex", { length: 32 }),
+  minAgeDays: integer("min_age_days"), maxAgeDays: integer("max_age_days"),
+  lowerLimit: numeric("lower_limit", { precision: 14, scale: 4 }), upperLimit: numeric("upper_limit", { precision: 14, scale: 4 }),
+  unit: varchar("unit", { length: 40 }), guidance: text("guidance"), isActive: boolean("is_active").notNull().default(true),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testRequests = pgTable("test_requests", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), branchId: uuid("branch_id"), requestNumber: varchar("request_number", { length: 32 }).notNull(),
+  patientId: uuid("patient_id").notNull(), createdBy: uuid("created_by").notNull(), status: requestStatus("status").notNull().default("awaiting_payment"),
+  priority: varchar("priority", { length: 16 }).notNull().default("routine"), totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  assignedTechnologistId: uuid("assigned_technologist_id"), assignedPathologistId: uuid("assigned_pathologist_id"),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(), paidAt: timestamp("paid_at", { withTimezone: true }),
+  releasedAt: timestamp("released_at", { withTimezone: true }), cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancellationReason: text("cancellation_reason"), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const requestItems = pgTable("request_items", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), testId: uuid("test_id").notNull(),
+  testCodeSnapshot: varchar("test_code_snapshot", { length: 40 }).notNull(), testNameSnapshot: varchar("test_name_snapshot", { length: 160 }).notNull(),
+  categoryNameSnapshot: varchar("category_name_snapshot", { length: 120 }).notNull(), priceSnapshot: numeric("price_snapshot", { precision: 10, scale: 2 }).notNull(),
+  status: requestItemStatus("status").notNull().default("awaiting_specimen"), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const payments = pgTable("payments", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  method: paymentMethod("method").notNull().default("cash"), recordedBy: uuid("recorded_by").notNull(), paidAt: timestamp("paid_at", { withTimezone: true }).notNull().defaultNow(),
+  voidedAt: timestamp("voided_at", { withTimezone: true }), voidedBy: uuid("voided_by"), voidReason: text("void_reason"), createdAt: createdAt(),
+});
+export const invoices = pgTable("invoices", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), paymentId: uuid("payment_id").notNull(), invoiceNumber: varchar("invoice_number", { length: 64 }).notNull(), issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const specimens = pgTable("specimens", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), specimenType: varchar("specimen_type", { length: 100 }).notNull(),
+  attemptNumber: integer("attempt_number").notNull().default(1), replacesSpecimenId: uuid("replaces_specimen_id"), status: specimenStatus("status").notNull().default("expected"),
+  collectedAt: timestamp("collected_at", { withTimezone: true }), receivedAt: timestamp("received_at", { withTimezone: true }), receivedBy: uuid("received_by"),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }), rejectedAt: timestamp("rejected_at", { withTimezone: true }), rejectionReason: text("rejection_reason"),
+  notes: text("notes"), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const specimenRequestItems = pgTable("specimen_request_items", {
+  clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), specimenId: uuid("specimen_id").notNull(), requestItemId: uuid("request_item_id").notNull(),
+});
+export const resultSubmissions = pgTable("result_submissions", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), requestItemId: uuid("request_item_id").notNull(), specimenId: uuid("specimen_id").notNull(),
+  revisionNumber: integer("revision_number").notNull(), status: resultStatus("status").notNull().default("draft"), enteredBy: uuid("entered_by").notNull(),
+  enteredAt: timestamp("entered_at", { withTimezone: true }).notNull().defaultNow(), submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  pathologistInterpretation: text("pathologist_interpretation"), supersedesResultId: uuid("supersedes_result_id"), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const resultSubmissionSpecimens = pgTable("result_submission_specimens", {
+  clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), specimenId: uuid("specimen_id").notNull(),
+});
+export const resultValues = pgTable("result_values", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), analyteId: uuid("analyte_id").notNull(),
+  numericValue: numeric("numeric_value", { precision: 14, scale: 4 }), textValue: text("text_value"), selectValue: text("select_value"), booleanValue: boolean("boolean_value"),
+  unitSnapshot: varchar("unit_snapshot", { length: 40 }), lowerLimitSnapshot: numeric("lower_limit_snapshot", { precision: 14, scale: 4 }),
+  upperLimitSnapshot: numeric("upper_limit_snapshot", { precision: 14, scale: 4 }), isAbnormal: boolean("is_abnormal").notNull().default(false),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const resultReviews = pgTable("result_reviews", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), reviewedBy: uuid("reviewed_by").notNull(),
+  decision: reviewDecision("decision").notNull(), remarks: text("remarks"), requiresRetest: boolean("requires_retest").notNull().default(false), reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const requestStatusHistory = pgTable("request_status_history", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), oldStatus: requestStatus("old_status"),
+  newStatus: requestStatus("new_status").notNull(), changedBy: uuid("changed_by"), note: text("note"), changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const auditLogs = pgTable("audit_logs", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), actorUserId: uuid("actor_user_id"), action: varchar("action", { length: 100 }).notNull(),
+  entityType: varchar("entity_type", { length: 100 }).notNull(), entityId: uuid("entity_id"), details: jsonb("details").notNull().default({}), createdAt: createdAt(),
+});

@@ -6,11 +6,11 @@ Labstream is a web-based diagnostic laboratory and test result portal prototype.
 
 ```text
 backend/
-  src/                 Express API and Drizzle database schema
+  src/                 Express API, auth, and role-scoped route handlers
   supabase/schema.sql   Current end-to-end schema for a fresh Supabase database
   supabase/reset.sql    Destructive reset of named Labstream objects in public
   supabase/002_tenant_accounts.sql  Legacy upgrade for the earlier schema
-  drizzle/             Drizzle migration files
+  drizzle/             Legacy migration files; do not apply to current schema
 frontend/
   src/
     pages/              Role-based page folders and page components
@@ -23,7 +23,7 @@ frontend/
     index.css           Global CSS, Tailwind setup, and shared color variables
 ```
 
-The UI is still under development. `frontend/src/App.jsx` renders the shared `AppShell`, which contains the role-based Sidebar, PageHeader, and selected page area. Each role has a page folder with an `index.js` barrel file; pages are being built incrementally. The Medical Technologist role includes Work Queue, Specimens, and Results in Progress prototype flows with sample data held in page-level state; changes are not saved to the backend. The Administrator role includes an operations dashboard, staff accounts, test catalog, reference ranges, reports, and an audit log. Its forms and confirmation dialogs are prototype UI: the test catalog is stored in browser local storage, while staff and reference-range changes are held in page state. None of these changes are saved to the backend yet.
+The frontend uses the role-scoped backend API for authentication and the connected workflow pages. `frontend/src/App.jsx` checks the session and renders the role-based `AppShell` after sign-in. API requests use an HttpOnly session cookie; database credentials remain in the backend environment.
 
 ## Prerequisites
 
@@ -32,64 +32,98 @@ The UI is still under development. `frontend/src/App.jsx` renders the shared `Ap
 
 ## Run locally
 
-Install dependencies once in each app folder:
+### 1. Prepare the database
+
+Use a disposable Supabase project for practice. In its SQL Editor, run `backend/supabase/schema.sql` once on a fresh database. Do not run `reset.sql` unless you intend to remove the Labstream schema and its data.
+
+To create the first clinic administrator, edit and run `backend/supabase/bootstrap_first_admin.sql`. Copy the returned one-time activation code somewhere private; it is only shown once. Activate the administrator through the app and choose a password.
+
+### 2. Configure the API
+
+In PowerShell from the repository root:
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+```
+
+Edit `backend/.env` and set `DATABASE_ENABLED=true`, `DATABASE_URL` to the Supabase Postgres connection string, and `AUTH_TOKEN_SECRET` to a random secret of at least 32 bytes. For example, generate a secret with:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"
+```
+
+Keep the connection string and secret private. Never put database credentials in the frontend environment.
+
+Install backend dependencies once:
 
 ```powershell
 cd backend
 npm install
 ```
 
+Start the API in its own terminal:
+
 ```powershell
+cd backend
+npm run dev
+```
+
+The API listens at `http://localhost:3000`. Confirm the database connection by opening `http://localhost:3000/health`; expected response is `{"status":"ok","database":"connected"}`.
+
+### 3. Configure and start the frontend
+
+In a second terminal from the repository root:
+
+```powershell
+Copy-Item frontend/.env.example frontend/.env
 cd frontend
 npm install
-```
-
-Create `backend/.env` from the example and fill in your Supabase PostgreSQL connection string:
-
-```powershell
-cd backend
-Copy-Item .env.example .env
-```
-
-Set these values in `backend/.env`:
-
-```env
-DATABASE_URL=postgresql://...
-PORT=3000
-FRONTEND_ORIGIN=http://localhost:5173
-```
-
-Keep `.env` and database credentials private. Never put the database connection string in frontend code.
-
-### Set up the database
-
-For a **new, empty Supabase database**, run only `backend/supabase/schema.sql` in Supabase SQL Editor. It includes clinics and branches, roles, test/analyte catalog, requests, payment queue, invoices, specimen attempts, revisioned per-test results and review history.
-
-To intentionally discard current Labstream data, review and run `backend/supabase/reset.sql`, then run `backend/supabase/schema.sql`. The reset drops named Labstream objects in `public` and does not drop Supabase auth/storage schemas. It uses `RESTRICT`, so an unlisted dependent object causes an error instead of being silently removed. It permanently deletes Labstream records. Export anything you need first. Do not run the legacy `002_tenant_accounts.sql` or checked-in legacy Drizzle migrations with this fresh schema. Backend/database wiring and `backend/src/db/schema.js` have not yet been reconciled with this SQL design.
-
-### Start the API
-
-In a terminal opened at `backend/`:
-
-```powershell
 npm run dev
 ```
 
-The API listens at `http://localhost:3000`. Its health endpoint is `http://localhost:3000/health`.
+The example frontend environment points to `http://localhost:3000`. Keep that value for desktop use. Open the Vite URL printed in the terminal, usually `http://localhost:5173`.
 
-### Start the frontend
+The API's `FRONTEND_ORIGIN` must match the browser origin exactly (normally `http://localhost:5173`). If you change ports, update the backend setting and restart the API. Keep both terminals running while using the site.
 
-In a second terminal opened at `frontend/`:
+### 4. Sign in and configure a test clinic
+
+Sign in as the activated administrator. Add accounts for the cashier, medical technologist, and pathologist from Staff Accounts; each person must activate their account with their one-time code and set a password. Add the tests, required specimen types, result fields, prices, and turnaround times in Test Catalog before setting tests available. Add verified clinic-specific reference ranges in Reference Ranges. The application does not seed patients, catalog entries, or requests automatically.
+
+For a phone on the same Wi-Fi network, the frontend and API must both be reachable through the computer's LAN address. Set Vite to listen on the network interface (`npm run dev -- --host 0.0.0.0`), set `VITE_API_URL` to `http://<computer-LAN-IP>:3000`, and set the backend `FRONTEND_ORIGIN` to the phone's exact frontend origin. Restart both servers after changing environment values. This is development access only; do not expose the development server or database to the public internet.
+
+### Database status
+
+The backend is configured for Supabase and exposes `/health` as a read-only connection check. A healthy response reports `database: connected`. The frontend does not seed demo records; empty database tables therefore produce empty role views. Do not run reset SQL to troubleshoot a connection. `backend/supabase/reset.sql` is destructive; review [backend/README.md](backend/README.md) before changing the schema.
+
+If `/health` reports `unavailable`, check the Supabase URL, password encoding, network access, and that `DATABASE_ENABLED=true`. If the browser says “Failed to fetch,” confirm both servers are running, the frontend API URL is reachable from the browser, and the backend `FRONTEND_ORIGIN` matches the page origin.
+
+## System testing instructions
+
+Use a disposable clinic/database for end-to-end practice. The app has no automated end-to-end test suite at this point; the steps below are a manual workflow checklist. Create and activate each role account before starting, and keep a separate browser profile/incognito window signed in as another role when checking cross-role updates.
+
+1. **Startup and authentication:** verify `/health`; sign in and out as Administrator, Cashier, Medical Technologist, and Pathologist. Confirm an inactive account cannot sign in and an activated account can.
+2. **Administrator setup:** create a category and test with a specimen requirement and result analyte; configure price/turnaround and make it available. Add a reference range. Verify the catalog and audit log update, and that another signed-in role sees catalog changes without reloading.
+3. **Cashier registration/request:** register a patient, create a request with multiple tests, and confirm it appears in Queue as awaiting payment. Check the patient and test details, total, and request number.
+4. **Payment and assignment:** process payment and verify an invoice is created, the unpaid queue entry disappears, and the assigned technologist sees the request in Work Queue without refreshing.
+5. **Specimen handling:** mark required specimens received, then accept one test specimen and reject another with a reason. Confirm accepted work appears in Results in Progress and rejected work follows the recollection flow with a traceable attempt.
+6. **Technologist results:** enter numeric, dropdown, and text results; save a draft, revise it, and submit only when required results are complete. For a multi-test request, check that tests stay grouped under one request and patient.
+7. **Pathologist review:** confirm submitted results appear in Pending Validation. Add interpretations and approve one result; return another with a required remark and retest/recollection selection. Confirm the technologist sees the returned item and the request is not fully released prematurely.
+8. **Correction and release:** enter corrected/recollected results and resubmit. Approve the remaining tests. Confirm the patient sees the released request in My Results and each individual test in Test History; verify unreleased results do not expose result details.
+9. **Audit and tenant scope:** check audit events for staff/catalog/workflow actions. If a second clinic exists, confirm its accounts cannot see the first clinic's patients, requests, catalog, or results.
+10. **Responsive/realtime behavior:** repeat key queue transitions with the receiving role open in another browser profile; verify the visible worklist updates automatically. Check mobile-width layout and the phone-on-Wi-Fi setup separately from desktop localhost.
+
+After manual workflow checks, optional frontend static checks can be run from `frontend/`:
 
 ```powershell
-npm run dev
+npm run build
+npm run lint
 ```
 
-Open the local URL printed by Vite, usually `http://localhost:5173`. Vite updates the page as you save files.
+These checks do not replace the role-based workflow above. Do not use production patient data for practice.
 
 ## Preview a page or component
 
-`frontend/src/App.jsx` renders `AppShell`. The shell selects the page component using the current role and selected Sidebar item. To preview a role, temporarily pass its role key:
+In normal mode, sign in with an account provisioned for your clinic. The shell selects the role from the authenticated backend session. To preview a page without authentication while doing isolated UI work, temporarily replace the root render with an `AppShell`:
 
 ```jsx
 import AppShell from './components/layout/AppShell.jsx'
@@ -99,7 +133,7 @@ export default function App() {
 }
 ```
 
-Use one of the supported role keys: `cashier`, `medical_technologist`, `pathologist`, `administrator`, or `patient`. `App.jsx` currently selects the Administrator view; `AppShell` defaults to `administrator` if no role is passed. To preview a particular page within that role, click its Sidebar item. The PageHeader title and description come from that item's `label` and `description` in `Sidebar.jsx`.
+Use one of the supported role keys: `cashier`, `medical_technologist`, `pathologist`, `administrator`, or `patient`. Click a Sidebar item to preview its page. The PageHeader title and description come from that item's `label` and `description` in `Sidebar.jsx`. Restore the authenticated `App.jsx` after isolated preview work.
 
 To preview an individual component outside the role-based page flow, import it and render it directly. Components may need props or surrounding layout:
 
@@ -158,14 +192,14 @@ The current Sidebar content by role is:
 | `administrator` | Dashboard · Staff Accounts · Test Catalog · Reference Ranges · Reports · Audit Log |
 | `patient` | My Results · Test History |
 
-The icons are SVG files from `frontend/src/assets/`. Selecting a Sidebar item updates the active item and shows the matching component from that role's page map in `AppShell.jsx`; the app does not use a routing library yet. A Log out button appears at the bottom of the Sidebar. `AppShell` forwards its optional `onLogout` callback to that button; authentication is not wired yet, so `App.jsx` currently supplies no sign-out handler. Sidebar visibility is only a UI convenience—backend endpoints must still enforce each role's permissions. The role passed to `AppShell` is currently a development preview value; authentication should supply it after login, and the backend must still enforce role permissions.
+The icons are SVG files from `frontend/src/assets/`. Selecting a Sidebar item updates the active item and shows the matching component from that role's page map in `AppShell.jsx`; the app does not use a routing library yet. A Log out button appears at the bottom of the Sidebar. `App.jsx` obtains the role and display name from the authenticated backend session, and its logout action clears the server session. The backend independently enforces role permissions.
 
 ### Administrator management pages
 
 - **Staff Accounts:** add a staff member through a modal with personal, address/contact, and role sections. Account activation and deactivation require confirmation. Administrator is not an assignable staff post from this page.
-- **Test Catalog:** use **Add Test/Category** to switch between test and category forms. Additions keep the modal open and clear the form for another entry; test edits and deletions use dialogs. The Test Catalog is shared with the Reference Ranges test dropdown and saved in browser local storage for prototyping.
+- **Test Catalog:** use **Test/Category** to switch between catalog forms. Changes are sent to the backend and the shared clinic catalog refreshes across roles. New tests require a specimen type and an initial result analyte.
 - **Reference Ranges:** add and edit ranges in a modal; confirm before deleting. Its test choices come from the Test Catalog.
-- Staff, Test Catalog, and Reference Ranges tables show up to 10 rows per page. Search and filters operate on sample data.
+- Staff, Test Catalog, and Reference Ranges tables show up to 10 rows per page. These views load persisted clinic data from the API.
 - Table header backgrounds across the app use the Sidebar's color token, `--sidebar-background` in `frontend/src/index.css`.
 
 ### Shared table layout rules
@@ -227,16 +261,29 @@ Then classes such as `bg-primary`, `text-primary`, and `bg-surface` can use thos
 
 ## Database, clinics, and account security
 
-- The Drizzle schema is in `backend/src/db/schema.js`.
-- The backend connects to Postgres using `DATABASE_URL` and currently requires SSL.
-- Each clinic or clinic branch is one isolated tenant/site. This supports separate online deployments while retaining the proposal's single-laboratory scope; it does not add multi-branch administration within one clinic account.
-- On a new, empty Supabase project, run `backend/supabase/schema.sql`. To reset the app database, review and run `backend/supabase/reset.sql`, then rerun the schema. The legacy `002_tenant_accounts.sql` is not part of this workflow.
+- The canonical database schema is `backend/supabase/schema.sql`. `backend/src/db/schema.js` is deprecated legacy reference and must not be used to generate or apply migrations.
+- The backend defaults to `DATABASE_ENABLED=false`; the local backend `.env` must explicitly set it to `true` and provide `DATABASE_URL` and `AUTH_TOKEN_SECRET`. The app's `/health` performs a read-only database check. The connection requires SSL.
+- Clinics are tenants, and branches belong to clinics. Backend queries must scope by clinic and, where applicable, branch.
+- On a new, empty Supabase project, run `backend/supabase/schema.sql`. `backend/supabase/reset.sql` is destructive and only for a disposable database. The legacy `002_tenant_accounts.sql` is not part of the current workflow.
 - The SQL enables RLS without policies, so direct Supabase Data API access remains denied. Do not add broad policies just to make prototype UI work. When backend access is implemented, scope every read and write to the authenticated user's clinic and role, then design RLS policies to match that trust model.
 - Clinic creation and the first Administrator should be a controlled one-time onboarding operation. Do not expose unrestricted public clinic/admin creation. The Administrator can manage staff and catalog data only inside their own clinic.
 - Staff sign in with their clinic code, generated username, and password; patients use their clinic code, PID, and password. Staff usernames use a stable tenant-scoped form such as `CSH-000021`, `MLT-000022`, `PTH-000023`, or `ADM-000024`. The numeric staff number is generated by the database. The name suffix from the original example is omitted because it exposes personal data and becomes stale when a name changes.
 - Do not issue a permanent password assembled from predictable character counts. Create a cryptographically random, one-time activation code (and one-time reset codes), store only its SHA-256 digest in `account_tokens`, set an expiry and consume it once. Deliver it privately; activation requires the user to choose a password, which the backend hashes with Argon2id. Do not put codes on public receipts. A patient PID is an identifier, never a password. Apply rate limits, expiry, account disablement, and audit logging in the future auth endpoints.
 - Pending accounts may have a null `password_hash`; active accounts must have an Argon2id hash. `must_change_password` supports the activation/forced-change flow, and `last_sign_in_at` supports staff account reporting.
-- Keep privileged database credentials on the backend. The backend must enforce authentication, clinic isolation, role permissions, and valid workflow transitions; RLS does not replace those checks. The current API/UI is still a prototype and these authentication and tenant controls are not wired yet.
+- Keep privileged database credentials on the backend. The frontend uses the role-scoped API, while the backend enforces authentication, clinic isolation, role permissions, assignments, and valid workflow transitions; RLS does not replace those checks.
+
+### Empty database and first Administrator
+
+- The UI no longer starts with sample patients, requests, test catalog entries, staff, reference ranges, results, or audit events. On its next load, it clears the two legacy browser-storage keys used by the old sample catalog and cashier transactions.
+- To provision a clinic and its first Administrator on a fresh schema, run `backend/supabase/bootstrap_first_admin.sql` in Supabase SQL Editor. Edit the clinic code/name and administrator email/name first. The query returns the generated username and a one-time activation code; copy the code immediately and keep it private. It is stored in the database only as a hash and expires after 24 hours.
+- The administrator account is pending until activated. The login screen supports sign-in and first activation with the one-time code, after which the user chooses a password of at least 12 characters.
+- The role pages now use API-backed records; they do not create fallback demo records. With empty tables, lists and charts show their empty states. Populate a disposable clinic through the UI to observe workflow states; no automatic seed data is added.
+
+### Clear workflow data but keep accounts
+
+For a practice reset that preserves clinic accounts, run `backend/supabase/clear_operational_data_keep_accounts.sql` in Supabase SQL Editor. Review the file before execution. It deletes requests, results, specimens, payments/invoices, audit events, test catalog/reference setup, and walk-in patients without portal accounts. It preserves clinic and branch records, user accounts, staff profiles, activation tokens, and patient records linked to patient portal accounts (those patient identities are needed for PID-based login). This reset has not been run by the application and cannot be undone without a backup.
+
+For a more complete implementation handoff, see [SYSTEM_STATE_AND_PROGRESS.md](SYSTEM_STATE_AND_PROGRESS.md). The standard diagnostic result-field specification is in [backend/supabase/standard-test-result-design.md](backend/supabase/standard-test-result-design.md); those tests are not automatically seeded into new clinics yet.
 
 ### Clinic and account workflow
 
@@ -250,7 +297,7 @@ Then classes such as `bg-primary`, `text-primary`, and `bg-surface` can use thos
 
 The database includes `cashier_payment_queue`, a view over unpaid requests. It is the cashier payment worklist, not a physical waiting-room ticket queue. Catalog entries referenced by historical requests must be deactivated or relocated, not hard-deleted. Request item snapshots preserve the test, category, and price used at the time of payment.
 
-RLS is enabled without client policies, so direct Supabase Data API access is denied until policies are deliberately added. Keep privileged credentials server-side. The backend must enforce clinic/branch scope, roles, assignments, and valid workflow transitions. The SQL describes the target schema; the current UI remains prototype data and is not connected to it.
+RLS is enabled without client policies, so direct Supabase Data API access is denied until policies are deliberately added. Keep privileged credentials server-side. The backend enforces clinic/branch scope, roles, assignments, and valid workflow transitions. Browser requests go through the API and do not access Supabase directly.
 
 ## Useful commands
 
@@ -261,8 +308,4 @@ npm run build
 npm run lint
 ```
 
-Generate a Drizzle migration for review from `backend/` (do not apply it to Supabase until it is reconciled with the SQL setup path):
-
-```powershell
-npm run db:generate
-```
+For API configuration, routes, and database notes, see [backend/README.md](backend/README.md).
