@@ -26,13 +26,13 @@ drop table if exists
   public.reference_ranges,
   public.test_analytes,
   public.test_specimen_requirements,
+  public.test_category_memberships,
   public.test_catalog,
   public.test_categories,
   public.patients,
   public.account_tokens,
   public.staff_profiles,
   public.users,
-  public.clinic_branches,
   public.clinics
 restrict;
 

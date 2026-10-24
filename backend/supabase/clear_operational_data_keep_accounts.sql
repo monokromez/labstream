@@ -1,6 +1,6 @@
 -- Clear Labstream operational/configuration data while retaining accounts.
--- Run only when you intentionally want to reset a practice clinic's workflow.
--- Keeps: clinics, clinic_branches, users, staff_profiles, account_tokens.
+-- Run only when you intentionally want to reset the single laboratory's practice workflow.
+-- Keeps: the single laboratory record, users, staff_profiles, account_tokens.
 -- Patient rows linked to portal accounts are retained because login resolves
 -- patient PID through patients; unlinked walk-in patient records are removed.
 -- This does not drop tables, types, functions, views, triggers, or RLS settings.
@@ -29,6 +29,7 @@ delete from public.patients
 delete from public.reference_ranges;
 delete from public.test_analytes;
 delete from public.test_specimen_requirements;
+delete from public.test_category_memberships;
 delete from public.test_catalog;
 delete from public.test_categories;
 

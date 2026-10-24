@@ -1,5 +1,5 @@
 import {
-  boolean, date, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid, varchar,
+  bigint, boolean, date, integer, jsonb, numeric, pgEnum, pgTable, smallint, text, timestamp, uniqueIndex, uuid, varchar,
 } from "drizzle-orm/pg-core";
 
 // Runtime Drizzle model mirroring supabase/schema.sql. That SQL remains
@@ -15,23 +15,17 @@ export const specimenStatus = pgEnum("specimen_status", ["expected", "received",
 export const resultValueType = pgEnum("result_value_type", ["numeric", "text", "select", "boolean"]);
 export const resultStatus = pgEnum("result_status", ["draft", "submitted", "returned", "approved"]);
 export const reviewDecision = pgEnum("review_decision", ["approved", "returned"]);
-export const paymentMethod = pgEnum("payment_method", ["cash"]);
+export const paymentMethod = pgEnum("payment_method", ["cash", "waiver"]);
 
 export const clinics = pgTable("clinics", {
   id: id(), code: varchar("code", { length: 24 }).notNull(), name: varchar("name", { length: 180 }).notNull(),
+  instanceSlot: smallint("instance_slot").notNull().default(1).unique(),
   registrationNumber: varchar("registration_number", { length: 100 }), email: varchar("email", { length: 254 }),
   phone: varchar("phone", { length: 32 }), isActive: boolean("is_active").notNull().default(true),
   createdAt: createdAt(), updatedAt: updatedAt(),
 });
-export const clinicBranches = pgTable("clinic_branches", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), code: varchar("code", { length: 24 }).notNull(),
-  name: varchar("name", { length: 180 }).notNull(), country: varchar("country", { length: 100 }).notNull(),
-  city: varchar("city", { length: 120 }).notNull(), houseNumber: varchar("house_number", { length: 80 }),
-  street: varchar("street", { length: 160 }), phone: varchar("phone", { length: 32 }), email: varchar("email", { length: 254 }),
-  isActive: boolean("is_active").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
-});
 export const users = pgTable("users", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), branchId: uuid("branch_id"), role: userRole("role").notNull(),
+  id: id(), clinicId: uuid("clinic_id").notNull(), role: userRole("role").notNull(),
   staffNumber: integer("staff_number").generatedAlwaysAsIdentity(), username: varchar("username", { length: 80 }), email: varchar("email", { length: 254 }),
   passwordHash: varchar("password_hash", { length: 255 }), isActive: boolean("is_active").notNull().default(false),
   mustChangePassword: boolean("must_change_password").notNull().default(true),
@@ -50,7 +44,7 @@ export const accountTokens = pgTable("account_tokens", {
   consumedAt: timestamp("consumed_at", { withTimezone: true }), createdAt: createdAt(),
 });
 export const patients = pgTable("patients", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), branchId: uuid("branch_id"), portalUserId: uuid("portal_user_id"),
+  id: id(), clinicId: uuid("clinic_id").notNull(), portalUserId: uuid("portal_user_id"),
   pid: varchar("pid", { length: 32 }).notNull(), firstName: varchar("first_name", { length: 100 }).notNull(),
   middleName: varchar("middle_name", { length: 100 }), lastName: varchar("last_name", { length: 100 }).notNull(),
   dateOfBirth: date("date_of_birth").notNull(), sex: varchar("sex", { length: 32 }).notNull(),
@@ -68,6 +62,10 @@ export const testCatalog = pgTable("test_catalog", {
   id: id(), clinicId: uuid("clinic_id").notNull(), categoryId: uuid("category_id").notNull(), code: varchar("code", { length: 40 }).notNull(),
   name: varchar("name", { length: 160 }).notNull(), description: text("description"), price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   turnaroundMinutes: integer("turnaround_minutes"), isAvailable: boolean("is_available").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testCategoryMemberships = pgTable("test_category_memberships", {
+  clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), categoryId: uuid("category_id").notNull(),
+  createdAt: createdAt(),
 });
 export const testSpecimenRequirements = pgTable("test_specimen_requirements", {
   id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), specimenType: varchar("specimen_type", { length: 100 }).notNull(),
@@ -89,14 +87,16 @@ export const referenceRanges = pgTable("reference_ranges", {
   createdAt: createdAt(), updatedAt: updatedAt(),
 });
 export const testRequests = pgTable("test_requests", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), branchId: uuid("branch_id"), requestNumber: varchar("request_number", { length: 32 }).notNull(),
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestNumber: varchar("request_number", { length: 32 }).notNull(),
   patientId: uuid("patient_id").notNull(), createdBy: uuid("created_by").notNull(), status: requestStatus("status").notNull().default("awaiting_payment"),
   priority: varchar("priority", { length: 16 }).notNull().default("routine"), totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
   assignedTechnologistId: uuid("assigned_technologist_id"), assignedPathologistId: uuid("assigned_pathologist_id"),
+  queueTicket: bigint("queue_ticket", { mode: "number" }).generatedAlwaysAsIdentity(), queueCalledAt: timestamp("queue_called_at", { withTimezone: true }),
+  queueCalledBy: uuid("queue_called_by"),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(), paidAt: timestamp("paid_at", { withTimezone: true }),
   releasedAt: timestamp("released_at", { withTimezone: true }), cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
   cancellationReason: text("cancellation_reason"), createdAt: createdAt(), updatedAt: updatedAt(),
-});
+}, (table) => [uniqueIndex("test_requests_queue_ticket_uidx").on(table.queueTicket)]);
 export const requestItems = pgTable("request_items", {
   id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), testId: uuid("test_id").notNull(),
   testCodeSnapshot: varchar("test_code_snapshot", { length: 40 }).notNull(), testNameSnapshot: varchar("test_name_snapshot", { length: 160 }).notNull(),

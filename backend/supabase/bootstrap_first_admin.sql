@@ -1,4 +1,4 @@
--- Create one demo clinic and its first Administrator after schema.sql.
+-- Create the single laboratory record and its first Administrator after schema.sql.
 -- This creates NO patients, tests, requests, specimens, results, or other demo data.
 -- Edit the clinic name/code and email before running. Run only once per fresh DB.
 -- The temporary output includes a one-time activation code; copy it privately.
@@ -8,7 +8,7 @@ with activation_secret as (
 ),
 clinic_row as (
   insert into public.clinics (code, name)
-  values ('LABSTREAM-DEMO', 'Labstream Demo Clinic')
+  values ('LABSTREAM-DEMO', 'Labstream Diagnostic Laboratory')
   returning id, code
 ),
 admin_row as (
@@ -29,7 +29,7 @@ token_row as (
     from admin_row a cross join activation_secret s
   returning user_id, expires_at
 )
-select c.code, a.username, s.code, t.expires_at
+select c.name as laboratory_name, a.username, s.code as activation_code, t.expires_at
   from clinic_row c
   join admin_row a on a.clinic_id = c.id
   join profile_row p on p.user_id = a.id

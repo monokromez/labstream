@@ -1,7 +1,7 @@
 -- Labstream end-to-end workflow schema (fresh Supabase project).
 -- Run reset.sql only when intentionally discarding Labstream data, then run this file.
 -- Do not expose password_hash or account_tokens through client APIs. Backend code
--- must enforce roles, clinic scope, assignments, validation, and state transitions.
+-- must enforce roles, the single-laboratory scope, assignments, validation, and state transitions.
 
 create extension if not exists pgcrypto;
 
@@ -12,10 +12,11 @@ create type public.specimen_status as enum ('expected', 'received', 'accepted', 
 create type public.result_value_type as enum ('numeric', 'text', 'select', 'boolean');
 create type public.result_status as enum ('draft', 'submitted', 'returned', 'approved');
 create type public.review_decision as enum ('approved', 'returned');
-create type public.payment_method as enum ('cash');
+create type public.payment_method as enum ('cash', 'waiver');
 
 create table public.clinics (
   id uuid primary key default gen_random_uuid(),
+  instance_slot smallint not null default 1 unique check (instance_slot = 1),
   code varchar(24) not null unique,
   name varchar(180) not null,
   registration_number varchar(100),
@@ -24,21 +25,9 @@ create table public.clinics (
   created_at timestamptz not null default now(), updated_at timestamptz not null default now()
 );
 
-create table public.clinic_branches (
-  id uuid primary key default gen_random_uuid(),
-  clinic_id uuid not null references public.clinics(id) on delete restrict,
-  code varchar(24) not null, name varchar(180) not null,
-  country varchar(100) not null, city varchar(120) not null,
-  house_number varchar(80), street varchar(160), phone varchar(32), email varchar(254),
-  is_active boolean not null default true,
-  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (clinic_id, code), unique (id, clinic_id)
-);
-
 create table public.users (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  branch_id uuid,
   role public.user_role not null,
   staff_number integer generated always as identity,
   username varchar(80), email varchar(254), password_hash varchar(255),
@@ -48,7 +37,6 @@ create table public.users (
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id),
   unique (clinic_id, username), unique (clinic_id, staff_number), unique (clinic_id, email),
-  foreign key (branch_id, clinic_id) references public.clinic_branches(id, clinic_id) on delete restrict,
   check ((role = 'patient') or (username is not null and email is not null))
 );
 
@@ -90,7 +78,6 @@ create index account_tokens_user_idx on public.account_tokens(user_id, purpose, 
 create table public.patients (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  branch_id uuid,
   portal_user_id uuid unique,
   pid varchar(32) not null,
   first_name varchar(100) not null, middle_name varchar(100), last_name varchar(100) not null,
@@ -102,7 +89,6 @@ create table public.patients (
   registered_by uuid not null,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id), unique (clinic_id, pid),
-  foreign key (branch_id, clinic_id) references public.clinic_branches(id, clinic_id) on delete restrict,
   foreign key (portal_user_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
   foreign key (registered_by, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
@@ -130,6 +116,18 @@ create table public.test_catalog (
   foreign key (category_id, clinic_id) references public.test_categories(id, clinic_id) on delete restrict
 );
 create index test_catalog_category_idx on public.test_catalog(clinic_id, category_id, is_available);
+
+-- A canonical billable test may be browsed under multiple categories. The
+-- category_id above remains its primary category for historical snapshots.
+create table public.test_category_memberships (
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  test_id uuid not null, category_id uuid not null,
+  created_at timestamptz not null default now(),
+  primary key (test_id, category_id),
+  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  foreign key (category_id, clinic_id) references public.test_categories(id, clinic_id) on delete restrict
+);
+create index test_category_memberships_category_idx on public.test_category_memberships(clinic_id, category_id, test_id);
 
 -- Tests may require more than one specimen. This relation lets payment create
 -- the correct specimen work items for each requested test.
@@ -178,7 +176,6 @@ create index reference_ranges_analyte_idx on public.reference_ranges(analyte_id,
 create table public.test_requests (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  branch_id uuid,
   request_number varchar(32) not null,
   patient_id uuid not null,
   created_by uuid not null,
@@ -187,50 +184,53 @@ create table public.test_requests (
   total_amount numeric(10,2) not null default 0 check (total_amount >= 0),
   assigned_technologist_id uuid,
   assigned_pathologist_id uuid,
+  queue_ticket bigint generated always as identity,
+  queue_called_at timestamptz,
+  queue_called_by uuid,
   requested_at timestamptz not null default now(), paid_at timestamptz,
   released_at timestamptz, cancelled_at timestamptz, cancellation_reason text,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (id, clinic_id), unique (clinic_id, request_number),
-  foreign key (branch_id, clinic_id) references public.clinic_branches(id, clinic_id) on delete restrict,
+  unique (id, clinic_id), unique (clinic_id, request_number), unique (queue_ticket),
   foreign key (patient_id, clinic_id) references public.patients(id, clinic_id) on delete restrict,
   foreign key (created_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
   foreign key (assigned_technologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
-  foreign key (assigned_pathologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict
+  foreign key (assigned_pathologist_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (queue_called_by, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
 
--- Assignment foreign keys prove tenant membership; this trigger additionally
--- verifies that assigned accounts have the correct active role and branch.
+-- Assignment foreign keys prove laboratory membership; this trigger additionally
+-- verifies that assigned accounts have the correct active role.
 create function public.validate_request_assignments() returns trigger language plpgsql as $$
-declare assigned_role public.user_role; assigned_active boolean; assigned_branch uuid;
+declare assigned_role public.user_role; assigned_active boolean;
 begin
   if new.assigned_technologist_id is not null then
-    select role, is_active, branch_id into assigned_role, assigned_active, assigned_branch
+    select role, is_active into assigned_role, assigned_active
       from public.users where id = new.assigned_technologist_id and clinic_id = new.clinic_id;
     if assigned_role <> 'medical_technologist' or not assigned_active then
       raise exception 'Assigned technologist must be an active medical technologist in this clinic';
     end if;
-    if assigned_branch is not null and assigned_branch is distinct from new.branch_id then
-      raise exception 'Assigned technologist must belong to the request branch';
-    end if;
   end if;
   if new.assigned_pathologist_id is not null then
-    select role, is_active, branch_id into assigned_role, assigned_active, assigned_branch
+    select role, is_active into assigned_role, assigned_active
       from public.users where id = new.assigned_pathologist_id and clinic_id = new.clinic_id;
     if assigned_role <> 'pathologist' or not assigned_active then
       raise exception 'Assigned pathologist must be an active pathologist in this clinic';
     end if;
-    if assigned_branch is not null and assigned_branch is distinct from new.branch_id then
-      raise exception 'Assigned pathologist must belong to the request branch';
-    end if;
   end if;
   return new;
 end $$;
-create trigger test_requests_validate_assignments before insert or update of assigned_technologist_id, assigned_pathologist_id, branch_id
+create trigger test_requests_validate_assignments before insert or update of assigned_technologist_id, assigned_pathologist_id
 on public.test_requests for each row execute function public.validate_request_assignments();
 create index test_requests_patient_idx on public.test_requests(patient_id, requested_at desc);
 create index test_requests_status_idx on public.test_requests(clinic_id, status, requested_at);
 create unique index test_requests_one_unpaid_per_patient
   on public.test_requests(clinic_id, patient_id) where status = 'awaiting_payment';
+create unique index test_requests_one_called_per_laboratory
+  on public.test_requests(clinic_id)
+  where status = 'awaiting_payment' and queue_called_at is not null;
+create index test_requests_queue_order_idx
+  on public.test_requests(clinic_id, requested_at, queue_ticket)
+  where status = 'awaiting_payment';
 
 create table public.request_items (
   id uuid primary key default gen_random_uuid(),
@@ -260,7 +260,7 @@ create table public.payments (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
   request_id uuid not null unique,
-  amount numeric(10,2) not null check (amount > 0),
+  amount numeric(10,2) not null check (amount >= 0),
   method public.payment_method not null default 'cash',
   recorded_by uuid not null, paid_at timestamptz not null default now(),
   voided_at timestamptz, voided_by uuid, void_reason text,
@@ -471,13 +471,13 @@ end $$;
 -- Deliberately enable RLS without client policies. Until policies are designed,
 -- client-side Supabase Data API access is denied; privileged access stays server-side.
 alter table public.clinics enable row level security;
-alter table public.clinic_branches enable row level security;
 alter table public.users enable row level security;
 alter table public.staff_profiles enable row level security;
 alter table public.account_tokens enable row level security;
 alter table public.patients enable row level security;
 alter table public.test_categories enable row level security;
 alter table public.test_catalog enable row level security;
+alter table public.test_category_memberships enable row level security;
 alter table public.test_specimen_requirements enable row level security;
 alter table public.test_analytes enable row level security;
 alter table public.reference_ranges enable row level security;
