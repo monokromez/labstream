@@ -14,16 +14,16 @@ npm run dev
 
 ## Implemented API surface
 
-- Authentication: clinic code plus staff username or patient PID, Argon2id password verification, one-time account activation codes, forced password change, current-user lookup, and logout. Sessions use an HttpOnly cookie.
-- Shared reads: clinic-scoped test catalog and patient search.
-- Cashier: patient registration and portal activation, request creation, unpaid queue, cash processing/payment/invoice creation, cancellation of unpaid requests, and invoice listing.
+- Authentication: staff username or patient PID, Argon2id password verification, one-time account activation codes, forced password change, current-user lookup, and logout. Sessions use an HttpOnly cookie. The deployment has one laboratory; users do not select a clinic at sign-in.
+- Shared reads: laboratory-scoped test catalog and patient search.
+- Cashier: patient registration and portal activation, request creation, persistent queue tickets and call state, cash or zero-fee waiver processing, invoice creation, cancellation of unpaid requests, and invoice listing.
 - Administrator: dashboard summaries and test-volume series, role-filtered audit-log reads, staff provisioning and status changes, test/category catalog management, and reference-range management.
 - Medical technologist: assigned work queue, specimen receipt/accept/reject, typed result drafts, and request result submission.
 - Pathologist: assigned pending/returned/released request lists and per-test review, interpretation, return, retest, and release workflow.
 - Patient: request-level released-result access and per-test history.
-- Realtime: authenticated Socket.IO sessions join only their clinic room. Catalog changes emit `catalog:changed`; subscribing screens should re-fetch the catalog. Frontend helper is `subscribeToCatalogChanges` in `frontend/src/api/client.js`.
+- Realtime: authenticated Socket.IO sessions join the single laboratory room. Catalog changes emit `catalog:changed`; subscribing screens should re-fetch the catalog. Frontend helper is `subscribeToCatalogChanges` in `frontend/src/api/client.js`.
 
-The role pages now use these APIs for sign-in, server-backed lists, and the available workflow mutations. Clinic/branch onboarding and outbound delivery of activation codes are not implemented. Reports currently use available summary and test-volume endpoints; revenue-specific reporting is not yet exposed. The test-create form configures one initial specimen requirement and one analyte; richer multi-specimen and multi-analyte catalog editing remains to be built. The current implementation still needs end-to-end workflow validation against a disposable database before production use.
+The role pages use these APIs for sign-in, server-backed lists, and workflow mutations. The schema permits one laboratory per database and has no branch model. Laboratory setup is a controlled SQL/bootstrap operation; outbound delivery of activation codes is not implemented. The Test Catalog supports multiple specimens and analytes; workflow configuration cannot be changed after request history or reference ranges exist until versioned configuration is implemented. The current implementation still needs end-to-end workflow validation against a disposable database before production use.
 
 The backend now constructs a Drizzle ORM instance over Postgres.js. Existing workflow-heavy statements still use parameterized SQL, but are executed with Drizzle's `execute` API; transactions use Drizzle's transaction API. `src/db/schema.js` describes the database columns and enums for Drizzle. It is not yet the source for applying migrations.
 
@@ -31,7 +31,9 @@ The backend now constructs a Drizzle ORM instance over Postgres.js. Existing wor
 
 `supabase/schema.sql` is the canonical schema; `supabase/reset.sql` is destructive and only for a disposable development database. Do not run either file against a database with data you need. The Drizzle model mirrors its tables and enums, while the SQL remains authoritative for constraints, indexes, triggers, functions, row-level security, and the payment-queue view. Do not use the legacy migration files in `drizzle/`.
 
-The schema uses tenant-aware foreign keys, assignment and result validation, workflow history, and RLS enabled without browser-access policies. Keep privileged credentials on the backend. Server-side authentication, clinic scope, role permissions, assignments, and state-transition checks remain required; RLS does not replace them.
+To add the standard starter catalog to the single laboratory, replace `REPLACE_WITH_CLINIC_CODE` in both locations in `supabase/seed_standard_test_catalog.sql` with that laboratory record's internal code and run the entire script in Supabase SQL Editor. On an existing database, run `supabase/migrations/20261024_standard_catalog_category_memberships.sql` after the single-laboratory migration first. The seed creates 12 categories, 77 canonical tests, their 81 category memberships, and provisional per-test specimen requirements. Tests remain unavailable with zero placeholder prices. Review and configure the local specimen procedure, analytes, price, turnaround, method, and reference ranges before enabling a test. Reruns do not overwrite existing catalog records or add candidate specimen rows when a test already has specimen setup. Regenerate the SQL with `node scripts/generate_standard_catalog_seed.js` after changing the test list or default specimen mapping in that script.
+
+The schema uses laboratory-scoped foreign keys, a singleton constraint, assignment and result validation, workflow history, and RLS enabled without browser-access policies. The existing `clinic_id` column is an internal key for the one laboratory record, not a multi-clinic feature. Keep privileged credentials on the backend. Server-side authentication, laboratory scope, role permissions, assignments, and state-transition checks remain required; RLS does not replace them.
 
 ## Database configuration
 

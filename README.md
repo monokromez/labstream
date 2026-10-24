@@ -12,7 +12,7 @@ Use Node.js and npm. The frontend and backend run in separate terminals.
 
 ## 2. Test the standard workflow
 
-Use a disposable clinic/database and activate separate accounts for each role. The Administrator creates available tests with specimen requirements, result fields, price, and turnaround time before testing requests.
+Use the single laboratory configured in the database and activate separate accounts for each role. The Administrator creates available tests with specimen requirements, result fields, price, and turnaround time before testing requests. Multi-laboratory and branch workflows are outside the supplied proposal.
 
 1. Sign in as Cashier, register a patient, and create a request with multiple tests. Confirm it appears in Queue as awaiting payment.
 2. Process payment. Confirm the invoice appears and the assigned Medical Technologist sees the request.
@@ -29,10 +29,12 @@ Optional frontend checks, from `frontend/`: `npm run build` and `npm run lint`. 
 
 Run SQL in Supabase SQL Editor, in the stated order, and only against the intended database.
 
-- **Fresh database:** run `backend/supabase/schema.sql` once to create the current schema. Then edit and run `backend/supabase/bootstrap_first_admin.sql` once to create a clinic and its first Administrator; save the returned one-time activation code privately.
-- **Clear workflow data but retain accounts:** run `backend/supabase/clear_operational_data_keep_accounts.sql`. It removes requests, results, specimens, payments/invoices, audit history, and catalog/reference configuration. It preserves clinic and account records, plus patient identities linked to portal accounts so those accounts can still sign in.
+- **Fresh database:** run `backend/supabase/schema.sql` once to create the current single-laboratory schema. Then edit and run `backend/supabase/bootstrap_first_admin.sql` once to create the laboratory record and its first Administrator; save the returned one-time activation code privately. Sign-in uses the account username or patient PID, without a clinic code.
+- **Existing database upgrade:** back up first. If the cashier queue migration is not already applied, run `backend/supabase/migrations/20261024_cashier_queue_and_zero_fee_waiver.sql`. Then run `backend/supabase/migrations/20261024_single_laboratory_scope.sql`; it stops if it finds multiple laboratories or branch data that needs review. After that, run `backend/supabase/migrations/20261024_standard_catalog_category_memberships.sql`. Fresh databases created from `schema.sql` already have these changes.
+- **Clear workflow data but retain accounts:** run `backend/supabase/clear_operational_data_keep_accounts.sql`. It removes requests, results, specimens, payments/invoices, audit history, and catalog/reference configuration. It preserves the single laboratory record and account records, plus patient identities linked to portal accounts so those accounts can still sign in.
 - **Drop the Labstream schema:** `backend/supabase/reset.sql` is destructive and removes Labstream tables and types. Use only when intentionally restarting a disposable database; afterward run `schema.sql`, then bootstrap again. It is not a data-cleaning query.
-- `backend/supabase/002_tenant_accounts.sql` is a legacy upgrade script, not part of the current fresh-install workflow. The standard diagnostic result design is documentation, not seed SQL; standard tests are not automatically inserted.
+- **Seed the standard catalog:** replace `REPLACE_WITH_CLINIC_CODE` in both locations in `backend/supabase/seed_standard_test_catalog.sql` with the internal code of the single laboratory, then run the entire file in Supabase SQL Editor. It seeds 12 categories, 77 canonical tests, all 81 category memberships, and provisional specimen requirements. Tests remain unavailable with placeholder zero prices. Review and configure each test's local collection requirements, result analytes, price, turnaround, method, and reference ranges before enabling it. Rerunning does not overwrite configured specimens or catalog records. Regenerate the SQL from the design guide with `node backend/scripts/generate_standard_catalog_seed.js`.
+- `backend/supabase/002_tenant_accounts.sql` is a legacy upgrade script, not part of the current fresh-install workflow. The standard diagnostic result design is the source for the suggested input/display guidance embedded in the starter test descriptions.
 
 Back up data first. Do not run reset or clearing SQL against a database containing records you need. The application does not run these files automatically.
 

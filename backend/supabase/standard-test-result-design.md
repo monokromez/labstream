@@ -157,11 +157,39 @@ Display these as a compact lipid panel when requested together. Do not apply a u
 
 ## Catalog normalization and safe defaults
 
-The supplied list names Albumin, Total Protein, Creatinine and BUN in more than one category. Catalog them once as canonical tests and reference them in the appropriate report/panel views; the current schema has one category per test and no cross-category membership. If the UI must show them under multiple categories, add a test-category join table instead of making duplicate billable catalog entries.
+The supplied list names Albumin, Total Protein, Creatinine and BUN in more than one category. Catalog each once as a canonical billable test and link it to all applicable categories through `test_category_memberships`; do not create duplicate billable catalog entries.
+
+### Research notes for the repeated tests
+
+LOINC distinguishes orderable panels from their individual reported observations. A panel is a defined collection, and some component observations may also be ordered independently. Thus, the category headings in the supplied list should be treated as navigation/classification, not as evidence that each heading defines a separately priced panel. Keep one catalog/orderable record for the same assay and let it belong to multiple categories. Create a distinct record only when the actual analyte, specimen/system, method, or clinical orderable differs. For example, serum Total Protein is not the same catalog item as Urine Total Protein; serum Creatinine is not the same as urine Creatinine used for a urine ratio or clearance. See the [LOINC panel FAQ](https://loinc.org/kb/faq/content), [LOINC panel model](https://loinc.org/kb/users-guide/panels), and [LOINC analyte/component guidance](https://loinc.org/kb/users-guide/major-parts-of-a-loinc-term/component).
+
+For this list, the shared-category memberships should be:
+
+- **Albumin:** Clinical Chemistry and Liver Function and Related Tests; one serum albumin orderable.
+- **Total Protein:** Clinical Chemistry and Liver Function and Related Tests; one serum total-protein orderable.
+- **BUN:** Clinical Chemistry and Renal Function; one serum BUN orderable.
+- **Creatinine:** Clinical Chemistry and Renal Function; one serum creatinine orderable.
+
+These representative Mayo Clinic Laboratories catalog entries show common result patterns and why they must not be copied as universal configuration:
+
+| Canonical orderable | Example specimen and method | Example result and source-laboratory interval |
+|---|---|---|
+| Albumin, Serum | Serum; photometric bromocresol green (BCG) | Numeric g/dL; Mayo lists 3.5–5.0 g/dL from 12 months onward. Mayo cautions that BCG results may differ from electrophoresis. |
+| Protein, Total, Serum | Serum; colorimetric Biuret | Numeric g/dL; Mayo lists 6.3–7.9 g/dL from 1 year onward. |
+| Blood Urea Nitrogen (BUN), Serum | Serum; photometric/urease | Numeric mg/dL; Mayo lists age/sex-specific examples: 7–20 mg/dL for ages 1–17, then 8–24 mg/dL for adult males and 6–21 mg/dL for adult females. |
+| Creatinine, Serum | Serum; enzymatic method in Mayo's creatinine/eGFR service | Numeric mg/dL with age/sex-specific intervals. Mayo's example for adults is 0.74–1.35 mg/dL for males aged 15+ and 0.59–1.04 mg/dL for females aged 16+; pediatric intervals differ. |
+
+Treat those Mayo methods and intervals as **research examples only**. They are from one performing laboratory and are not defaults for Labstream. Each laboratory must enter its own validated specimen handling, method, units, price, turnaround, and reference intervals before making the catalog items available. No general internet source can establish this laboratory's prices or turnaround time.
+
+The supplied list also names eGFR separately from Creatinine. KDIGO recommends serum creatinine with an estimating equation for initial GFR assessment. Therefore, eGFR is a calculated result associated with serum creatinine, not a second independently measured assay by default. If the laboratory elects to report it, configure it as a separately labeled calculated result with the approved equation/version and applicability rules; do not add another charge or specimen collection merely for the calculation without a local policy decision. KDIGO's adult equation guidance and its warning to consider accuracy limits do not replace local medical-director approval: [KDIGO 2024 CKD guideline](https://kdigo.org/wp-content/uploads/2024/03/KDIGO-2024-CKD-Guideline.pdf).
+
+### Provisional default specimen mappings
+
+The generated starter seed links every canonical test to one or more candidate specimen requirements. Those rows are workflow defaults to review, not validated collection instructions; tests remain unavailable until the laboratory configures the test. The supported specimen labels include Blood, Whole blood, Serum, Plasma, Citrated plasma, Urine, Stool, Sputum, Swab, Saliva, Semen, Cervical specimen, Aspirate, Cerebrospinal fluid, Tissue, and Other. Site-dependent microbiology/cytology tests use `Other` with an instruction to specify the actual source before enabling. Creatinine Clearance has paired timed Urine and Serum requirements; UACR uses Urine. The mappings are maintained in `backend/scripts/generate_standard_catalog_seed.js` and emitted into `backend/supabase/seed_standard_test_catalog.sql` as `test_specimen_requirements` rows.
 
 Do not seed universal reference limits for this international deployment. Intervals depend on method, instrument, units, age, sex, pregnancy, and local validation. Keep each analyte's range empty until the clinic configures a verified interval and unit. The ADA diagnostic criteria for glucose/A1c are clinical decision thresholds, not a substitute for an assay-specific reference interval. The dashboard's H/L flag should be driven only by configured reference-range records.
 
-Before a standard test can be enabled, clinic setup must provide its price, turnaround time, actual specimen requirements, method, units, analytes/options, and validated ranges where applicable. The starter catalog can be shown as unavailable until those are configured. A future structured-report extension should introduce typed repeatable sections/rows (or JSONB with strict server-side validation and versioned templates), preserve each result revision, and render the same structured report to the pathologist and patient.
+Before a standard test can be enabled, laboratory setup must provide its price, turnaround time, actual specimen requirements, method, units, analytes/options, and validated ranges where applicable. The starter catalog can be shown as unavailable until those are configured. A future structured-report extension should introduce typed repeatable sections/rows (or JSONB with strict server-side validation and versioned templates), preserve each result revision, and render the same structured report to the pathologist and patient.
 
 ## Sources for reporting policy
 
@@ -171,3 +199,4 @@ Before a standard test can be enabled, clinic setup must provide its price, turn
 - CDC's HIV testing guidance uses a multistep algorithm; a reactive screen is not by itself a final diagnosis: <https://www.cdc.gov/hiv/sti-hiv-training/clinicalguidance/testing-diagnosis/index.html>
 - NCI describes cytology classifications including Bethesda categories for cervical cytology: <https://www.cancer.gov/types/cervical/hp/cervical-screening-pdq>
 - Mayo Clinic Laboratories' CBC with differential illustrates method-, age-, and component-specific reporting and reference values: <https://www.mayocliniclabs.com/test-catalog/Overview/42120>
+- Mayo Clinic Laboratories' example catalogs for [serum albumin](https://www.mayocliniclabs.com/test-catalog/overview/8436), [serum total protein](https://www.mayocliniclabs.com/test-catalog/overview/8520), [serum BUN](https://www.mayocliniclabs.com/test-catalog/overview/81793), and [serum creatinine with eGFR](https://www.mayocliniclabs.com/test-catalog/overview/48216) were reviewed for the research examples above; their intervals and methods are laboratory-specific.
