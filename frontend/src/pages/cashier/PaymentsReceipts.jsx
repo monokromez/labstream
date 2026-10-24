@@ -21,6 +21,7 @@ export default function PaymentsReceipts() {
     patientName: invoice.patientName,
     receiptNumber: invoice.invoiceNumber,
     fee: Number(invoice.amount),
+    paymentMethod: invoice.method,
     transactionDate: invoice.paidAt?.slice(0, 10),
     tests: (invoice.tests ?? []).map((test) => ({ ...test, price: Number(test.price) })),
     issuedAt: invoice.issuedAt,
@@ -61,7 +62,7 @@ export default function PaymentsReceipts() {
         <div className='payments-receipts__table-heading'>
           <div>
             <h2 id='payments-table-title'>Payments and Invoices</h2>
-            <p>Completed cash payments and their issued invoices.</p>
+            <p>Completed payments and approved zero-fee waivers.</p>
           </div>
           <span className='payments-receipts__count'>{result?.pagination?.total ?? filteredTransactions.length} {result?.pagination?.total === 1 ? 'transaction' : 'transactions'}</span>
         </div>
@@ -132,7 +133,7 @@ export default function PaymentsReceipts() {
                     <div className='payments-receipts__receipt-line' key={test.id}><span>{test.name}</span><strong>{currency.format(test.price)}</strong></div>
                   ))}
                 </div>
-                <div className='payments-receipts__receipt-line payments-receipts__receipt-total'><span>Total paid · Cash</span><strong>{currency.format(dialog.transaction.fee)}</strong></div>
+                <div className='payments-receipts__receipt-line payments-receipts__receipt-total'><span>{dialog.transaction.paymentMethod === 'waiver' ? 'Waived amount' : 'Total paid · Cash'}</span><strong>{currency.format(dialog.transaction.fee)}</strong></div>
                 <p>Keep this receipt. Use your PID and the instructions provided by the laboratory to access your results online after they are released.</p>
               </div>
             )}

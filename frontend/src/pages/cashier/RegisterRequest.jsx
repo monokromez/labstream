@@ -88,6 +88,8 @@ export default function RegisterRequest() {
     previousVisitDate: patient.previousVisit?.slice(0, 10) ?? patient.createdAt?.slice(0, 10),
     validId: patient.validIdType?.toLowerCase() === 'other' ? 'Other' : patient.validIdType,
     hasPendingRequest: patient.hasPendingRequest,
+    hasPortalAccount: patient.hasPortalAccount,
+    portalActive: patient.portalActive,
   }))
   const { categories: testCategories } = useTestCatalog({ availableOnly: true })
   useEffect(() => {
@@ -396,7 +398,7 @@ export default function RegisterRequest() {
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
                 </dl>
-                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>Expires in {portalActivation.expiresInHours} hours. Share it privately; the patient sets their own password during activation.</p></div>}
+                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>Expires in {portalActivation.expiresInHours} hours. Share it privately; the patient chooses their own password.</p></div>}
                 </>
               )}
 
@@ -528,7 +530,7 @@ export default function RegisterRequest() {
                   {requestSubmitted ? 'Done' : `Review Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
                 </button>
               )}
-              {activeModal === 'details' && selectedPatient && !portalActivation && <button className='register-request__modal-primary' type='button' onClick={() => setShowPortalConfirm(true)}>Issue Portal Activation</button>}
+              {activeModal === 'details' && selectedPatient && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => setShowPortalConfirm(true)}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
               {activeModal === 'add' && !showRequestPrompt && (
                 <button className='register-request__modal-primary' type='submit' form='new-patient-form'>Register Patient</button>
               )}
@@ -579,7 +581,7 @@ export default function RegisterRequest() {
             <p>Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? The code is shown once and expires after 24 hours.</p>
             <div className='register-request__confirm-actions'>
               <button className='register-request__modal-secondary' type='button' onClick={() => setShowPortalConfirm(false)}>Cancel</button>
-              <button className='register-request__modal-primary' type='button' onClick={issuePortalActivation}>Issue Code</button>
+              <button className='register-request__modal-primary' type='button' onClick={issuePortalActivation}>Issue Activation Code</button>
             </div>
           </section>
         </div>

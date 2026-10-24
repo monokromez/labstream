@@ -12,16 +12,14 @@ export function createCashierRouter({ client }) {
 
   router.get("/dashboard", allowRoles("cashier"), async (req, res, next) => {
     try {
-      const branch = req.user.branchId;
       const [summary] = await client.unsafe(
         `select count(*) filter (where r.requested_at::date = current_date)::integer as requests_today,
                 count(*) filter (where r.status = 'awaiting_payment')::integer as unpaid_requests,
                 count(*) filter (where r.status in ('paid','specimen_collection','processing','for_validation','correction'))::integer as awaiting_next_step,
                 coalesce((select sum(p.amount) from public.payments p join public.test_requests paid on paid.id = p.request_id and paid.clinic_id = p.clinic_id
-                  where p.clinic_id = $1 and p.paid_at::date = current_date and p.voided_at is null
-                    and ($2::uuid is null or paid.branch_id = $2)), 0) as payments_today
-           from public.test_requests r where r.clinic_id = $1 and ($2::uuid is null or r.branch_id = $2)`
-        , [req.user.clinicId, branch],
+                  where p.clinic_id = $1 and p.paid_at::date = current_date and p.voided_at is null), 0) as payments_today
+           from public.test_requests r where r.clinic_id = $1`
+        , [req.user.clinicId],
       );
       const recent = await client.unsafe(
         `select r.id, r.request_number, r.status, r.total_amount, r.requested_at,
@@ -30,9 +28,9 @@ export function createCashierRouter({ client }) {
                 exists(select 1 from public.payments pay where pay.request_id = r.id and pay.clinic_id = r.clinic_id and pay.voided_at is null) as is_paid
            from public.test_requests r join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            left join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
-          where r.clinic_id = $1 and ($2::uuid is null or r.branch_id = $2)
+          where r.clinic_id = $1
           group by r.id, p.id order by r.requested_at desc limit 100`,
-        [req.user.clinicId, branch],
+        [req.user.clinicId],
       );
       return res.json({ data: { summary, recent } });
     } catch (error) { return next(error); }
@@ -49,11 +47,11 @@ export function createCashierRouter({ client }) {
       const patient = await client.begin(async (tx) => {
         const [created] = await tx.unsafe(
           `insert into public.patients
-            (clinic_id, branch_id, pid, first_name, middle_name, last_name, date_of_birth, sex,
+            (clinic_id, pid, first_name, middle_name, last_name, date_of_birth, sex,
              email, phone, country, city, house_number, street, valid_id_type, valid_id_number, registered_by)
-           values ($1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+           values ($1, $2, $3, $4, $5, $6::date, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
            returning id, pid, created_at`,
-          [req.user.clinicId, req.user.branchId, pid, String(body.firstName).trim(), body.middleName?.trim() || null,
+          [req.user.clinicId, pid, String(body.firstName).trim(), body.middleName?.trim() || null,
             String(body.lastName).trim(), body.dateOfBirth, String(body.sex).trim(), body.email?.trim()?.toLowerCase() || null,
             String(body.phone).trim(), String(body.country).trim(), String(body.city).trim(), body.houseNumber?.trim() || null,
             body.street?.trim() || null, String(body.validIdType).trim(), String(body.validIdNumber).trim(), req.user.sub],
@@ -76,11 +74,11 @@ export function createCashierRouter({ client }) {
       const activation = createOneTimeCode();
       const data = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
-          `select id, pid, branch_id, email, portal_user_id
-             from public.patients where id = $1 and clinic_id = $2 and ($3::uuid is null or branch_id = $3) for update`,
-          [req.params.id, req.user.clinicId, req.user.branchId],
+          `select id, pid, email, portal_user_id
+             from public.patients where id = $1 and clinic_id = $2 for update`,
+          [req.params.id, req.user.clinicId],
         );
-        if (!patient) throw Object.assign(new Error("Patient was not found in this branch."), { code: "PATIENT_NOT_FOUND" });
+        if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });
         let userId = patient.portal_user_id;
         if (userId) {
           const [existing] = await tx.unsafe(`select id, is_active from public.users where id = $1 and clinic_id = $2 for update`, [userId, req.user.clinicId]);
@@ -88,9 +86,9 @@ export function createCashierRouter({ client }) {
           await tx.unsafe(`update public.account_tokens set consumed_at = now() where user_id = $1 and purpose = 'activation' and consumed_at is null`, [userId]);
         } else {
           const [createdUser] = await tx.unsafe(
-            `insert into public.users (clinic_id, branch_id, role, email, is_active, must_change_password)
-             values ($1, $2, 'patient', $3, false, true) returning id`,
-            [req.user.clinicId, patient.branch_id, patient.email],
+            `insert into public.users (clinic_id, role, email, is_active, must_change_password)
+             values ($1, 'patient', $2, false, true) returning id`,
+            [req.user.clinicId, patient.email],
           );
           userId = createdUser.id;
           await tx.unsafe(`update public.patients set portal_user_id = $1, updated_at = now() where id = $2 and clinic_id = $3`, [userId, patient.id, req.user.clinicId]);
@@ -124,12 +122,10 @@ export function createCashierRouter({ client }) {
       }
       const request = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
-          `select id, branch_id from public.patients where id = $1 and clinic_id = $2 for update`,
+          `select id from public.patients where id = $1 and clinic_id = $2 for update`,
           [patientId, req.user.clinicId],
         );
-        if (!patient || (req.user.branchId && patient.branch_id !== req.user.branchId)) {
-          throw Object.assign(new Error("Patient was not found in your clinic branch."), { code: "PATIENT_NOT_FOUND" });
-        }
+        if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });
         const [existing] = await tx.unsafe(
           `select id from public.test_requests where clinic_id = $1 and patient_id = $2 and status = 'awaiting_payment' limit 1`,
           [req.user.clinicId, patientId],
@@ -142,7 +138,9 @@ export function createCashierRouter({ client }) {
              from public.test_catalog t
              join public.test_categories c on c.id = t.category_id and c.clinic_id = t.clinic_id
             where t.clinic_id = $1 and t.id = any($2::uuid[])
-              and t.is_available = true and c.is_active = true`,
+              and t.is_available = true and exists (select 1 from public.test_category_memberships m
+                join public.test_categories active_category on active_category.id = m.category_id and active_category.clinic_id = m.clinic_id
+                where m.test_id = t.id and m.clinic_id = t.clinic_id and active_category.is_active = true)`,
           [req.user.clinicId, testIds],
         );
         if (tests.length !== testIds.length) throw Object.assign(new Error("One or more selected tests are unavailable."), { code: "TEST_UNAVAILABLE" });
@@ -150,11 +148,11 @@ export function createCashierRouter({ client }) {
         if (missingSpecimen.length) throw Object.assign(new Error("Every available test needs at least one required specimen configured."), { code: "SPECIMEN_SETUP_MISSING", details: missingSpecimen.map(({ id, name }) => ({ id, name })) });
         const [created] = await tx.unsafe(
           `insert into public.test_requests
-            (clinic_id, branch_id, request_number, patient_id, created_by, status, priority, total_amount)
-           select $1, $2, $3, $4, $5, 'awaiting_payment', $6, coalesce(sum(t.price), 0)
-             from public.test_catalog t where t.clinic_id = $1 and t.id = any($7::uuid[])
+            (clinic_id, request_number, patient_id, created_by, status, priority, total_amount)
+           select $1, $2, $3, $4, 'awaiting_payment', $5, coalesce(sum(t.price), 0)
+             from public.test_catalog t where t.clinic_id = $1 and t.id = any($6::uuid[])
            returning id, request_number, total_amount, status, requested_at`,
-          [req.user.clinicId, req.user.branchId, code("REQ"), patientId, req.user.sub, priority, testIds],
+          [req.user.clinicId, code("REQ"), patientId, req.user.sub, priority, testIds],
         );
         for (const test of tests) {
           await tx.unsafe(
@@ -189,14 +187,13 @@ export function createCashierRouter({ client }) {
       const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
       const offset = (page - 1) * pageSize;
-      const branchId = req.user.branchId;
       const [count] = await client.unsafe(
         `select count(*)::integer as total from public.test_requests r
-          where r.clinic_id = $1 and r.status = 'awaiting_payment' and ($2::uuid is null or r.branch_id = $2)`,
-        [req.user.clinicId, branchId],
+          where r.clinic_id = $1 and r.status = 'awaiting_payment'`,
+        [req.user.clinicId],
       );
       const data = await client.unsafe(
-        `select r.id, r.request_number, r.priority, r.total_amount, r.requested_at,
+        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.queue_called_at, r.priority, r.total_amount, r.requested_at,
                 p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 count(ri.id)::integer as test_count,
                 jsonb_agg(jsonb_build_object(
@@ -206,10 +203,10 @@ export function createCashierRouter({ client }) {
            from public.test_requests r
            join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
-          where r.clinic_id = $1 and r.status = 'awaiting_payment' and ($2::uuid is null or r.branch_id = $2)
+          where r.clinic_id = $1 and r.status = 'awaiting_payment'
           group by r.id, p.id order by r.requested_at
-          limit $3 offset $4`,
-        [req.user.clinicId, branchId, pageSize, offset],
+          limit $2 offset $3`,
+        [req.user.clinicId, pageSize, offset],
       );
       return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
     } catch (error) {
@@ -217,33 +214,80 @@ export function createCashierRouter({ client }) {
     }
   });
 
+  router.post("/queue/:id/call", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      const called = await client.begin(async (tx) => {
+        await tx.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [req.user.clinicId]);
+        const [target] = await tx.unsafe(
+          `select id, request_number, queue_ticket::text as queue_ticket from public.test_requests
+            where id = $1 and clinic_id = $2 and status = 'awaiting_payment' for update`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!target) throw Object.assign(new Error("Request was not found in the payment queue."), { code: "QUEUE_REQUEST_NOT_FOUND" });
+        await tx.unsafe(`update public.test_requests set queue_called_at = null, queue_called_by = null where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is not null`, [req.user.clinicId]);
+        await tx.unsafe(`update public.test_requests set queue_called_at = now(), queue_called_by = $1 where id = $2 and clinic_id = $3`, [req.user.sub, target.id, req.user.clinicId]);
+        await tx.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'cashier.queue_called','test_request',$3)`, [req.user.clinicId, req.user.sub, target.id]);
+        return target;
+      });
+      return res.json({ data: called });
+    } catch (error) {
+      if (error.code === "QUEUE_REQUEST_NOT_FOUND") return res.status(404).json({ error: error.code, message: error.message });
+      return next(error);
+    }
+  });
+
+  router.post("/queue/call-next", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      const called = await client.begin(async (tx) => {
+        await tx.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [req.user.clinicId]);
+        const [target] = await tx.unsafe(`select id, request_number, queue_ticket::text as queue_ticket from public.test_requests where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is null order by requested_at, queue_ticket limit 1 for update skip locked`, [req.user.clinicId]);
+        if (!target) return null;
+        await tx.unsafe(`update public.test_requests set queue_called_at = null, queue_called_by = null where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is not null`, [req.user.clinicId]);
+        await tx.unsafe(`update public.test_requests set queue_called_at = now(), queue_called_by = $1 where id = $2 and clinic_id = $3`, [req.user.sub, target.id, req.user.clinicId]);
+        await tx.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'cashier.queue_called','test_request',$3)`, [req.user.clinicId, req.user.sub, target.id]);
+        return target;
+      });
+      return called ? res.json({ data: called }) : res.status(404).json({ error: "QUEUE_EMPTY", message: "No waiting requests are available to call." });
+    } catch (error) { return next(error); }
+  });
+
+  router.delete("/queue/call", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      await client.begin(async (tx) => {
+        await tx.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [req.user.clinicId]);
+        await tx.unsafe(`update public.test_requests set queue_called_at = null, queue_called_by = null where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is not null`, [req.user.clinicId]);
+      });
+      return res.json({ data: { dismissed: true } });
+    } catch (error) { return next(error); }
+  });
+
   router.post("/requests/:id/payment", allowRoles("cashier"), async (req, res, next) => {
     try {
       const result = await client.begin(async (tx) => {
         const [request] = await tx.unsafe(
-          `select id, branch_id, request_number, total_amount, status
+          `select id, request_number, total_amount, status
              from public.test_requests where id = $1 and clinic_id = $2 for update`,
           [req.params.id, req.user.clinicId],
         );
-        if (!request || (req.user.branchId && request.branch_id !== req.user.branchId)) throw Object.assign(new Error("Request was not found."), { code: "REQUEST_NOT_FOUND" });
+        if (!request) throw Object.assign(new Error("Request was not found."), { code: "REQUEST_NOT_FOUND" });
         if (request.status !== "awaiting_payment") throw Object.assign(new Error("Only requests awaiting payment can be processed."), { code: "INVALID_REQUEST_STATUS" });
         const [technologist] = await tx.unsafe(
           `select u.id
              from public.users u
             where u.clinic_id = $1 and u.role = 'medical_technologist' and u.is_active = true
-              and (u.branch_id is null or u.branch_id = $2)
             order by (select count(*) from public.test_requests active
                        where active.clinic_id = u.clinic_id and active.assigned_technologist_id = u.id
-                         and active.status = any($3::public.request_status[])) asc,
+                         and active.status = any($2::public.request_status[])) asc,
                      u.last_sign_in_at nulls first
             limit 1 for update of u skip locked`,
-          [req.user.clinicId, request.branch_id, ACTIVE_REQUEST_STATUSES],
+          [req.user.clinicId, ACTIVE_REQUEST_STATUSES],
         );
-        if (!technologist) throw Object.assign(new Error("No active technologist is available for this branch."), { code: "NO_TECHNOLOGIST_AVAILABLE" });
+        if (!technologist) throw Object.assign(new Error("No active medical technologist is available."), { code: "NO_TECHNOLOGIST_AVAILABLE" });
+        const paymentMethod = Number(request.total_amount) === 0 ? "waiver" : "cash";
         const [payment] = await tx.unsafe(
           `insert into public.payments (clinic_id, request_id, amount, method, recorded_by)
-           values ($1, $2, $3, 'cash', $4) returning id, paid_at, amount`,
-          [req.user.clinicId, request.id, request.total_amount, req.user.sub],
+           values ($1, $2, $3, $4::public.payment_method, $5) returning id, paid_at, amount, method`,
+          [req.user.clinicId, request.id, request.total_amount, paymentMethod, req.user.sub],
         );
         const invoiceNumber = code("INV");
         const [invoice] = await tx.unsafe(
@@ -282,13 +326,13 @@ export function createCashierRouter({ client }) {
         }
         await tx.unsafe(
           `insert into public.request_status_history (clinic_id, request_id, old_status, new_status, changed_by, note)
-           values ($1, $2, 'awaiting_payment', 'paid', $3, 'Cash payment processed')`,
-          [req.user.clinicId, request.id, req.user.sub],
+           values ($1, $2, 'awaiting_payment', 'paid', $3, $4)`,
+          [req.user.clinicId, request.id, req.user.sub, paymentMethod === "waiver" ? "Zero-fee waiver approved" : "Cash payment processed"],
         );
         await tx.unsafe(
           `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'request.paid', 'test_request', $3, jsonb_build_object('paymentId', $4::uuid, 'invoiceId', $5::uuid, 'technologistId', $6::uuid))`,
-          [req.user.clinicId, req.user.sub, request.id, payment.id, invoice.id, technologist.id],
+           values ($1, $2, 'request.paid', 'test_request', $3, jsonb_build_object('paymentId', $4::uuid, 'invoiceId', $5::uuid, 'technologistId', $6::uuid, 'paymentMethod', $7::text))`,
+          [req.user.clinicId, req.user.sub, request.id, payment.id, invoice.id, technologist.id, paymentMethod],
         );
         return { requestId: request.id, requestNumber: request.request_number, payment, invoice, assignedTechnologistId: technologist.id };
       });
@@ -307,8 +351,8 @@ export function createCashierRouter({ client }) {
       if (!reason) return res.status(400).json({ error: "CANCELLATION_REASON_REQUIRED" });
       const updated = await client.begin(async (tx) => {
         const [request] = await tx.unsafe(
-          `select id, status from public.test_requests where id = $1 and clinic_id = $2 and ($3::uuid is null or branch_id = $3) for update`,
-          [req.params.id, req.user.clinicId, req.user.branchId],
+          `select id, status from public.test_requests where id = $1 and clinic_id = $2 for update`,
+          [req.params.id, req.user.clinicId],
         );
         if (!request) throw Object.assign(new Error("Request was not found."), { code: "REQUEST_NOT_FOUND" });
         if (request.status !== "awaiting_payment") throw Object.assign(new Error("Only unpaid requests can be cancelled. Paid requests require a separate void/refund workflow."), { code: "CANNOT_CANCEL_PAID_REQUEST" });
@@ -355,14 +399,14 @@ export function createCashierRouter({ client }) {
            from public.invoices i join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
            join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
            join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
-          where i.clinic_id = $1 and ($2::uuid is null or r.branch_id = $2)
-            and ($3::date is null or p.paid_at::date = $3::date) and p.voided_at is null
-            and ($4 = '' or r.request_number ilike '%' || $4 || '%' or pt.pid ilike '%' || $4 || '%'
-              or pt.first_name ilike '%' || $4 || '%' or pt.last_name ilike '%' || $4 || '%' or i.invoice_number ilike '%' || $4 || '%')
-            and ($5 = '' or ($5 = 'today' and p.paid_at::date = current_date)
-              or ($5 = '7days' and p.paid_at >= current_date - interval '6 days')
-              or ($5 = 'month' and p.paid_at >= date_trunc('month', current_date)))`,
-        [req.user.clinicId, req.user.branchId, date || null, query, period],
+          where i.clinic_id = $1
+            and ($2::date is null or p.paid_at::date = $2::date) and p.voided_at is null
+            and ($3 = '' or r.request_number ilike '%' || $3 || '%' or pt.pid ilike '%' || $3 || '%'
+              or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%' or i.invoice_number ilike '%' || $3 || '%')
+            and ($4 = '' or ($4 = 'today' and p.paid_at::date = current_date)
+              or ($4 = '7days' and p.paid_at >= current_date - interval '6 days')
+              or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))`,
+        [req.user.clinicId, date || null, query, period],
       );
       const data = await client.unsafe(
         `select i.id, i.invoice_number, i.issued_at, p.amount, p.paid_at, p.method,
@@ -375,15 +419,15 @@ export function createCashierRouter({ client }) {
            from public.invoices i join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
            join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
            join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
-          where i.clinic_id = $1 and ($2::uuid is null or r.branch_id = $2)
-            and ($3::date is null or p.paid_at::date = $3::date) and p.voided_at is null
-            and ($4 = '' or r.request_number ilike '%' || $4 || '%' or pt.pid ilike '%' || $4 || '%'
-              or pt.first_name ilike '%' || $4 || '%' or pt.last_name ilike '%' || $4 || '%' or i.invoice_number ilike '%' || $4 || '%')
-            and ($5 = '' or ($5 = 'today' and p.paid_at::date = current_date)
-              or ($5 = '7days' and p.paid_at >= current_date - interval '6 days')
-              or ($5 = 'month' and p.paid_at >= date_trunc('month', current_date)))
-          order by p.paid_at desc limit $6 offset $7`,
-        [req.user.clinicId, req.user.branchId, date || null, query, period, pageSize, offset],
+          where i.clinic_id = $1
+            and ($2::date is null or p.paid_at::date = $2::date) and p.voided_at is null
+            and ($3 = '' or r.request_number ilike '%' || $3 || '%' or pt.pid ilike '%' || $3 || '%'
+              or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%' or i.invoice_number ilike '%' || $3 || '%')
+            and ($4 = '' or ($4 = 'today' and p.paid_at::date = current_date)
+              or ($4 = '7days' and p.paid_at >= current_date - interval '6 days')
+              or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))
+          order by p.paid_at desc limit $5 offset $6`,
+        [req.user.clinicId, date || null, query, period, pageSize, offset],
       );
       return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
     } catch (error) {
