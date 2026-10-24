@@ -215,7 +215,6 @@ export function createTechnologistRouter({ client }) {
         const [context] = await tx.unsafe(
           `select r.id as request_id, r.status as request_status, r.assigned_technologist_id,
                   ri.id as item_id, ri.test_id, ri.status as item_status, p.date_of_birth, p.sex,
-                  r.branch_id
              from public.test_requests r
              join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
              join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
@@ -338,7 +337,7 @@ export function createTechnologistRouter({ client }) {
     try {
       const result = await client.begin(async (tx) => {
         const [request] = await tx.unsafe(
-          `select id, status, assigned_pathologist_id, branch_id from public.test_requests
+          `select id, status, assigned_pathologist_id from public.test_requests
             where id = $1 and clinic_id = $2 and assigned_technologist_id = $3 for update`,
           [req.params.requestId, req.user.clinicId, req.user.sub],
         );
@@ -385,15 +384,14 @@ export function createTechnologistRouter({ client }) {
           const [pathologist] = await tx.unsafe(
             `select u.id from public.users u
               where u.clinic_id = $1 and u.role = 'pathologist' and u.is_active = true
-                and (u.branch_id is null or u.branch_id = $2)
               order by (select count(*) from public.test_requests active
                          where active.clinic_id = u.clinic_id and active.assigned_pathologist_id = u.id
                            and active.status in ('for_validation', 'correction')) asc,
                        u.last_sign_in_at nulls first
               limit 1 for update of u skip locked`,
-            [req.user.clinicId, request.branch_id],
+            [req.user.clinicId],
           );
-          if (!pathologist) throw Object.assign(new Error("No active pathologist is available for this branch."), { code: "NO_PATHOLOGIST_AVAILABLE" });
+          if (!pathologist) throw Object.assign(new Error("No active pathologist is available."), { code: "NO_PATHOLOGIST_AVAILABLE" });
           pathologistId = pathologist.id;
         }
         for (const draft of drafts) {
