@@ -20,10 +20,18 @@ export default function AdminDashboard() {
   const testCategories = (volume?.series ?? []).map((category, index) => ({ ...category, color: chartColors[index % chartColors.length] }))
   const chartData = (volume?.buckets ?? []).map((bucket, bucketIndex) => ({ label: bucket.label, values: testCategories.map((category) => Number(category.values[bucketIndex] ?? 0)) }))
   const requestCounts = report?.requests ?? {}
+
+  const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
+  const tatMinutes = Number(report?.averageTurnaroundMinutes ?? 0)
+  const tatFormatted = tatMinutes > 0
+    ? (tatMinutes >= 60 ? `${Math.floor(tatMinutes / 60)}h ${tatMinutes % 60}m` : `${tatMinutes}m`)
+    : '—'
+  const revenueFormatted = currency.format(Number(report?.revenue ?? 0))
+
   const summary = [
+    { label: 'TOTAL REVENUE', value: revenueFormatted, helperText: 'Collected this month' },
     { label: 'TOTAL REQUESTS', value: String(requestCounts.totalRequests ?? 0), helperText: 'Requested this month' },
-    { label: 'IN PROGRESS', value: String(requestCounts.inProgress ?? 0), helperText: 'Paid and being processed' },
-    { label: 'FOR VALIDATION', value: String(requestCounts.forValidation ?? 0), helperText: 'Awaiting pathologist review' },
+    { label: 'AVG. TURNAROUND', value: tatFormatted, helperText: 'Payment to release' },
     { label: 'RELEASED TESTS', value: String(report?.releasedTests ?? 0), helperText: 'Completed this month' },
   ]
   const workflow = [
@@ -131,7 +139,7 @@ export default function AdminDashboard() {
             {testCategories.map((category) => <li key={category.label}><span className="admin-dashboard__legend-swatch" style={{ backgroundColor: category.color }} aria-hidden="true" />{category.label}</li>)}
           </ul>
           <p className="admin-dashboard__chart-note">
-            Average turnaround time <strong>4h 18m</strong>
+            Average turnaround time <strong>{tatFormatted}</strong>
           </p>
         </section>
 
@@ -159,7 +167,7 @@ export default function AdminDashboard() {
               )
             })}
           </ul>
-          <div className="admin-dashboard__workflow-insight"><strong>No workflow requests yet.</strong><span>Request counts will appear here as the clinic processes work.</span></div>
+          <div className="admin-dashboard__workflow-insight"><strong>{totalWorkflowRequests ? `${totalWorkflowRequests} active requests` : 'No workflow requests yet.'}</strong><span>Request counts will appear here as the laboratory processes work.</span></div>
         </section>
       </div>
 

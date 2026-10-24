@@ -17,6 +17,8 @@ export default function useTestCatalog({ availableOnly = false } = {}) {
         tests: (data.tests ?? []).map((test) => ({
           ...test,
           category: test.categoryName,
+          categoryIds: (test.categories ?? []).map((category) => category.id),
+          categoryNames: (test.categories ?? []).map((category) => category.name),
           availability: test.isAvailable ? 'Available' : 'Unavailable',
         })),
       })
@@ -37,7 +39,7 @@ export default function useTestCatalog({ availableOnly = false } = {}) {
   const categories = useMemo(() => catalog.categories
     .map((category) => ({
       ...category,
-      tests: catalog.tests.filter((test) => test.categoryId === category.id
+      tests: catalog.tests.filter((test) => (test.categoryIds?.length ? test.categoryIds.includes(category.id) : test.categoryId === category.id)
         && (!availableOnly || test.isAvailable)),
     }))
     .filter((category) => category.tests.length > 0), [catalog, availableOnly])

@@ -13,7 +13,17 @@ export default function Reports() {
   const series = volumeResult?.data?.series ?? []
   const testVolume = series.map((category) => ({ category: category.label, value: category.values.reduce((sum, value) => sum + Number(value), 0) }))
   const volumeScale = Math.max(1, ...testVolume.map((item) => item.value))
+
+  const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
+  const tatMinutes = Number(report?.averageTurnaroundMinutes ?? 0)
+  const tatFormatted = tatMinutes > 0
+    ? (tatMinutes >= 60 ? `${Math.floor(tatMinutes / 60)}h ${tatMinutes % 60}m` : `${tatMinutes}m`)
+    : '—'
+  const revenueFormatted = currency.format(Number(report?.revenue ?? 0))
+
   const reportMetrics = [
+    ['Total revenue this month', revenueFormatted],
+    ['Average turnaround time (TAT)', tatFormatted],
     ['Requests this month', String(requestCounts.totalRequests ?? 0)],
     ['Awaiting payment', String(requestCounts.awaitingPayment ?? 0)],
     ['In progress', String(requestCounts.inProgress ?? 0)],
@@ -26,7 +36,7 @@ export default function Reports() {
 
   function exportForExcel() {
     const rows = [
-      ['Laboratory Operations Report'],
+      ['Laboratory Operations & Revenue Report'],
       ['Metric', 'Value'],
       ...reportMetrics,
       [],
@@ -50,7 +60,7 @@ export default function Reports() {
     <section className="admin-page" aria-label="Laboratory reports">
       {(summaryError || volumeError) && <p role="alert">{summaryError || volumeError}</p>}
       <div className="admin-page__title-row">
-        <p>Select a reporting period to review recorded clinic activity.</p>
+        <p>Review laboratory activity, revenue, turnaround times, and test volumes.</p>
         <div className="admin-toolbar">
           <button className="admin-button admin-button--positive" type="button" onClick={exportForExcel}>
             Export Spreadsheet
@@ -62,10 +72,10 @@ export default function Reports() {
       </div>
 
       <div className="admin-dashboard__summary">
+        <SummaryCard title="Revenue" value={revenueFormatted} helperText="Collected this month" />
+        <SummaryCard title="Avg. turnaround time" value={tatFormatted} helperText="Payment to release" />
         <SummaryCard title="Tests processed" value={String(volumeResult?.data?.total ?? 0)} helperText="Released this month" />
         <SummaryCard title="Pending results" value={String(requestCounts.forValidation ?? 0)} helperText="Awaiting validation" />
-        <SummaryCard title="Released results" value={String(report?.releasedTests ?? 0)} helperText="Individual tests released this month" />
-        <SummaryCard title="Requests" value={String(requestCounts.totalRequests ?? 0)} helperText="Registered this month" />
       </div>
 
       <section className="admin-panel admin-report">

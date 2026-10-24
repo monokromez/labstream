@@ -10,7 +10,11 @@ export function createApiRouter({ client }) {
       const includeUnavailable = req.user.role === "administrator" && req.query.includeUnavailable === "true";
       const tests = await client.unsafe(
         `select t.id, t.code, t.name, t.description, t.category_id,
-                c.name as category_name, t.price, t.turnaround_minutes,
+                c.name as category_name,
+                coalesce((select jsonb_agg(jsonb_build_object('id', mc.id, 'name', mc.name) order by mc.name)
+                  from public.test_category_memberships m join public.test_categories mc on mc.id = m.category_id and mc.clinic_id = m.clinic_id
+                 where m.test_id = t.id and m.clinic_id = t.clinic_id and mc.is_active = true), '[]'::jsonb) as categories,
+                t.price, t.turnaround_minutes,
                 t.is_available,
                 coalesce((select jsonb_agg(jsonb_build_object(
                   'id', a.id, 'key', a.key, 'label', a.label, 'valueType', a.value_type,
@@ -30,7 +34,9 @@ export function createApiRouter({ client }) {
            from public.test_catalog t
            join public.test_categories c
              on c.id = t.category_id and c.clinic_id = t.clinic_id
-          where t.clinic_id = $1 and c.is_active = true
+          where t.clinic_id = $1 and exists (select 1 from public.test_category_memberships m
+            join public.test_categories active_category on active_category.id = m.category_id and active_category.clinic_id = m.clinic_id
+            where m.test_id = t.id and m.clinic_id = t.clinic_id and active_category.is_active = true)
             and ($2::boolean or t.is_available = true)
           order by c.name, t.name`,
         [req.user.clinicId, includeUnavailable],
@@ -51,7 +57,6 @@ export function createApiRouter({ client }) {
   router.get("/patients", allowRoles("administrator", "cashier", "patient"), async (req, res, next) => {
     try {
       const patientScope = req.user.role === "patient";
-      const branchScope = req.user.branchId;
       const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
       const offset = (page - 1) * pageSize;
@@ -60,20 +65,22 @@ export function createApiRouter({ client }) {
         `select count(*)::integer as total
            from public.patients p
           where p.clinic_id = $1
-            and ($2::uuid is null or p.branch_id = $2)
-            and ($3::boolean = false or p.portal_user_id = $4)
-            and ($5 = '' or p.pid ilike '%' || $5 || '%'
-              or p.first_name ilike '%' || $5 || '%'
-              or p.middle_name ilike '%' || $5 || '%'
-              or p.last_name ilike '%' || $5 || '%'
-              or p.phone ilike '%' || $5 || '%')`,
-        [req.user.clinicId, branchScope, patientScope, req.user.sub, query],
+            and ($2::boolean = false or p.portal_user_id = $3)
+            and ($4 = '' or p.pid ilike '%' || $4 || '%'
+              or p.first_name ilike '%' || $4 || '%'
+              or p.middle_name ilike '%' || $4 || '%'
+              or p.last_name ilike '%' || $4 || '%'
+              or p.phone ilike '%' || $4 || '%')`,
+        [req.user.clinicId, patientScope, req.user.sub, query],
       );
       const patients = await client.unsafe(
         `select p.id, p.pid, p.first_name, p.middle_name, p.last_name,
                 p.date_of_birth, p.sex, p.email, p.phone, p.country, p.city,
                 p.house_number, p.street, p.valid_id_type, p.valid_id_number,
                 p.created_at,
+                (p.portal_user_id is not null) as has_portal_account,
+                exists(select 1 from public.users portal where portal.id = p.portal_user_id
+                  and portal.clinic_id = p.clinic_id and portal.role = 'patient' and portal.is_active = true) as portal_active,
                 exists(select 1 from public.test_requests active_request
                   where active_request.patient_id = p.id and active_request.clinic_id = p.clinic_id
                     and active_request.status = 'awaiting_payment') as has_pending_request,
@@ -82,16 +89,15 @@ export function createApiRouter({ client }) {
                     and r.status <> 'cancelled'), p.created_at) as previous_visit
            from public.patients p
           where p.clinic_id = $1
-            and ($2::uuid is null or p.branch_id = $2)
-            and ($3::boolean = false or p.portal_user_id = $4)
-            and ($5 = '' or p.pid ilike '%' || $5 || '%'
-              or p.first_name ilike '%' || $5 || '%'
-              or p.middle_name ilike '%' || $5 || '%'
-              or p.last_name ilike '%' || $5 || '%'
-              or p.phone ilike '%' || $5 || '%')
+            and ($2::boolean = false or p.portal_user_id = $3)
+            and ($4 = '' or p.pid ilike '%' || $4 || '%'
+              or p.first_name ilike '%' || $4 || '%'
+              or p.middle_name ilike '%' || $4 || '%'
+              or p.last_name ilike '%' || $4 || '%'
+              or p.phone ilike '%' || $4 || '%')
           order by p.last_name, p.first_name
-          limit $6 offset $7`,
-        [req.user.clinicId, branchScope, patientScope, req.user.sub, query, pageSize, offset],
+          limit $5 offset $6`,
+        [req.user.clinicId, patientScope, req.user.sub, query, pageSize, offset],
       );
       return res.json({
         data: patients,
