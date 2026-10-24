@@ -10,7 +10,13 @@ export function createPatientRouter({ client }) {
       const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
       const offset = (page - 1) * pageSize;
-      const [patient] = await client.unsafe(`select id from public.patients where portal_user_id = $1 and clinic_id = $2`, [req.user.sub, req.user.clinicId]);
+      const [patient] = await client.unsafe(
+        `select p.id, p.pid, p.first_name, p.middle_name, p.last_name, p.date_of_birth, p.sex,
+                c.name as clinic_name
+           from public.patients p join public.clinics c on c.id = p.clinic_id
+          where p.portal_user_id = $1 and p.clinic_id = $2`,
+        [req.user.sub, req.user.clinicId],
+      );
       if (!patient) return res.status(404).json({ error: "PATIENT_PROFILE_NOT_FOUND" });
       const [count] = await client.unsafe(
         `select count(*)::integer as total from public.test_requests
@@ -46,7 +52,8 @@ export function createPatientRouter({ client }) {
                     'label', a.label, 'valueType', a.value_type,
                     'numericValue', rv.numeric_value, 'textValue', rv.text_value,
                     'selectValue', rv.select_value, 'booleanValue', rv.boolean_value,
-                    'unit', rv.unit_snapshot, 'isAbnormal', rv.is_abnormal) order by a.sort_order)
+                    'unit', rv.unit_snapshot, 'lowerLimit', rv.lower_limit_snapshot,
+                    'upperLimit', rv.upper_limit_snapshot, 'isAbnormal', rv.is_abnormal) order by a.sort_order)
                     from public.result_values rv join public.test_analytes a on a.id = rv.analyte_id and a.clinic_id = rv.clinic_id
                    where rv.result_submission_id = rs.id), '[]'::jsonb) as values
              from public.request_items ri
@@ -57,7 +64,18 @@ export function createPatientRouter({ client }) {
           [request.id, req.user.clinicId],
         );
       }
-      return res.json({ data, summary: testSummary, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
+      return res.json({
+        data,
+        patient: {
+          pid: patient.pid,
+          name: [patient.first_name, patient.middle_name, patient.last_name].filter(Boolean).join(" "),
+          dateOfBirth: patient.date_of_birth,
+          sex: patient.sex,
+        },
+        clinic: { name: patient.clinic_name },
+        summary: testSummary,
+        pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) },
+      });
     } catch (error) {
       return next(error);
     }

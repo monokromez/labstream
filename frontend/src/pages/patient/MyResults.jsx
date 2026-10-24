@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import { formatDate, formatDateTime } from '../../utils/dateFormat.js'
@@ -20,12 +20,21 @@ export default function MyResults() {
     tests: (request.tests ?? []).map((test) => ({
       name: test.testName,
       interpretation: test.pathologistInterpretation,
-      results: (test.values ?? []).map((value) => [value.label, [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—', value.isAbnormal ? 'Outside reference range' : '']),
+      results: (test.values ?? []).map((value) => ({
+        name: value.label,
+        value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—',
+        isNumeric: value.numericValue != null,
+        unit: value.unit,
+        reference: value.lowerLimit != null || value.upperLimit != null
+          ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}${value.unit ? ` ${value.unit}` : ''}`
+          : 'Not configured',
+        abnormal: value.isAbnormal,
+      })),
     })),
   }))
   const releasedCount = Number(result?.summary?.releasedTests ?? requests.filter((request) => request.status === 'Released').reduce((sum, request) => sum + request.testCount, 0))
   const unreleasedCount = Number(result?.summary?.unreleasedTests ?? requests.filter((request) => request.status !== 'Released').reduce((sum, request) => sum + request.testCount, 0))
-  const rows = useMemo(() => requests, [result])
+  const rows = requests
 
   return (
     <section className="patient-records" aria-label="My test results">
@@ -43,9 +52,61 @@ export default function MyResults() {
         </tbody></table></div>
         <TablePagination currentPage={page} pageSize={10} totalItems={result?.pagination?.total ?? requests.length} onPageChange={setPage} />
       </section>
-      {selected && <AdminDialog title="Request results" description={`${selected.id} · Released ${selected.released}`} onClose={() => setSelected(null)} size="large" footer={<button className="admin-button" type="button" onClick={() => setSelected(null)}>Done</button>}>
-        {selected.tests.map((test) => <section className="patient-records__request-test" key={test.name}><h3>{test.name}</h3><p>{test.interpretation}</p><div className="patient-records__result-list">{test.results.map(([name, value, interpretation]) => <div key={name}><span>{name}</span><strong>{value}</strong><small>{interpretation}</small></div>)}</div></section>)}
-      </AdminDialog>}
+      {selected && (
+        <AdminDialog
+          title="Diagnostic Laboratory Report"
+          description={`${selected.id} · Released ${selected.released}`}
+          onClose={() => setSelected(null)}
+          size="large"
+          className="patient-records__report-dialog"
+          footer={<>
+            <button className="admin-button admin-button--secondary" type="button" onClick={() => setSelected(null)}>Close</button>
+            <button className="admin-button admin-button--positive" type="button" onClick={() => window.print()}>Print / Save as PDF</button>
+          </>}
+        >
+          <div className="patient-records__printable-report">
+            <div className="patient-records__report-header">
+              <div>
+                <h3 className="patient-records__clinic-title">{result?.clinic?.name || 'Diagnostic Laboratory'}</h3>
+                <p className="patient-records__clinic-subtitle">Official Diagnostic Test Report</p>
+              </div>
+              <div className="patient-records__report-meta">
+                <span><strong>Request:</strong> {selected.id}</span>
+                <span><strong>Released:</strong> {selected.released}</span>
+              </div>
+            </div>
+            <div className="patient-records__patient-meta">
+              <span><strong>Patient:</strong> {result?.patient?.name || '—'}</span>
+              <span><strong>PID:</strong> {result?.patient?.pid || '—'}</span>
+              <span><strong>Date of birth:</strong> {result?.patient?.dateOfBirth ? formatDate(result.patient.dateOfBirth) : '—'}</span>
+              <span><strong>Sex:</strong> {result?.patient?.sex || '—'}</span>
+            </div>
+            {selected.tests.map((test) => (
+              <section className="patient-records__request-test" key={test.name}>
+                <h4 className="patient-records__test-name">{test.name}</h4>
+                <div className="patient-records__result-list">
+                  {test.results.map((row) => (
+                    <div key={row.name}>
+                      <span>{row.name}</span>
+                      <strong>{row.value}{row.unit && row.isNumeric ? ` ${row.unit}` : ''}</strong>
+                      <small className={row.abnormal ? 'patient-records__abnormal' : ''}>{row.abnormal ? 'Outside reference range' : `Reference: ${row.reference}`}</small>
+                    </div>
+                  ))}
+                </div>
+                {test.interpretation && (
+                  <div className="patient-records__interpretation-box">
+                    <strong>Pathologist Interpretation:</strong>
+                    <p>{test.interpretation}</p>
+                  </div>
+                )}
+              </section>
+            ))}
+            <footer className="patient-records__report-footer">
+              <p>This request’s results were approved and released by the laboratory.</p>
+            </footer>
+          </div>
+        </AdminDialog>
+      )}
     </section>
   )
 }
