@@ -52,6 +52,45 @@ The active worktree contains a large number of modified and untracked files from
 6. **Clinic/branch onboarding and activation-code delivery are not production-ready.** Bootstrap is a controlled SQL operation and the code is manually delivered. No public clinic creation or automated email/SMS delivery should be assumed.
 7. **Do not treat demo/test data as clinical truth.** No universal ranges should be filled automatically for international deployment. Ranges and clinical cutoffs are different concepts and must be method/population aware.
 
+## Specific scenarios the current system cannot fully handle
+
+This list comes from static code/schema review against the agreed proposal. It is not a substitute for running the scenarios against a disposable database. Some entries are definite implementation gaps; those involving timing, network behavior, or a full role handoff still need runtime confirmation.
+
+### Small and common cases
+
+1. **Boolean analyte entry:** Test Catalog allows Yes/No, but the technologist editor renders the field as text. The save mapper treats only the exact text `true` as true; a value such as `Yes` can be stored incorrectly. See `frontend/src/pages/administrator/TestCatalog.jsx`, `frontend/src/pages/medical-technologist/ResultsInProgress.jsx`, and `frontend/src/pages/medical-technologist/TechnologistContext.jsx`.
+2. **More than 100 records in a view:** Cashier Queue and Pathologist worklists fetch up to 100 rows and paginate locally. Rows beyond the fetched page cannot be reached or searched there. Staff and other local-pagination screens need the same page-through check. See `frontend/src/pages/cashier/CashierQueue.jsx` and `frontend/src/pages/pathologist/PendingValidation.jsx`.
+3. **Catalog setup correction:** The Add Test form creates one specimen requirement and one analyte; the edit endpoint changes catalog metadata but not analyte or specimen configuration. A bad result type, unit, option list, or specimen requirement has no normal repair workflow. See `frontend/src/pages/administrator/TestCatalog.jsx` and `backend/src/routes/administrator.js`.
+4. **Unchanged/unsubmitted result entry on connection loss:** Draft persistence is explicit. Values typed since the last save are lost if the tab closes or a network failure occurs before saving; there is no autosave/offline queue.
+5. **Clinic country/city service unavailable:** Patient/staff address selection depends on an external geography API. Verify the form's behavior when that API is unreachable or its country/city dataset changes; registration may be blocked or partial.
+
+### Workflow and clinic operations
+
+6. **Multiple specimen requirements created by an administrator:** The schema and backend can represent multiple requirements, but the catalog UI creates only one. Such a test cannot be fully configured through the normal UI.
+7. **All-zero-fee request:** Test/request amounts may be zero, but `payments.amount` must be greater than zero. A free screening/waiver or fully discounted request may fail at payment instead of recording a zero-balance disposition. See `backend/supabase/schema.sql` and `backend/src/routes/cashier.js`.
+8. **Paid request cancellation, refund, or invoice correction:** Cashier cancellation is for unpaid requests. Payment void fields exist in the schema, but there is no corresponding cashier API/UI workflow. See `backend/src/routes/cashier.js` and `backend/supabase/schema.sql`.
+9. **HMO or mixed payment:** The payment method enum currently contains only Cash. The system cannot record HMO coverage, authorization, copay, partial settlement, or insurer billing. See `backend/supabase/schema.sql`.
+10. **Unavailable pathologist while still active:** Initial submission fails if no eligible active pathologist is available. Deactivation can auto-reassign active work, but the Administrator has no direct action to transfer a specific request from an active but unavailable pathologist. See `backend/src/routes/technologist.js` and `backend/src/routes/staff.js`.
+11. **Branch creation/management:** Branch identifiers and tenant-aware constraints exist, but clinic/branch onboarding and branch management are SQL/bootstrap operations rather than administrator screens. This prevents a clinic administrator from completing the proposed branch setup in-app. See `backend/supabase/schema.sql` and `backend/README.md`.
+12. **Password forgotten or activation code lost:** Activation and authenticated password change exist, but there is no password reset/reissue flow or automated email/SMS delivery. Codes are manually handed to staff/patients. See `backend/src/routes/auth.js` and `backend/src/routes/cashier.js`.
+
+### Clinical reporting and data history
+
+13. **Variable-length clinical results:** Scalar analytes work for fixed fields, but not repeatable organism/isolate rows, antimicrobial susceptibility matrices, multiple crossmatched units, parasite findings, or sectioned pathology reports. A structured/versioned result template and matching editor/renderer are needed before these are routine workflows. See `backend/supabase/schema.sql` and `backend/supabase/standard-test-result-design.md`.
+14. **Standard test list expected in a new clinic:** The 12 categories and their 77 unique names are specified but are not seeded. A clinic starts without them and must configure each test, specimen, result field, price, turnaround, method, and local ranges.
+15. **Duplicate test headings:** Albumin, Total Protein, Creatinine, and BUN appear in more than one supplied category. A test belongs to one category in the current schema. Duplicating them risks separate prices/configurations; a many-to-many category or panel design is needed if they should appear in multiple category views.
+16. **Historical category volume after catalog changes:** Dashboard volume groups historical requests using the test's current catalog category. Relocating a test can move old volume; deactivating its category can remove historical volume from the active graph. The request item stores a category snapshot, but the chart query uses the current catalog relation. See `backend/src/routes/administrator.js` and `backend/supabase/schema.sql`.
+17. **Clinic-specific ranges and result interpretation:** The system does not provide universal reference ranges for the supplied standard list. A clinic must configure verified intervals, units, methods, and appropriate demographic distinctions. Until then numeric abnormal flags and meaningful interpretation may be unavailable; decision thresholds must not be substituted for reference intervals.
+
+### Larger scale and availability
+
+18. **Instrument/LIS workflow:** Results are manually entered. Analyzer import, barcode scanning, laboratory information system exchange, and automated result matching are not implemented.
+19. **Socket connection loss:** Clinic updates use Socket.IO plus a 10-second refresh fallback. If the socket is unavailable, another role's view can remain stale until the fallback refresh; test this behavior on desktop, mobile, reconnect, and multiple clinics. See `frontend/src/api/client.js` and `backend/src/realtime.js`.
+20. **Clinic isolation and branch isolation under load:** Tenant-aware constraints and role-scoped API queries exist, but full adversarial tests across two clinics/branches are still needed for every endpoint, especially patient search, result access, catalog changes, and staff reassignment.
+21. **Production recovery and compliance operations:** Automated backups/restore drills, retention/deletion policy, jurisdiction-specific privacy controls, electronic signatures, and external reporting requirements are not established by this prototype. These need deployment-specific decisions before real patient use.
+
+Priority to analyze first: structured result templates and test setup; payment/refund/HMO behavior; account recovery/delivery; branch and staff reassignment administration; then history-preserving analytics and pagination beyond 100 rows.
+
 ## Database data clearing contract
 
 `backend/supabase/clear_operational_data_keep_accounts.sql` intentionally keeps `clinics`, `clinic_branches`, `users`, `staff_profiles`, and `account_tokens`. It removes requests, results/reviews, specimens, payments/invoices, audit history, catalog/reference configuration, and unlinked walk-in patient rows. Patient rows linked to portal users are retained because the auth route resolves patient PID and display name through that row; removing those rows would make retained patient accounts unusable. The SQL clears audit history too. It is provided for the user to run against the intended database, not executed by an agent.
