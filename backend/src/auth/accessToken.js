@@ -21,7 +21,6 @@ export function createAccessToken(user, secret, now = Date.now()) {
   const payload = encode({
     sub: user.id,
     clinicId: user.clinic_id,
-    branchId: user.branch_id ?? null,
     role: user.role,
     mustChangePassword: Boolean(user.must_change_password),
     iss: ISSUER,

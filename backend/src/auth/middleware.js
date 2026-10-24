@@ -31,7 +31,7 @@ export function createRequireAuth(client) {
     if (!claims) return res.status(401).json({ error: "INVALID_SESSION", message: "Your session is invalid or expired." });
     try {
       const [account] = await client.unsafe(
-        `select id, clinic_id, branch_id, role, is_active, must_change_password
+        `select id, clinic_id, role, is_active, must_change_password
            from public.users where id = $1 and clinic_id = $2`,
         [claims.sub, claims.clinicId],
       );
@@ -41,7 +41,6 @@ export function createRequireAuth(client) {
       req.user = {
         ...claims,
         role: account.role,
-        branchId: account.branch_id,
         mustChangePassword: account.must_change_password,
       };
       return next();

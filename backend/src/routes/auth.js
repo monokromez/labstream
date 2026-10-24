@@ -19,32 +19,29 @@ export function createAuthRouter(client) {
 
   router.post("/activate", async (req, res, next) => {
     try {
-      const clinicCode = String(req.body?.clinicCode ?? "").trim().toUpperCase();
       const identifier = String(req.body?.identifier ?? "").trim().toUpperCase();
       const activationCode = String(req.body?.activationCode ?? "").trim();
       const newPassword = req.body?.newPassword;
-      if (!clinicCode || !identifier || !activationCode || typeof newPassword !== "string" || newPassword.length < 12) {
-        return res.status(400).json({ error: "INVALID_ACTIVATION", message: "Provide your clinic code, account ID, activation code, and a password of at least 12 characters." });
+      if (!identifier || !activationCode || typeof newPassword !== "string" || newPassword.length < 12) {
+        return res.status(400).json({ error: "INVALID_ACTIVATION", message: "Provide your account ID, activation code, and a password of at least 12 characters." });
       }
       const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
       const hash = hashOneTimeCode(activationCode);
       const result = await client.begin(async (tx) => {
         const [account] = await tx.unsafe(
-          `select u.id, u.clinic_id, u.branch_id, u.role, u.username, p.pid,
+          `select u.id, u.clinic_id, u.role, u.username, p.pid,
                   coalesce(nullif(concat_ws(' ', p.first_name, p.middle_name, p.last_name), ''), nullif(concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name), ''), u.username) as display_name,
                   at.id as token_id
              from public.account_tokens at
              join public.users u on u.id = at.user_id and u.clinic_id = at.clinic_id
-             join public.clinics c on c.id = at.clinic_id
              left join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
              left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
-            where upper(c.code) = $1
-              and (upper(u.username) = $2 or upper(p.pid) = $2)
-              and at.token_hash = $3 and at.purpose = 'activation'
+            where (upper(u.username) = $1 or upper(p.pid) = $1)
+            and at.token_hash = $2 and at.purpose = 'activation'
               and at.consumed_at is null and at.expires_at > now()
               and u.is_active = false
             for update of at, u`,
-          [clinicCode, identifier, hash],
+          [identifier, hash],
         );
         if (!account) return null;
         await tx.unsafe(
@@ -60,7 +57,6 @@ export function createAuthRouter(client) {
       const token = createAccessToken({
         id: result.id,
         clinic_id: result.clinic_id,
-        branch_id: result.branch_id,
         role: result.role,
         must_change_password: false,
       }, process.env.AUTH_TOKEN_SECRET);
@@ -74,25 +70,22 @@ export function createAuthRouter(client) {
 
   router.post("/login", async (req, res, next) => {
     try {
-      const clinicCode = String(req.body?.clinicCode ?? "").trim().toUpperCase();
       const identifier = String(req.body?.identifier ?? "").trim().toUpperCase();
       const password = req.body?.password;
-      if (!clinicCode || !identifier || typeof password !== "string" || !password) {
-        return res.status(400).json({ error: "INVALID_CREDENTIALS", message: "Enter your clinic, username or PID, and password." });
+      if (!identifier || typeof password !== "string" || !password) {
+        return res.status(400).json({ error: "INVALID_CREDENTIALS", message: "Enter your username or PID and password." });
       }
       const [user] = await client.unsafe(
-        `select u.id, u.clinic_id, u.branch_id, u.role, u.password_hash, u.is_active,
+        `select u.id, u.clinic_id, u.role, u.password_hash, u.is_active,
                 u.must_change_password, u.username, p.pid,
                 coalesce(nullif(concat_ws(' ', p.first_name, p.middle_name, p.last_name), ''), nullif(concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name), ''), u.username) as display_name
            from public.users u
-           join public.clinics c on c.id = u.clinic_id
            left join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
            left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
-          where upper(c.code) = $1
-            and (upper(u.username) = $2 or upper(p.pid) = $2)
-            and c.is_active = true
+          where u.clinic_id = (select id from public.clinics where is_active = true)
+            and (upper(u.username) = $1 or upper(p.pid) = $1)
           limit 1`,
-        [clinicCode, identifier],
+        [identifier],
       );
       const verified = user?.password_hash && user.is_active
         ? await argon2.verify(user.password_hash, password).catch(() => false)
@@ -115,7 +108,6 @@ export function createAuthRouter(client) {
         user: {
           id: user.id,
           clinicId: user.clinic_id,
-          branchId: user.branch_id,
           role: user.role,
           username: user.username,
           displayName: user.display_name,
@@ -131,7 +123,7 @@ export function createAuthRouter(client) {
   router.get("/me", requireAuth, async (req, res, next) => {
     try {
       const [user] = await client.unsafe(
-        `select u.id, u.clinic_id, u.branch_id, u.role, u.username, u.is_active, u.must_change_password,
+        `select u.id, u.clinic_id, u.role, u.username, u.is_active, u.must_change_password,
                 coalesce(nullif(concat_ws(' ', p.first_name, p.middle_name, p.last_name), ''), nullif(concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name), ''), u.username) as display_name
            from public.users u
            left join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
@@ -144,7 +136,6 @@ export function createAuthRouter(client) {
       return res.json({
         id: user.id,
         clinicId: user.clinic_id,
-        branchId: user.branch_id,
         role: user.role,
         username: user.username,
         displayName: user.display_name,
@@ -163,7 +154,7 @@ export function createAuthRouter(client) {
         return res.status(400).json({ error: "INVALID_PASSWORD", message: "Enter your current password and a new password of at least 12 characters." });
       }
       const [user] = await client.unsafe(
-        `select id, clinic_id, branch_id, role, username, password_hash, is_active
+        `select id, clinic_id, role, username, password_hash, is_active
            from public.users where id = $1 and clinic_id = $2`,
         [req.user.sub, req.user.clinicId],
       );

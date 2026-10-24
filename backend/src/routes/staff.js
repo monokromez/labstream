@@ -26,7 +26,7 @@ export function createStaffRouter({ client }) {
       );
       const staff = await client.unsafe(
         `select u.id, u.username, u.email, u.role, u.is_active, u.last_sign_in_at,
-                u.branch_id, p.first_name, p.middle_name, p.last_name, p.date_of_birth,
+                p.first_name, p.middle_name, p.last_name, p.date_of_birth,
                 p.phone, p.country, p.city, p.house_number, p.street
            from public.users u
            join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
@@ -53,25 +53,17 @@ export function createStaffRouter({ client }) {
       const email = String(body.email ?? "").trim().toLowerCase();
       const phone = String(body.phone ?? "").trim();
       const dateOfBirth = String(body.dateOfBirth ?? "").trim();
-      const branchId = req.user.branchId ?? body.branchId ?? null;
       if (!STAFF_ROLES.has(role)) return res.status(400).json({ error: "INVALID_STAFF_ROLE", message: "Choose a non-administrator staff role." });
       if (!firstName || !lastName || !email || !phone || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
         return res.status(400).json({ error: "INVALID_STAFF_DETAILS", message: "Provide first name, surname, date of birth, contact number, and email." });
       }
       const activation = createOneTimeCode();
       const result = await client.begin(async (tx) => {
-        if (branchId) {
-          const [branch] = await tx.unsafe(
-            `select id from public.clinic_branches where id = $1 and clinic_id = $2 and is_active = true`,
-            [branchId, req.user.clinicId],
-          );
-          if (!branch) throw Object.assign(new Error("Branch is not active in this clinic."), { code: "INVALID_BRANCH" });
-        }
         const [user] = await tx.unsafe(
-          `insert into public.users (clinic_id, branch_id, role, email, is_active, must_change_password)
-           values ($1, $2, $3, $4, false, true)
-           returning id, clinic_id, staff_number, username, role, branch_id`,
-          [req.user.clinicId, branchId, role, email],
+          `insert into public.users (clinic_id, role, email, is_active, must_change_password)
+           values ($1, $2, $3, false, true)
+           returning id, clinic_id, staff_number, username, role`,
+          [req.user.clinicId, role, email],
         );
         await tx.unsafe(
           `insert into public.staff_profiles
@@ -98,7 +90,6 @@ export function createStaffRouter({ client }) {
         activation: { code: activation.code, expiresInHours: 24, revealOnce: true },
       });
     } catch (error) {
-      if (error.code === "INVALID_BRANCH") return res.status(400).json({ error: error.code, message: error.message });
       if (error.code === "23505") return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "This email is already assigned to an account in the clinic." });
       return next(error);
     }
@@ -113,7 +104,7 @@ export function createStaffRouter({ client }) {
       const reassignedRequestIds = [];
       const result = await client.begin(async (tx) => {
         const [target] = await tx.unsafe(
-          `select id, role, is_active, password_hash, branch_id
+          `select id, role, is_active, password_hash
              from public.users where id = $1 and clinic_id = $2 and role <> 'patient' for update`,
           [userId, req.user.clinicId],
         );
@@ -124,7 +115,7 @@ export function createStaffRouter({ client }) {
             : target.role === "pathologist" ? "assigned_pathologist_id" : null;
           if (assignmentColumn) {
             const requests = await tx.unsafe(
-              `select id, branch_id from public.test_requests
+              `select id from public.test_requests
                 where clinic_id = $1 and ${assignmentColumn} = $2 and status = any($3::public.request_status[])
                 order by requested_at for update`,
               [req.user.clinicId, target.id, ACTIVE_REQUEST_STATUSES],
@@ -135,14 +126,13 @@ export function createStaffRouter({ client }) {
                 `select u.id
                    from public.users u
                   where u.clinic_id = $1 and u.role = $2::public.user_role and u.is_active = true and u.id <> $3
-                    and (u.branch_id is null or u.branch_id = $4)
                   order by (select count(*) from public.test_requests active
                              where active.clinic_id = u.clinic_id
                                and active.${assignmentColumn} = u.id
-                               and active.status = any($5::public.request_status[])) asc,
+                               and active.status = any($4::public.request_status[])) asc,
                            u.last_sign_in_at nulls first
                   limit 1 for update of u skip locked`,
-                [req.user.clinicId, candidateRole, target.id, request.branch_id, ACTIVE_REQUEST_STATUSES],
+                [req.user.clinicId, candidateRole, target.id, ACTIVE_REQUEST_STATUSES],
               );
               if (!candidate) throw Object.assign(new Error("No active qualified staff member is available to take this work. The account remains active."), { code: "NO_REASSIGNEE" });
               await tx.unsafe(`update public.test_requests set ${assignmentColumn} = $1, updated_at = now() where id = $2 and clinic_id = $3`, [candidate.id, request.id, req.user.clinicId]);
