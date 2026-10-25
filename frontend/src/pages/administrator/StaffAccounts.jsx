@@ -218,7 +218,7 @@ export default function StaffAccounts() {
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-email">Email address
-              <input id="staff-email" required type="email" autoComplete="email" aria-invalid={Boolean(visibleStaffError('email'))} value={form.email} onBlur={() => markTouched('email')} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+              <input id="staff-email" required type="email" autoComplete="email" maxLength={254} aria-invalid={Boolean(visibleStaffError('email'))} value={form.email} onBlur={() => markTouched('email')} onChange={(event) => setForm({ ...form, email: event.target.value })} />
               {visibleStaffError('email') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('email')}</span>}
             </label>
           </section>

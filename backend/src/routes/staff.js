@@ -4,6 +4,10 @@ import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSam
 
 const STAFF_ROLES = new Set(["cashier", "medical_technologist", "pathologist"]);
 const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "for_validation", "correction"];
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+  "yahoo.com", "yahoo.com.ph", "icloud.com", "me.com",
+]);
 
 export function createStaffRouter({ client }) {
   const router = Router();
@@ -56,6 +60,10 @@ export function createStaffRouter({ client }) {
       if (!STAFF_ROLES.has(role)) return res.status(400).json({ error: "INVALID_STAFF_ROLE", message: "Choose a non-administrator staff role." });
       if (!firstName || !lastName || !email || !phone || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
         return res.status(400).json({ error: "INVALID_STAFF_DETAILS", message: "Provide first name, surname, date of birth, contact number, and email." });
+      }
+      const emailDomain = email.slice(email.lastIndexOf("@") + 1);
+      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !PUBLIC_EMAIL_DOMAINS.has(emailDomain)) {
+        return res.status(400).json({ error: "INVALID_STAFF_EMAIL", message: "Use a valid personal email address from a supported public email provider." });
       }
       const activation = createOneTimeCode();
       const result = await client.begin(async (tx) => {

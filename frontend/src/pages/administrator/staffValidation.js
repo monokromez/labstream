@@ -5,6 +5,10 @@ export const STAFF_NAME_MAX = 50
 
 const NAME_PATTERN = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com',
+  'yahoo.com', 'yahoo.com.ph', 'icloud.com', 'me.com',
+])
 
 const localDateValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
@@ -74,6 +78,8 @@ export function getStaffFieldError(field, value, context = {}) {
     if (!trimmed) return 'Email address is required.'
     if (trimmed.length > 254) return 'Email address cannot exceed 254 characters.'
     if (trimmed.length < 6 || !EMAIL_PATTERN.test(trimmed)) return 'Enter a valid email address.'
+    const domain = trimmed.slice(trimmed.lastIndexOf('@') + 1).toLowerCase()
+    if (!PUBLIC_EMAIL_DOMAINS.has(domain)) return 'Use a personal email address from a supported public email provider.'
     return ''
   }
 
