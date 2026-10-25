@@ -15,6 +15,7 @@ Use Node.js and npm. The frontend and backend run in separate terminals.
 Use the single laboratory configured in the database and activate separate accounts for each role. The Administrator creates available tests with specimen requirements, result fields, price, and turnaround time before testing requests. Multi-laboratory and branch workflows are outside the supplied proposal.
 
 1. Sign in as Cashier, register a patient, and create a request with multiple tests. Confirm it appears in Queue as awaiting payment.
+   Patient registration validates names, date of birth, country-specific phone numbers, and ID details as they are entered. Passport and government-issued identity documents are available for every country; configured local ID options vary by country.
 2. Process payment. Confirm the invoice appears and the assigned Medical Technologist sees the request.
 3. As Medical Technologist, receive and accept the specimens. Also reject a specimen with a reason and confirm the replacement/recollection path is visible.
 4. Enter numeric, dropdown, and text results. Save a draft, then submit the request only after every required test and field is complete.
