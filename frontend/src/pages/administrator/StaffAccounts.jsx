@@ -7,7 +7,7 @@ import PlusIcon from '../../components/data/PlusIcon.jsx'
 import { formatDateTime } from '../../utils/dateFormat.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
-import { formatPatientPhoneInput } from '../cashier/patientValidation.js'
+import { formatPatientPhoneInput, getPatientCallingCode } from '../cashier/patientValidation.js'
 import { getStaffFormErrors } from './staffValidation.js'
 import './StaffAccounts.css'
 
@@ -58,6 +58,7 @@ export default function StaffAccounts() {
     email: form.email,
     post: form.post,
   }, { countryCode: form.countryCode, countryName: form.country })
+  const staffCallingCode = getPatientCallingCode(form.countryCode)
 
   const visibleStaffError = (field) => (touched[field] ? staffErrors[field] : '')
   const markTouched = (field) => setTouched((current) => ({ ...current, [field]: true }))
@@ -200,7 +201,8 @@ export default function StaffAccounts() {
               {visibleStaffError('street') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('street')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-contact">Contact number
-              <input id="staff-contact" required type="tel" autoComplete="tel" inputMode="tel" maxLength={30} aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
+              {staffCallingCode && <span className="admin-dialog__field-hint">Country calling code: +{staffCallingCode}</span>}
+              <input id="staff-contact" required type="tel" autoComplete="tel" inputMode="tel" minLength={7} maxLength={30} placeholder={staffCallingCode ? `+${staffCallingCode} or local number` : 'Select a country first'} aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-email">Email address
