@@ -61,6 +61,9 @@ export default function StaffAccounts() {
 
   const visibleStaffError = (field) => (touched[field] ? staffErrors[field] : '')
   const markTouched = (field) => setTouched((current) => ({ ...current, [field]: true }))
+  const handleStaffPhoneChange = (value) => {
+    setForm((current) => ({ ...current, contact: formatPatientPhoneInput(value, current.countryCode) }))
+  }
   const validateStaffForm = (nextForm = form) => {
     const errors = getStaffFormErrors({
       firstName: nextForm.firstName,
@@ -197,7 +200,7 @@ export default function StaffAccounts() {
               {visibleStaffError('street') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('street')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-contact">Contact number
-              <input id="staff-contact" required type="tel" autoComplete="tel" inputMode="tel" aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => setForm((current) => ({ ...current, contact: formatPatientPhoneInput(event.target.value, current.countryCode) }))} />
+              <input id="staff-contact" required type="tel" autoComplete="tel" inputMode="tel" maxLength={30} aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-email">Email address
