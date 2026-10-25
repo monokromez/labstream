@@ -1,3 +1,9 @@
+.app-search-field {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
 .app-search {
   display: flex;
   width: 100%;

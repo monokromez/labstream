@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import CountryCityFields from '../../components/data/CountryCityFields.jsx'
+import { CharacterCount, LimitedInput } from '../../components/forms/LimitedInput.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTestCatalog from '../../data/useTestCatalog.js'
@@ -516,9 +517,9 @@ export default function RegisterRequest() {
               {activeModal === 'add' && !showRequestPrompt && (
                 <form className='register-request__modal-form' id='new-patient-form' noValidate onSubmit={handleRegisterPatient}>
                   <div className='register-request__form-row register-request__form-row--three'>
-                    <label htmlFor='new-patient-first-name'>First name<input id='new-patient-first-name' name='firstName' type='text' autoComplete='given-name' placeholder='First name' value={patientForm.firstName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('firstName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('firstName'))} required />{visiblePatientError('firstName') && <span className='register-request__field-error'>{visiblePatientError('firstName')}</span>}</label>
-                    <label htmlFor='new-patient-middle-name'>Middle name<input id='new-patient-middle-name' name='middleName' type='text' autoComplete='additional-name' placeholder='Middle name' value={patientForm.middleName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('middleName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('middleName'))} />{visiblePatientError('middleName') && <span className='register-request__field-error'>{visiblePatientError('middleName')}</span>}</label>
-                    <label htmlFor='new-patient-last-name'>Surname<input id='new-patient-last-name' name='lastName' type='text' autoComplete='family-name' placeholder='Surname' value={patientForm.lastName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('lastName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('lastName'))} required />{visiblePatientError('lastName') && <span className='register-request__field-error'>{visiblePatientError('lastName')}</span>}</label>
+                    <label htmlFor='new-patient-first-name'>First name<LimitedInput id='new-patient-first-name' name='firstName' type='text' autoComplete='given-name' placeholder='First name' value={patientForm.firstName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('firstName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('firstName'))} required />{visiblePatientError('firstName') && <span className='register-request__field-error'>{visiblePatientError('firstName')}</span>}</label>
+                    <label htmlFor='new-patient-middle-name'>Middle name<LimitedInput id='new-patient-middle-name' name='middleName' type='text' autoComplete='additional-name' placeholder='Middle name' value={patientForm.middleName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('middleName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('middleName'))} />{visiblePatientError('middleName') && <span className='register-request__field-error'>{visiblePatientError('middleName')}</span>}</label>
+                    <label htmlFor='new-patient-last-name'>Surname<LimitedInput id='new-patient-last-name' name='lastName' type='text' autoComplete='family-name' placeholder='Surname' value={patientForm.lastName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('lastName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('lastName'))} required />{visiblePatientError('lastName') && <span className='register-request__field-error'>{visiblePatientError('lastName')}</span>}</label>
                   </div>
                   <CountryCityFields
                     className='register-request__form-row'
@@ -541,10 +542,10 @@ export default function RegisterRequest() {
                     onCityBlur={() => markPatientFieldTouched('city')}
                   />
                   <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-house-number'>House no.<input id='new-patient-house-number' name='houseNumber' type='text' autoComplete='address-line2' placeholder='House number' value={patientForm.houseNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('houseNumber')} maxLength={30} aria-invalid={Boolean(visiblePatientError('houseNumber'))} />{visiblePatientError('houseNumber') && <span className='register-request__field-error'>{visiblePatientError('houseNumber')}</span>}</label>
-                    <label htmlFor='new-patient-street'>Street<input id='new-patient-street' name='street' type='text' autoComplete='street-address' placeholder='Street' value={patientForm.street} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('street')} minLength={2} maxLength={100} aria-invalid={Boolean(visiblePatientError('street'))} />{visiblePatientError('street') && <span className='register-request__field-error'>{visiblePatientError('street')}</span>}</label>
+                    <label htmlFor='new-patient-house-number'>House no.<LimitedInput id='new-patient-house-number' name='houseNumber' type='text' autoComplete='address-line2' placeholder='House number' value={patientForm.houseNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('houseNumber')} maxLength={30} aria-invalid={Boolean(visiblePatientError('houseNumber'))} />{visiblePatientError('houseNumber') && <span className='register-request__field-error'>{visiblePatientError('houseNumber')}</span>}</label>
+                    <label htmlFor='new-patient-street'>Street<LimitedInput id='new-patient-street' name='street' type='text' autoComplete='street-address' placeholder='Street' value={patientForm.street} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('street')} minLength={2} maxLength={100} aria-invalid={Boolean(visiblePatientError('street'))} />{visiblePatientError('street') && <span className='register-request__field-error'>{visiblePatientError('street')}</span>}</label>
                   </div>
-                  <label htmlFor='new-patient-email'>Email address<input id='new-patient-email' name='email' type='email' autoComplete='email' placeholder='name@example.com' value={patientForm.email} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('email')} maxLength={254} aria-invalid={Boolean(visiblePatientError('email'))} />{visiblePatientError('email') && <span className='register-request__field-error'>{visiblePatientError('email')}</span>}</label>
+                  <label htmlFor='new-patient-email'>Email address<LimitedInput id='new-patient-email' name='email' type='email' autoComplete='email' placeholder='name@example.com' value={patientForm.email} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('email')} maxLength={254} aria-invalid={Boolean(visiblePatientError('email'))} />{visiblePatientError('email') && <span className='register-request__field-error'>{visiblePatientError('email')}</span>}</label>
                   <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} disabled={!patientCountryCode} aria-invalid={Boolean(visiblePatientError('validIdType'))} onBlur={() => markPatientFieldTouched('validIdType')} onChange={(event) => {
                     setValidIdSelection(event.target.value)
                     setPatientTouched((current) => ({ ...current, validIdType: true, otherIdType: true }))
@@ -555,24 +556,24 @@ export default function RegisterRequest() {
                     {patientIdOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>{visiblePatientError('validIdType') && <span className='register-request__field-error'>{visiblePatientError('validIdType')}</span>}</label>
                   {validIdSelection === 'other' && (
-                    <label htmlFor='new-patient-valid-id-type'>ID type / classification<input
+                    <label htmlFor='new-patient-valid-id-type'>ID type / classification<LimitedInput
                       id='new-patient-valid-id-type'
                       name='validIdType'
                       type='text'
                       placeholder='Enter ID type or classification'
                       value={validIdType}
+                      maxLength={80}
                       onChange={(event) => {
                         setValidIdType(event.target.value)
                         markPatientFieldTouched('otherIdType')
                       }}
                       onBlur={() => markPatientFieldTouched('otherIdType')}
                       minLength={2}
-                      maxLength={80}
                       aria-invalid={Boolean(visiblePatientError('otherIdType'))}
                       required
                     />{visiblePatientError('otherIdType') && <span className='register-request__field-error'>{visiblePatientError('otherIdType')}</span>}</label>
                   )}
-                  <label htmlFor='new-patient-valid-id-number'>ID or card number<input id='new-patient-valid-id-number' name='validIdNumber' type='text' placeholder='Enter the ID or card number' value={patientForm.validIdNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('validIdNumber')} minLength={3} maxLength={50} aria-invalid={Boolean(visiblePatientError('validIdNumber'))} required />{visiblePatientError('validIdNumber') && <span className='register-request__field-error'>{visiblePatientError('validIdNumber')}</span>}</label>
+                  <label htmlFor='new-patient-valid-id-number'>ID or card number<LimitedInput id='new-patient-valid-id-number' name='validIdNumber' type='text' placeholder='Enter the ID or card number' value={patientForm.validIdNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('validIdNumber')} minLength={3} maxLength={50} aria-invalid={Boolean(visiblePatientError('validIdNumber'))} required />{visiblePatientError('validIdNumber') && <span className='register-request__field-error'>{visiblePatientError('validIdNumber')}</span>}</label>
                   <div className='register-request__form-row'>
                     <label htmlFor='new-patient-sex'>Sex<select id='new-patient-sex' name='sex' value={patientForm.sex} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('sex')} aria-invalid={Boolean(visiblePatientError('sex'))} required><option value='' disabled>Select sex</option><option>Female</option><option>Male</option></select>{visiblePatientError('sex') && <span className='register-request__field-error'>{visiblePatientError('sex')}</span>}</label>
                     <label htmlFor='new-patient-dob'>Date of birth
@@ -600,6 +601,7 @@ export default function RegisterRequest() {
                       {patientCallingCode && <span>+{patientCallingCode}</span>}
                       <input id='new-patient-contact' name='contact' type='tel' autoComplete='tel-national' inputMode='tel' placeholder={patientCountryCode ? 'Mobile number' : 'Select a country first'} value={patientForm.contact} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('phone')} minLength={7} maxLength={30} disabled={!patientCountryCode} aria-invalid={Boolean(visiblePatientError('phone'))} required />
                     </span>
+                    <CharacterCount value={patientForm.contact} limit={30} />
                     {visiblePatientError('phone') && <span className='register-request__field-error'>{visiblePatientError('phone')}</span>}
                   </label>
                   <p className='register-request__modal-note'>A PID is generated by the system after the patient is saved.</p>

@@ -3,11 +3,13 @@ import SearchInput from '../../components/data/SearchInput.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import { CurrencyInput, LimitedInput } from '../../components/forms/LimitedInput.jsx'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import './TestCatalog.css'
 
 const specimenTypes = ['Blood', 'Whole blood', 'Serum', 'Plasma', 'Citrated plasma', 'Urine', 'Stool', 'Sputum', 'Swab', 'Saliva', 'Semen', 'Cervical specimen', 'Aspirate', 'Cerebrospinal fluid', 'Tissue', 'Other']
+const MAX_TURNAROUND_HOURS = 720
 const unitsBySpecimen = {
   Blood: ['g/dL', 'g/L', 'mg/dL', 'mmol/L', 'µmol/L', 'U/L', '%', 'cells/µL', '10³/µL', '10⁶/µL', 'fL', 'pg', 'Other'],
   'Whole blood': ['g/dL', 'g/L', 'mg/dL', 'mmol/L', 'µmol/L', 'U/L', '%', 'cells/µL', '10³/µL', '10⁶/µL', 'fL', 'pg', 'Other'],
@@ -147,8 +149,8 @@ export default function TestCatalog() {
       const minutes = form.turnaroundMinutePart === '' ? 0 : Number(form.turnaroundMinutePart)
       const hasTurnaround = form.turnaroundHours !== '' || form.turnaroundMinutePart !== ''
       const turnaroundMinutes = hasTurnaround ? hours * 60 + minutes : null
-      if (!Number.isInteger(hours) || hours < 0 || !Number.isInteger(minutes) || minutes < 0 || minutes > 59 || (hasTurnaround && turnaroundMinutes < 1)) {
-        setSaveNotice('Enter a valid turnaround time. Minutes must be from 0 to 59.')
+      if (!Number.isInteger(hours) || hours < 0 || hours > MAX_TURNAROUND_HOURS || !Number.isInteger(minutes) || minutes < 0 || minutes > 59 || (hasTurnaround && (turnaroundMinutes < 1 || turnaroundMinutes > MAX_TURNAROUND_HOURS * 60))) {
+        setSaveNotice('Enter a valid turnaround time. The maximum is 30 days, with minutes from 0 to 59.')
         return
       }
       const analytesPayload = form.analytes.map((item, idx) => {
@@ -310,14 +312,14 @@ export default function TestCatalog() {
           }
           setDialog({ ...dialog, type: 'confirm-test' })
         }}>
-          <label className="admin-dialog__field">Test name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Complete Blood Count (CBC)" /></label>
+          <label className="admin-dialog__field">Test name<LimitedInput required value={form.name} maxLength={160} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Complete Blood Count (CBC)" /></label>
           <fieldset className="admin-dialog__field test-catalog__category-select"><legend>Categories</legend><div className="test-catalog__category-options">{categoryRecords.filter((category) => category.isActive).map((category) => <label className={`test-catalog__category-option${form.categoryIds.includes(category.id) ? ' test-catalog__category-option--selected' : ''}`} key={category.id}><input type="checkbox" checked={form.categoryIds.includes(category.id)} onChange={(event) => setForm((prev) => ({ ...prev, categoryIds: event.target.checked ? [...prev.categoryIds, category.id] : prev.categoryIds.filter((id) => id !== category.id) }))} /><span>{category.name}</span></label>)}</div></fieldset>
-          <label className="admin-dialog__field">Price (₱)<input type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label>
-          <div className="admin-dialog__field test-catalog__turnaround-field" role="group" aria-label="Turnaround Time"><span className="test-catalog__turnaround-label">Turnaround Time</span><div className="test-catalog__turnaround-inputs"><label><input aria-label="Turnaround hours" type="number" min="0" step="1" placeholder="0" value={form.turnaroundHours} onChange={(event) => setForm({ ...form, turnaroundHours: event.target.value })} /><span aria-hidden="true">HRS</span></label><label><input aria-label="Turnaround minutes" type="number" min="0" max="59" step="1" placeholder="0" value={form.turnaroundMinutePart} onChange={(event) => setForm({ ...form, turnaroundMinutePart: event.target.value })} /><span aria-hidden="true">MIN</span></label></div></div>
+          <label className="admin-dialog__field">Price (₱)<CurrencyInput required value={form.price} onValueChange={(price) => setForm({ ...form, price })} /></label>
+          <div className="admin-dialog__field test-catalog__turnaround-field" role="group" aria-label="Turnaround Time"><span className="test-catalog__turnaround-label">Turnaround Time</span><div className="test-catalog__turnaround-inputs"><label><input aria-label="Turnaround hours (maximum 720)" type="text" inputMode="numeric" maxLength={3} placeholder="0" value={form.turnaroundHours} onChange={(event) => setForm({ ...form, turnaroundHours: event.target.value.replace(/\D/g, '').slice(0, 3) })} /><span aria-hidden="true">HRS</span></label><label><input aria-label="Turnaround minutes (maximum 59)" type="text" inputMode="numeric" maxLength={2} placeholder="0" value={form.turnaroundMinutePart} onChange={(event) => setForm({ ...form, turnaroundMinutePart: event.target.value.replace(/\D/g, '').slice(0, 2) })} /><span aria-hidden="true">MIN</span></label></div><small className="character-count">{Number(form.turnaroundHours || 0)}/720 hours · {Number(form.turnaroundMinutePart || 0)}/59 minutes (max 30 days)</small></div>
           <label className="admin-dialog__field">Availability<select value={form.availability} onChange={(event) => setForm({ ...form, availability: event.target.value })}><option>Available</option><option>Unavailable</option></select></label>
           <section className="test-catalog__analytes-section admin-dialog__span">
             <div className="test-catalog__section-header"><div><h3 className="test-catalog__section-title">Required Specimens ({form.specimens.length})</h3><p className="test-catalog__section-desc">Choose each specimen type needed for this test.</p></div><button type="button" className="admin-button admin-button--small admin-button--positive" onClick={addSpecimen}>+ Add Specimen</button></div>
-            <div className="test-catalog__analyte-list">{form.specimens.map((specimen, index) => <div key={index} className="test-catalog__analyte-card"><div className="test-catalog__analyte-grid"><label className="admin-dialog__field">Specimen {index + 1}<select required value={specimen.specimenType} onChange={(event) => updateSpecimen(index, 'specimenType', event.target.value)}>{specimenTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label className="admin-dialog__field">Collection instructions<input value={specimen.collectionInstructions} onChange={(event) => updateSpecimen(index, 'collectionInstructions', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Minimum quantity<input type="number" min="0.01" step="0.01" value={specimen.minimumQuantity} onChange={(event) => updateSpecimen(index, 'minimumQuantity', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Quantity unit<input value={specimen.quantityUnit} onChange={(event) => updateSpecimen(index, 'quantityUnit', event.target.value)} placeholder="e.g. mL" /></label></div>{form.specimens.length > 1 && <button type="button" className="admin-button admin-button--small admin-button--negative test-catalog__remove-btn" onClick={() => removeSpecimen(index)}>Remove</button>}</div>)}</div>
+            <div className="test-catalog__analyte-list">{form.specimens.map((specimen, index) => <div key={index} className="test-catalog__analyte-card"><div className="test-catalog__analyte-grid"><label className="admin-dialog__field">Specimen {index + 1}<select required value={specimen.specimenType} onChange={(event) => updateSpecimen(index, 'specimenType', event.target.value)}>{specimenTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label className="admin-dialog__field">Collection instructions<LimitedInput value={specimen.collectionInstructions} maxLength={500} onChange={(event) => updateSpecimen(index, 'collectionInstructions', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Minimum quantity<input type="number" min="0.01" step="0.01" value={specimen.minimumQuantity} onChange={(event) => updateSpecimen(index, 'minimumQuantity', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Quantity unit<LimitedInput value={specimen.quantityUnit} maxLength={30} onChange={(event) => updateSpecimen(index, 'quantityUnit', event.target.value)} placeholder="e.g. mL" /></label></div>{form.specimens.length > 1 && <button type="button" className="admin-button admin-button--small admin-button--negative test-catalog__remove-btn" onClick={() => removeSpecimen(index)}>Remove</button>}</div>)}</div>
           </section>
 
             <section className="test-catalog__analytes-section admin-dialog__span">
@@ -336,9 +338,10 @@ export default function TestCatalog() {
                     <div className="test-catalog__analyte-grid">
                       <label className="admin-dialog__field">
                         Parameter {index + 1}
-                        <input
+                        <LimitedInput
                           required
                           value={analyte.label}
+                          maxLength={120}
                           placeholder={index === 0 ? 'e.g. Hemoglobin' : 'e.g. Hematocrit'}
                           onChange={(e) => updateAnalyte(index, 'label', e.target.value)}
                         />
@@ -364,13 +367,13 @@ export default function TestCatalog() {
                       {analyte.valueType === 'numeric' && analyte.unit === 'Other' && (
                         <label className="admin-dialog__field">
                           Custom unit
-                          <input required value={analyte.customAnalyteUnit} onChange={(e) => updateAnalyte(index, 'customAnalyteUnit', e.target.value)} placeholder="Specify unit" />
+                          <LimitedInput required value={analyte.customAnalyteUnit} maxLength={30} onChange={(e) => updateAnalyte(index, 'customAnalyteUnit', e.target.value)} placeholder="Specify unit" />
                         </label>
                       )}
                       {analyte.valueType === 'select' && (
                         <label className="admin-dialog__field">
                           Options (comma-separated)
-                          <input required value={analyte.analyteOptions} onChange={(e) => updateAnalyte(index, 'analyteOptions', e.target.value)} placeholder="Positive, Negative" />
+                          <LimitedInput required value={analyte.analyteOptions} maxLength={500} onChange={(e) => updateAnalyte(index, 'analyteOptions', e.target.value)} placeholder="Positive, Negative" />
                         </label>
                       )}
                     </div>
@@ -383,7 +386,7 @@ export default function TestCatalog() {
                 ))}
               </div>
             </section>
-        </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{catalog.categories.map((category) => <li key={category}><span>{category} <small>({catalog.tests.filter((test) => test.categoryNames.includes(category)).length} tests)</small></span><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'remove-category', category, moves: {} })}>Remove</button></li>)}</ul></div></div>}
+        </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<LimitedInput value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{catalog.categories.map((category) => <li key={category}><span>{category} <small>({catalog.tests.filter((test) => test.categoryNames.includes(category)).length} tests)</small></span><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'remove-category', category, moves: {} })}>Remove</button></li>)}</ul></div></div>}
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button>{view === 'test' ? <button className="admin-button" type="submit" form="test-form" onClick={(event) => {
           if (!canReviewTest) {
             event.preventDefault()

@@ -3,6 +3,7 @@ import SearchInput from '../../components/data/SearchInput.jsx'
 import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import { CharacterCount, LimitedInput } from '../../components/forms/LimitedInput.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
 import { AsYouType, parsePhoneNumberFromString } from 'libphonenumber-js/min'
 import { formatDateTime } from '../../utils/dateFormat.js'
@@ -168,15 +169,15 @@ export default function StaffAccounts() {
           <section className="admin-dialog__section" aria-labelledby="staff-personal-heading">
             <h3 className="admin-dialog__section-heading" id="staff-personal-heading">Personal Details</h3>
             <label className="admin-dialog__field" htmlFor="staff-first-name">First name
-              <input id="staff-first-name" required autoComplete="given-name" aria-invalid={Boolean(visibleStaffError('firstName'))} value={form.firstName} onBlur={() => markTouched('firstName')} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
+              <LimitedInput id="staff-first-name" required autoComplete="given-name" aria-invalid={Boolean(visibleStaffError('firstName'))} value={form.firstName} maxLength={50} onBlur={() => markTouched('firstName')} onChange={(event) => setForm({ ...form, firstName: event.target.value })} />
               {visibleStaffError('firstName') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('firstName')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-middle-name">Middle name
-              <input id="staff-middle-name" autoComplete="additional-name" aria-invalid={Boolean(visibleStaffError('middleName'))} value={form.middleName} onBlur={() => markTouched('middleName')} onChange={(event) => setForm({ ...form, middleName: event.target.value })} />
+              <LimitedInput id="staff-middle-name" autoComplete="additional-name" aria-invalid={Boolean(visibleStaffError('middleName'))} value={form.middleName} maxLength={50} onBlur={() => markTouched('middleName')} onChange={(event) => setForm({ ...form, middleName: event.target.value })} />
               {visibleStaffError('middleName') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('middleName')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-surname">Surname
-              <input id="staff-surname" required autoComplete="family-name" aria-invalid={Boolean(visibleStaffError('surname'))} value={form.surname} onBlur={() => markTouched('surname')} onChange={(event) => setForm({ ...form, surname: event.target.value })} />
+              <LimitedInput id="staff-surname" required autoComplete="family-name" aria-invalid={Boolean(visibleStaffError('surname'))} value={form.surname} maxLength={50} onBlur={() => markTouched('surname')} onChange={(event) => setForm({ ...form, surname: event.target.value })} />
               {visibleStaffError('surname') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('surname')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-dob">Date of birth
@@ -203,11 +204,11 @@ export default function StaffAccounts() {
               onCityChange={(city) => setForm((current) => ({ ...current, city }))}
             />
             <label className="admin-dialog__field" htmlFor="staff-house-no">House no.
-              <input id="staff-house-no" required autoComplete="address-line2" aria-invalid={Boolean(visibleStaffError('houseNo'))} value={form.houseNo} onBlur={() => markTouched('houseNo')} onChange={(event) => setForm({ ...form, houseNo: event.target.value })} />
+              <LimitedInput id="staff-house-no" required autoComplete="address-line2" aria-invalid={Boolean(visibleStaffError('houseNo'))} value={form.houseNo} maxLength={30} onBlur={() => markTouched('houseNo')} onChange={(event) => setForm({ ...form, houseNo: event.target.value })} />
               {visibleStaffError('houseNo') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('houseNo')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-street">Street
-              <input id="staff-street" required autoComplete="address-line1" aria-invalid={Boolean(visibleStaffError('street'))} value={form.street} onBlur={() => markTouched('street')} onChange={(event) => setForm({ ...form, street: event.target.value })} />
+              <LimitedInput id="staff-street" required autoComplete="address-line1" aria-invalid={Boolean(visibleStaffError('street'))} value={form.street} maxLength={100} onBlur={() => markTouched('street')} onChange={(event) => setForm({ ...form, street: event.target.value })} />
               {visibleStaffError('street') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('street')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-contact">Contact number
@@ -215,10 +216,11 @@ export default function StaffAccounts() {
                 <span>+{staffCallingCode}</span>
                 <input id="staff-contact" required type="tel" autoComplete="tel-national" inputMode="tel" minLength={7} maxLength={30} placeholder={form.countryCode ? 'Mobile number' : 'Select a country first'} disabled={!form.countryCode} aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
               </span>
+              <CharacterCount value={form.contact} limit={30} />
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-email">Email address
-              <input id="staff-email" required type="email" autoComplete="email" maxLength={254} aria-invalid={Boolean(visibleStaffError('email'))} value={form.email} onBlur={() => markTouched('email')} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+              <LimitedInput id="staff-email" required type="email" autoComplete="email" maxLength={254} aria-invalid={Boolean(visibleStaffError('email'))} value={form.email} onBlur={() => markTouched('email')} onChange={(event) => setForm({ ...form, email: event.target.value })} />
               {visibleStaffError('email') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('email')}</span>}
             </label>
           </section>

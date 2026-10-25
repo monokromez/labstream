@@ -4,6 +4,7 @@ import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
+import { LimitedInput, LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
 import './ResultsInProgress.css'
 
 const stateFilters = [
@@ -74,15 +75,26 @@ function ResultEntryTable({ fields, specimenLabel, values, isLocked, showFieldEr
                         <option value="">Select…</option>
                         {field.options.map((option) => <option key={option}>{option}</option>)}
                       </select>
-                    ) : (
+                    ) : field.valueType === 'numeric' ? (
                       <input
                         id={`result-${specimenLabel}-${field.key}`}
                         className="medtech-result-input"
-                        type={field.valueType === 'numeric' ? 'number' : 'text'}
-                        step={field.valueType === 'numeric' ? 'any' : undefined}
+                        type="number"
+                        step="any"
                         value={fieldValue}
                         disabled={isLocked}
                         aria-invalid={showFieldErrors && missing}
+                        onChange={(event) => onValueChange(field.key, event.target.value)}
+                      />
+                    ) : (
+                      <LimitedInput
+                        id={`result-${specimenLabel}-${field.key}`}
+                        className="medtech-result-input"
+                        type="text"
+                        value={fieldValue}
+                        disabled={isLocked}
+                        aria-invalid={showFieldErrors && missing}
+                        maxLength={500}
                         onChange={(event) => onValueChange(field.key, event.target.value)}
                       />
                     )}
@@ -379,12 +391,13 @@ export default function ResultsInProgress() {
                               ) : field.valueType === 'numeric' ? (
                                 <input id={`result-${selectedResult.specimenLabel}-${field.key}`} type="number" step="any" value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)} />
                               ) : (
-                                <textarea
+                                <LimitedTextarea
                                   id={`result-${selectedResult.specimenLabel}-${field.key}`}
                                   rows="3"
                                   value={values[field.key] ?? ''}
                                   disabled={isLocked}
                                   aria-invalid={showFieldErrors && missing}
+                                  maxLength={2000}
                                   onChange={(event) => changeFieldValue(field.key, event.target.value)}
                                 />
                               )}

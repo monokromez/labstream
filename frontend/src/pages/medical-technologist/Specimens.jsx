@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
+import { LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
 import { rejectionReasons } from '../../data/medicalTechnologist.js'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
@@ -261,10 +262,11 @@ export default function Specimens() {
             </label>
             <label className="medtech-form__field" htmlFor="rejection-notes">
               <span>Notes <small>{reason === 'Other' ? 'Required for Other' : 'Optional'}</small></span>
-              <textarea
+              <LimitedTextarea
                 id="rejection-notes"
                 rows="3"
                 value={notes}
+                maxLength={500}
                 aria-invalid={error === 'Add a note when the reason is Other.'}
                 aria-describedby={error === 'Add a note when the reason is Other.' ? 'rejection-error' : undefined}
                 onChange={(event) => {

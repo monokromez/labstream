@@ -4,6 +4,7 @@ import AdminDialog from '../../components/data/AdminDialog.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import PathologistResultTable from './PathologistResultTable.jsx'
+import { LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import useTestCatalog from '../../data/useTestCatalog.js'
@@ -122,10 +123,10 @@ export default function PendingValidation() {
         <PathologistResultTable results={activeCase.results} />
         {notice && <p className="pathologist-page__notice" role="alert">{notice}</p>}
         {activeCase.tests.map((test) => <section className="pathologist-dialog__test-review" key={test.requestItemId}>
-          <label className="pathologist-dialog__remarks" htmlFor={`interpretation-${test.requestItemId}`}>{test.testName} · Pathologist interpretation<textarea id={`interpretation-${test.requestItemId}`} value={interpretations[test.requestItemId] ?? ''} onChange={(event) => { setInterpretations((current) => ({ ...current, [test.requestItemId]: event.target.value })); setNotice('') }} placeholder={`Interpret ${test.testName} in clinical context…`} rows="3" /></label>
+          <label className="pathologist-dialog__remarks" htmlFor={`interpretation-${test.requestItemId}`}>{test.testName} · Pathologist interpretation<LimitedTextarea id={`interpretation-${test.requestItemId}`} value={interpretations[test.requestItemId] ?? ''} onChange={(event) => { setInterpretations((current) => ({ ...current, [test.requestItemId]: event.target.value })); setNotice('') }} placeholder={`Interpret ${test.testName} in clinical context…`} rows="3" maxLength={2000} /></label>
           <label className="pathologist-dialog__recollection"><input type="checkbox" checked={recollectionItems.includes(test.requestItemId)} onChange={(event) => setRecollectionItems((current) => event.target.checked ? [...current, test.requestItemId] : current.filter((id) => id !== test.requestItemId))} /><span>If returned: collect a new specimen for this test</span></label>
         </section>)}
-        <label className="pathologist-dialog__remarks" htmlFor="pathologist-remarks">Return remark <span>(required only when returning)</span><textarea id="pathologist-remarks" value={remarks} onChange={(event) => { setRemarks(event.target.value); setNotice('') }} placeholder="Explain the correction or retest needed…" rows="3" /></label>
+        <label className="pathologist-dialog__remarks" htmlFor="pathologist-remarks">Return remark <span>(required only when returning)</span><LimitedTextarea id="pathologist-remarks" value={remarks} onChange={(event) => { setRemarks(event.target.value); setNotice('') }} placeholder="Explain the correction or retest needed…" rows="3" maxLength={1000} /></label>
         <p className="pathologist-page__return-hint">A result is released to the patient only after every test in the request is approved.</p>
       </AdminDialog>}
       {activeCase && confirmAction && <AdminDialog className="pathologist-dialog" title={confirmAction === 'approve' ? 'Approve result for release?' : 'Return result for correction?'} onClose={() => setConfirmAction('')} size="small">
