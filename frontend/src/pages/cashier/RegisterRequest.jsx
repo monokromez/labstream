@@ -78,11 +78,13 @@ export default function RegisterRequest() {
   const [selectedPatient, setSelectedPatient] = useState(null)
   const [selectedTestIds, setSelectedTestIds] = useState([])
   const [requestSubmitted, setRequestSubmitted] = useState(false)
+  const [requestSubmitting, setRequestSubmitting] = useState(false)
   const [showRequestPrompt, setShowRequestPrompt] = useState(false)
   const [showPatientConfirm, setShowPatientConfirm] = useState(false)
   const [patientConfirmData, setPatientConfirmData] = useState(null)
   const [showRequestConfirm, setShowRequestConfirm] = useState(false)
   const [showPortalConfirm, setShowPortalConfirm] = useState(false)
+  const [portalSubmitting, setPortalSubmitting] = useState(false)
   const [portalActivation, setPortalActivation] = useState(null)
   const [actionError, setActionError] = useState('')
   const { result: patientResult, refresh: refreshPatients, error: patientLoadError } = useApiResource(
@@ -97,8 +99,14 @@ export default function RegisterRequest() {
     hasPortalAccount: patient.hasPortalAccount,
     portalActive: patient.portalActive,
   }))
-  const { categories: testCategories } = useTestCatalog({ availableOnly: true })
-  const patientIdOptions = getAvailablePatientIds(patientCountryCode)
+  const { categories: testCategories, loading: testCatalogLoading, error: testCatalogError } = useTestCatalog({ availableOnly: true })
+  const requestTestCategories = testCategories
+    .map((category) => ({
+      ...category,
+      tests: category.tests.filter((test) => !test.categoryId || test.categoryId === category.id),
+    }))
+    .filter((category) => category.tests.length > 0)
+  const patientIdOptions = getAvailablePatientIds(patientCountryCode, patientCountry)
   const patientCallingCode = getPatientCallingCode(patientCountryCode)
   const patientErrors = getPatientFormErrors({
     ...patientForm,
@@ -147,11 +155,13 @@ export default function RegisterRequest() {
     setSelectedPatient(patient)
     setSelectedTestIds([])
     setRequestSubmitted(false)
+    setRequestSubmitting(false)
     setShowRequestPrompt(false)
     setShowPatientConfirm(false)
     setPatientConfirmData(null)
     setShowRequestConfirm(false)
     setShowPortalConfirm(false)
+    setPortalSubmitting(false)
     setPortalActivation(null)
     if (type === 'add') {
       setPatientCountry('')
@@ -170,6 +180,7 @@ export default function RegisterRequest() {
   }
 
   const toggleTest = (testId) => {
+    setActionError('')
     setSelectedTestIds((current) => current.includes(testId)
       ? current.filter((id) => id !== testId)
       : [...current, testId])
@@ -180,14 +191,22 @@ export default function RegisterRequest() {
   }
 
   const confirmCreateTestRequest = async () => {
+    if (!selectedPatient || requestSubmitting) return
+    setRequestSubmitting(true)
+    setActionError('')
     try {
       await api.cashier.createRequest({ patientId: selectedPatient.id, testIds: selectedTestIds, priority: 'routine' })
       setRequestSubmitted(true)
-      await refreshPatients()
+      setShowRequestConfirm(false)
+      try {
+        await refreshPatients()
+      } catch (refreshError) {
+        setActionError(`Request was created, but the patient list could not be refreshed: ${refreshError.message}`)
+      }
     } catch (requestError) {
       setActionError(requestError.message || 'Unable to create the test request.')
     } finally {
-      setShowRequestConfirm(false)
+      setRequestSubmitting(false)
     }
   }
 
@@ -208,15 +227,17 @@ export default function RegisterRequest() {
   }
 
   const issuePortalActivation = async () => {
-    if (!selectedPatient) return
+    if (!selectedPatient || portalSubmitting) return
+    setPortalSubmitting(true)
+    setActionError('')
     try {
       const response = await api.cashier.issuePatientPortalActivation(selectedPatient.id)
       setPortalActivation({ pid: selectedPatient.pid, code: response.activation.code, expiresInHours: response.activation.expiresInHours })
       setShowPortalConfirm(false)
-      setActionError('')
     } catch (requestError) {
       setActionError(requestError.message || 'Unable to issue patient portal activation.')
-      setShowPortalConfirm(false)
+    } finally {
+      setPortalSubmitting(false)
     }
   }
 
@@ -453,15 +474,17 @@ export default function RegisterRequest() {
                   <div className='register-request__confirmation'>
                     <h3>Request registered</h3>
                   <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Invoice with a Pending status. The cashier can record the in-person cash payment there.</p>
+                  {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
                   </div>
                 ) : (
                 <form className='register-request__modal-form'>
                   <label>Patient<input value={`${getPatientName(selectedPatient ?? {})} (${selectedPatient?.pid})`} readOnly /></label>
                   <fieldset className='register-request__test-selection'>
                     <legend>Select tests</legend>
-                    <p className='register-request__test-selection-hint'>Choose one or more tests, grouped by category.</p>
+                    <p className='register-request__test-selection-hint'>Choose one or more tests. A test assigned to multiple categories is listed once under its primary category.</p>
+                    {testCatalogError && <p className='register-request__field-error' role='alert'>{testCatalogError}</p>}
                     <div className='register-request__test-categories'>
-                      {testCategories.map((category) => (
+                      {requestTestCategories.map((category) => (
                         <section className='register-request__test-category' key={category.name} aria-labelledby={`test-category-${category.name}`}>
                           <h3 id={`test-category-${category.name}`}>{category.name}</h3>
                           <div className='register-request__test-options'>
@@ -478,6 +501,7 @@ export default function RegisterRequest() {
                               </label>
                             ))}
                           </div>
+                          {!testCatalogLoading && !testCatalogError && requestTestCategories.length === 0 && <p className='register-request__modal-note'>No available tests are configured yet.</p>}
                         </section>
                       ))}
                     </div>
@@ -521,13 +545,13 @@ export default function RegisterRequest() {
                     <label htmlFor='new-patient-street'>Street<input id='new-patient-street' name='street' type='text' autoComplete='street-address' placeholder='Street' value={patientForm.street} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('street')} minLength={2} maxLength={100} aria-invalid={Boolean(visiblePatientError('street'))} />{visiblePatientError('street') && <span className='register-request__field-error'>{visiblePatientError('street')}</span>}</label>
                   </div>
                   <label htmlFor='new-patient-email'>Email address<input id='new-patient-email' name='email' type='email' autoComplete='email' placeholder='name@example.com' value={patientForm.email} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('email')} maxLength={254} aria-invalid={Boolean(visiblePatientError('email'))} />{visiblePatientError('email') && <span className='register-request__field-error'>{visiblePatientError('email')}</span>}</label>
-                  <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} aria-invalid={Boolean(visiblePatientError('validIdType'))} onBlur={() => markPatientFieldTouched('validIdType')} onChange={(event) => {
+                  <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} disabled={!patientCountryCode} aria-invalid={Boolean(visiblePatientError('validIdType'))} onBlur={() => markPatientFieldTouched('validIdType')} onChange={(event) => {
                     setValidIdSelection(event.target.value)
                     setPatientTouched((current) => ({ ...current, validIdType: true, otherIdType: true }))
                     setValidIdType('')
                     setPatientForm((current) => ({ ...current, validIdNumber: '' }))
                   }} required>
-                    <option value='' disabled>Select an ID type</option>
+                    <option value='' disabled>{patientCountryCode ? 'Select an ID type' : 'Select a country first'}</option>
                     {patientIdOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>{visiblePatientError('validIdType') && <span className='register-request__field-error'>{visiblePatientError('validIdType')}</span>}</label>
                   {validIdSelection === 'other' && (
@@ -599,7 +623,7 @@ export default function RegisterRequest() {
                   {requestSubmitted ? 'Done' : `Review Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
                 </button>
               )}
-              {activeModal === 'details' && selectedPatient && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => setShowPortalConfirm(true)}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
+              {activeModal === 'details' && selectedPatient && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setShowPortalConfirm(true) }}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
               {activeModal === 'add' && !showRequestPrompt && (
                 <button className='register-request__modal-primary' type='submit' form='new-patient-form'>Register Patient</button>
               )}
@@ -635,9 +659,10 @@ export default function RegisterRequest() {
           <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-request-title'>
             <h2 id='confirm-request-title'>Confirm Test Request?</h2>
             <p>Create a request for <strong>{getPatientName(selectedPatient ?? {})}</strong> with <strong>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'}</strong>? It will appear in Payments &amp; Invoice as pending.</p>
+            {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
             <div className='register-request__confirm-actions'>
-              <button className='register-request__modal-secondary' type='button' onClick={() => setShowRequestConfirm(false)}>Back to Tests</button>
-              <button className='register-request__modal-primary' type='button' onClick={confirmCreateTestRequest}>Confirm Request</button>
+              <button className='register-request__modal-secondary' type='button' disabled={requestSubmitting} onClick={() => setShowRequestConfirm(false)}>Back to Tests</button>
+              <button className='register-request__modal-primary' type='button' disabled={requestSubmitting} onClick={confirmCreateTestRequest}>{requestSubmitting ? 'Creating Request…' : 'Confirm Request'}</button>
             </div>
           </section>
         </div>
@@ -647,10 +672,11 @@ export default function RegisterRequest() {
         <div className='register-request__confirm-backdrop'>
           <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-portal-title'>
             <h2 id='confirm-portal-title'>Issue patient portal access?</h2>
-            <p>Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? The code is shown once and expires after 24 hours.</p>
+            <p>This is optional and only needed if the patient wants online portal access. Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? It is shown once, expires after 24 hours, and must be shared with the patient; no email is sent.</p>
+            {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
             <div className='register-request__confirm-actions'>
-              <button className='register-request__modal-secondary' type='button' onClick={() => setShowPortalConfirm(false)}>Cancel</button>
-              <button className='register-request__modal-primary' type='button' onClick={issuePortalActivation}>Issue Activation Code</button>
+              <button className='register-request__modal-secondary' type='button' disabled={portalSubmitting} onClick={() => setShowPortalConfirm(false)}>Cancel</button>
+              <button className='register-request__modal-primary' type='button' disabled={portalSubmitting} onClick={issuePortalActivation}>{portalSubmitting ? 'Issuing…' : 'Issue Activation Code'}</button>
             </div>
           </section>
         </div>

@@ -7,6 +7,7 @@ import { createOneTimeCode } from "../auth/oneTimeCode.js";
 const ACTIVE_REQUEST_STATUSES = ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction"];
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
 const patientNamePattern = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u;
+const patientFullNamePattern = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)+$/u;
 const patientIdNumberPattern = /^[\p{L}\p{N}][\p{L}\p{N} /-]*$/u;
 
 export function validatePatientDetails(body) {
@@ -23,9 +24,16 @@ export function validatePatientDetails(body) {
       continue;
     }
     if (!value && field === "middleName") continue;
+    if (!value) continue;
+    if (field !== "middleName" && typeof value === "string" && value.trim() && value.trim().split(" ").length < 2) {
+      errors[field] = "Enter at least two words.";
+      continue;
+    }
     if (value !== value.trim()) errors[field] = "Names cannot start or end with spaces.";
     else if (value.length < 2 || value.length > 50) errors[field] = "Names must be between 2 and 50 characters.";
-    else if (!patientNamePattern.test(value)) errors[field] = "Names can contain letters and single spaces only.";
+    else if (!(field === "middleName" ? patientNamePattern : patientFullNamePattern).test(value)) {
+      errors[field] = field === "middleName" ? "Names can contain letters and single spaces only." : "Use at least two words containing letters and single spaces only.";
+    }
   }
 
   const dateValue = body.dateOfBirth;
@@ -158,11 +166,19 @@ export function createCashierRouter({ client }) {
           if (existing?.is_active) throw Object.assign(new Error("This patient already has an active portal account."), { code: "PORTAL_ALREADY_ACTIVE" });
           await tx.unsafe(`update public.account_tokens set consumed_at = now() where user_id = $1 and purpose = 'activation' and consumed_at is null`, [userId]);
         } else {
-          const [createdUser] = await tx.unsafe(
+          let [createdUser] = await tx.unsafe(
             `insert into public.users (clinic_id, role, email, is_active, must_change_password)
-             values ($1, 'patient', $2, false, true) returning id`,
-            [req.user.clinicId, patient.email],
+             values ($1, 'patient', $2, false, true)
+             on conflict (clinic_id, email) do nothing returning id`,
+            [req.user.clinicId, patient.email || null],
           );
+          if (!createdUser) {
+            [createdUser] = await tx.unsafe(
+              `insert into public.users (clinic_id, role, email, is_active, must_change_password)
+               values ($1, 'patient', null, false, true) returning id`,
+              [req.user.clinicId],
+            );
+          }
           userId = createdUser.id;
           await tx.unsafe(`update public.patients set portal_user_id = $1, updated_at = now() where id = $2 and clinic_id = $3`, [userId, patient.id, req.user.clinicId]);
         }

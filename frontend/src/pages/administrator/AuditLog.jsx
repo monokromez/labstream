@@ -14,21 +14,21 @@ export default function AuditLog() {
   const [roleFilter, setRoleFilter] = useState('All roles')
   const [currentPage, setCurrentPage] = useState(1)
   const { result, loading, error } = useApiResource(() => api.administrator.auditLogs({ page: 1, pageSize: 100, role: roleFilter === 'All roles' ? '' : roleFilter.toLowerCase().replaceAll(' ', '_') }), [roleFilter])
-  const auditEvents = (result?.data ?? []).map((event) => ({
+  const auditEvents = useMemo(() => (result?.data ?? []).map((event) => ({
     id: event.id,
     timestamp: formatDateTime(event.createdAt),
     user: event.actor,
     role: (event.role ?? 'system').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
     action: event.action,
     record: `${event.entityType}${event.entityId ? ` · ${event.entityId}` : ''}`,
-  }))
+  })), [result?.data])
 
   const visibleEvents = useMemo(() => auditEvents.filter((event) => {
     const matchesSearch = `${event.user} ${event.role} ${event.action} ${event.record}`.toLowerCase().includes(search.toLowerCase())
     return matchesSearch
       && (actionFilter === 'All activity' || event.action === actionFilter)
       && (roleFilter === 'All roles' || event.role === roleFilter)
-  }), [actionFilter, roleFilter, search])
+  }), [actionFilter, auditEvents, roleFilter, search])
 
   const pagedEvents = visibleEvents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 

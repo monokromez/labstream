@@ -32,6 +32,7 @@ export function getPatientFieldError(field, value, context = {}) {
     if (!trimmed && field === 'middleName') return ''
     if (!trimmed) return `${label} is required.`
     if (text !== trimmed) return `${label} cannot start or end with spaces.`
+    if (field !== 'middleName' && trimmed.split(' ').length < 2) return `${label} must contain at least two words.`
     if (text.length < PATIENT_NAME_MIN) return `${label} must be at least ${PATIENT_NAME_MIN} characters.`
     if (text.length > PATIENT_NAME_MAX) return `${label} cannot exceed ${PATIENT_NAME_MAX} characters.`
     if (!NAME_PATTERN.test(text)) return `${label} can contain letters and single spaces only.`
@@ -113,7 +114,7 @@ export function getPatientFormErrors(values, context = {}) {
   ]))
 }
 
-export function getAvailablePatientIds(countryCode) {
+export function getAvailablePatientIds(countryCode, countryName = '') {
   const idsByCountry = {
     PH: [
       ['national-id', 'Philippine National ID'],
@@ -129,10 +130,15 @@ export function getAvailablePatientIds(countryCode) {
     GB: [['drivers-license', 'UK Driver’s Licence'], ['national-id', 'National identity document']],
     AU: [['drivers-license', 'Australian Driver Licence']],
   }
+  const countryIds = idsByCountry[countryCode] ?? (countryName
+    ? [
+        ['national-id', `${countryName} national identity document`],
+        ['drivers-license', `${countryName} driver’s license`],
+      ]
+    : [])
   return [
     ['passport', 'Passport'],
-    ['government-id', 'Government-issued identity document'],
-    ...(idsByCountry[countryCode] ?? []),
+    ...countryIds,
     ['other', 'Other government-issued ID'],
   ]
 }

@@ -38,7 +38,7 @@ export default function CashierQueue() {
     try {
       await api.cashier.callQueueItem(item.id)
       await refresh()
-      setNotice(`Calling ${item.patientName} (${item.queueNumber}) to Cashier Counter.`)
+      setNotice(`Marked ${item.patientName} (${item.queueNumber}) as called to the cashier counter.`)
     } catch (requestError) { setNotice(requestError.message || 'Unable to call this patient.') }
   }
 
@@ -46,7 +46,7 @@ export default function CashierQueue() {
     try {
       await api.cashier.callNext()
       await refresh()
-      setNotice('The next patient in queue has been called.')
+      setNotice('The next patient in queue has been marked as called to the cashier counter.')
     } catch (requestError) { setNotice(requestError.message || 'No waiting patient is available to call.') }
   }
 
@@ -104,13 +104,13 @@ export default function CashierQueue() {
         <SearchInput className="cashier-queue__search" label="Search payment queue" placeholder="Queue #, Request, PID, patient, or test" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} />
         {filtered.length > 0 && (
           <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={callNextPatient}>
-            📢 Call Next Patient
+            📢 Call Next to Counter
           </button>
         )}
       </div>
 
       <section className="cashier-queue__table-card" aria-labelledby="cashier-queue-title">
-        <header className="cashier-queue__heading"><div><h2 id="cashier-queue-title">Patient Queue</h2><p>Call patients in order and confirm cash received to assign requests to the laboratory.</p></div><span>{filtered.length} {filtered.length === 1 ? 'patient' : 'patients'}</span></header>
+        <header className="cashier-queue__heading"><div><h2 id="cashier-queue-title">Patient Queue</h2><p>Mark patients as called to the counter, then confirm cash received to assign requests to the laboratory. This does not place a phone call.</p></div><span>{filtered.length} {filtered.length === 1 ? 'patient' : 'patients'}</span></header>
         <div className="cashier-queue__table-scroll"><table className="cashier-queue__table"><thead><tr><th>Queue #</th><th>Request</th><th>Patient</th><th>Tests</th><th>Amount due</th><th>Status</th><th>Action</th></tr></thead><tbody>
           {rows.map((item) => {
             const isServing = Boolean(item.queueCalledAt)
@@ -128,7 +128,7 @@ export default function CashierQueue() {
                 </td>
                 <td>
                   <div className="cashier-queue__row-actions">
-                    <button className="cashier-queue__action" type="button" onClick={() => callPatient(item)}>Call</button>
+                    <button className="cashier-queue__action" type="button" onClick={() => callPatient(item)}>{isServing ? 'Called' : 'Call to Counter'}</button>
                     <button className="cashier-queue__action" type="button" onClick={() => setDetails(item)}>Details</button>
                     <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={() => setActive(item)}>
                       {item.fee === 0 ? 'Confirm' : 'Process'}

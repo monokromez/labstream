@@ -68,6 +68,7 @@ export default function TestCatalog() {
       turnaround: formatTurnaround(test.turnaroundMinutes),
     })),
   }
+  const canReviewTest = form.analytes.length > 0 && form.analytes.every((analyte) => analyte.label.trim())
 
   const visibleTests = useMemo(() => catalog.tests.filter((test) => (
     test.name.toLowerCase().includes(search.toLowerCase())
@@ -301,7 +302,14 @@ export default function TestCatalog() {
       {dialog?.type === 'manage' && <AdminDialog title={dialog.editingId ? 'Edit test' : 'Add Test/Category'} description="Choose whether to add a test or a catalog category." onClose={() => setDialog(null)} size="large">
         <div className="admin-dialog__tabs"><button className="admin-dialog__tab" type="button" aria-pressed={view === 'test'} onClick={() => setView('test')}>Test</button><button className="admin-dialog__tab" type="button" aria-pressed={view === 'category'} onClick={() => setView('category')}>Category</button></div>
         {saveNotice && <p className="admin-dialog__note" role="status">{saveNotice}</p>}
-        {view === 'test' ? <form id="test-form" className="admin-dialog__form admin-dialog__form--test" onSubmit={(event) => { event.preventDefault(); setDialog({ ...dialog, type: 'confirm-test' }) }}>
+        {view === 'test' ? <form id="test-form" className="admin-dialog__form admin-dialog__form--test" onSubmit={(event) => {
+          event.preventDefault()
+          if (!canReviewTest) {
+            setSaveNotice('Add at least one parameter and provide a label for each parameter before reviewing the test.')
+            return
+          }
+          setDialog({ ...dialog, type: 'confirm-test' })
+        }}>
           <label className="admin-dialog__field">Test name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Complete Blood Count (CBC)" /></label>
           <fieldset className="admin-dialog__field test-catalog__category-select"><legend>Categories</legend><div className="test-catalog__category-options">{categoryRecords.filter((category) => category.isActive).map((category) => <label className={`test-catalog__category-option${form.categoryIds.includes(category.id) ? ' test-catalog__category-option--selected' : ''}`} key={category.id}><input type="checkbox" checked={form.categoryIds.includes(category.id)} onChange={(event) => setForm((prev) => ({ ...prev, categoryIds: event.target.checked ? [...prev.categoryIds, category.id] : prev.categoryIds.filter((id) => id !== category.id) }))} /><span>{category.name}</span></label>)}</div></fieldset>
           <label className="admin-dialog__field">Price (₱)<input type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label>
@@ -320,6 +328,7 @@ export default function TestCatalog() {
                 </div>
                 <button type="button" className="admin-button admin-button--small admin-button--positive" onClick={addAnalyte}>+ Add Parameter</button>
               </div>
+              <p className="admin-dialog__note">At least one labeled parameter is required to review and save this test.</p>
 
               <div className="test-catalog__analyte-list">
                 {form.analytes.map((analyte, index) => (
@@ -375,7 +384,7 @@ export default function TestCatalog() {
               </div>
             </section>
         </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<input value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{catalog.categories.map((category) => <li key={category}><span>{category} <small>({catalog.tests.filter((test) => test.categoryNames.includes(category)).length} tests)</small></span><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'remove-category', category, moves: {} })}>Remove</button></li>)}</ul></div></div>}
-        <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button>{view === 'test' ? <button className="admin-button" type="submit" form="test-form">Review test</button> : <button className="admin-button" type="button" disabled={!categoryName.trim()} onClick={() => setDialog({ type: 'confirm-category' })}>Review category</button>}</div>
+        <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button>{view === 'test' ? <button className="admin-button" type="submit" form="test-form" disabled={!canReviewTest} title={canReviewTest ? '' : 'Add and label at least one parameter before reviewing'}>Review test</button> : <button className="admin-button" type="button" disabled={!categoryName.trim()} onClick={() => setDialog({ type: 'confirm-category' })}>Review category</button>}</div>
       </AdminDialog>}
 
       {dialog?.type === 'view-config' && <AdminDialog title={dialog.test.name} description={`Category: ${dialog.test.category} · ₱${Number(dialog.test.price).toFixed(2)}`} onClose={() => setDialog(null)} size="large" footer={<button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button>}>
