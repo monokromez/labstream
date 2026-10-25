@@ -4,10 +4,11 @@ import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
+import { AsYouType, parsePhoneNumberFromString } from 'libphonenumber-js/min'
 import { formatDateTime } from '../../utils/dateFormat.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
-import { formatPatientPhoneInput, getPatientCallingCode } from '../cashier/patientValidation.js'
+import { getPatientCallingCode } from '../cashier/patientValidation.js'
 import { getStaffFormErrors } from './staffValidation.js'
 import './StaffAccounts.css'
 
@@ -63,7 +64,10 @@ export default function StaffAccounts() {
   const visibleStaffError = (field) => (touched[field] ? staffErrors[field] : '')
   const markTouched = (field) => setTouched((current) => ({ ...current, [field]: true }))
   const handleStaffPhoneChange = (value) => {
-    setForm((current) => ({ ...current, contact: formatPatientPhoneInput(value, current.countryCode) }))
+    setForm((current) => ({
+      ...current,
+      contact: new AsYouType(current.countryCode).input(value.replace(/\D/g, '').slice(0, 15)),
+    }))
   }
   const validateStaffForm = (nextForm = form) => {
     const errors = getStaffFormErrors({
@@ -100,11 +104,17 @@ export default function StaffAccounts() {
       setDialog({ type: 'add' })
       return
     }
+    const phone = parsePhoneNumberFromString(form.contact, form.countryCode)
+    if (!phone?.isValid() || phone.country !== form.countryCode) {
+      setTouched((current) => ({ ...current, contact: true }))
+      setDialog({ type: 'add' })
+      return
+    }
     try {
       const result = await api.staff.create({
         firstName: form.firstName, middleName: form.middleName || null, lastName: form.surname,
         dateOfBirth: form.dob, country: form.country, city: form.city, houseNumber: form.houseNo,
-        street: form.street, phone: form.contact, email: form.email,
+        street: form.street, phone: phone.number, email: form.email,
         role: form.post.toLowerCase().replaceAll(' ', '_'),
       })
       setDialog({ type: 'created', username: result.data.username, activationCode: result.activation.code })
@@ -188,7 +198,7 @@ export default function StaffAccounts() {
               cityError={visibleStaffError('city')}
               onCountryBlur={() => markTouched('country')}
               onCityBlur={() => markTouched('city')}
-              onCountryChange={(country) => setForm((current) => ({ ...current, country, city: '', countryCode: current.countryCode }))}
+              onCountryChange={(country) => setForm((current) => ({ ...current, country, city: '', contact: '', countryCode: '' }))}
               onCountryCodeChange={(countryCode) => setForm((current) => ({ ...current, countryCode }))}
               onCityChange={(city) => setForm((current) => ({ ...current, city }))}
             />
@@ -201,8 +211,10 @@ export default function StaffAccounts() {
               {visibleStaffError('street') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('street')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-contact">Contact number
-              {staffCallingCode && <span className="admin-dialog__field-hint">Country calling code: +{staffCallingCode}</span>}
-              <input id="staff-contact" required type="tel" autoComplete="tel" inputMode="tel" minLength={7} maxLength={30} placeholder={staffCallingCode ? `+${staffCallingCode} or local number` : 'Select a country first'} aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
+              <span className="admin-dialog__phone-field" aria-invalid={Boolean(visibleStaffError('contact'))}>
+                <span>+{staffCallingCode}</span>
+                <input id="staff-contact" required type="tel" autoComplete="tel-national" inputMode="tel" minLength={7} maxLength={30} placeholder="Mobile number" aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
+              </span>
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-email">Email address
