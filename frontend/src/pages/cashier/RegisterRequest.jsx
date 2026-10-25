@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
@@ -7,18 +8,17 @@ import useTestCatalog from '../../data/useTestCatalog.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import { formatDate } from '../../utils/dateFormat.js'
+import { getAvailablePatientIds, getPatientCallingCode, getPatientFormErrors, PATIENT_AGE_LIMIT } from './patientValidation.js'
 import './RegisterRequest.css'
 
 const ROWS_PER_PAGE = 10
 
-const validIdLabels = {
-  'national-id': 'Philippine National ID',
-  'drivers-license': 'Driver’s License',
-  passport: 'Passport',
-  philhealth: 'PhilHealth ID',
-  sss: 'SSS ID',
-  umid: 'UMID',
-  'voters-id': 'Voter’s ID',
+const dateInputValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const todayInputValue = () => dateInputValue(new Date())
+const earliestBirthDate = () => {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() - PATIENT_AGE_LIMIT)
+  return dateInputValue(date)
 }
 
 const getPatientName = (patient) => [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ') || patient.name || ''
@@ -63,8 +63,14 @@ export default function RegisterRequest() {
   const [sexFilter, setSexFilter] = useState('all')
   const [previousVisitFilter, setPreviousVisitFilter] = useState('')
   const [patientCountry, setPatientCountry] = useState('')
+  const [patientCountryCode, setPatientCountryCode] = useState('')
   const [patientCity, setPatientCity] = useState('')
   const [patientDateOfBirth, setPatientDateOfBirth] = useState('')
+  const [patientForm, setPatientForm] = useState({
+    firstName: '', middleName: '', lastName: '', houseNumber: '', street: '',
+    email: '', contact: '', sex: '', validIdNumber: '',
+  })
+  const [patientTouched, setPatientTouched] = useState({})
   const [validIdSelection, setValidIdSelection] = useState('')
   const [validIdType, setValidIdType] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -92,6 +98,29 @@ export default function RegisterRequest() {
     portalActive: patient.portalActive,
   }))
   const { categories: testCategories } = useTestCatalog({ availableOnly: true })
+  const patientIdOptions = getAvailablePatientIds(patientCountryCode)
+  const patientCallingCode = getPatientCallingCode(patientCountryCode)
+  const patientErrors = getPatientFormErrors({
+    ...patientForm,
+    phone: patientForm.contact,
+    country: patientCountry,
+    city: patientCity,
+    dateOfBirth: patientDateOfBirth,
+    validIdType: validIdSelection,
+    otherIdType: validIdType,
+  }, { countryCode: patientCountryCode, countryName: patientCountry, idSelection: validIdSelection })
+  const visiblePatientError = (field) => patientTouched[field] ? patientErrors[field] : ''
+
+  const handlePatientFieldChange = (event) => {
+    const { name, value } = event.target
+    setPatientForm((current) => ({ ...current, [name]: value }))
+    setPatientTouched((current) => ({ ...current, [name === 'contact' ? 'phone' : name]: true }))
+  }
+
+  const markPatientFieldTouched = (field) => {
+    setPatientTouched((current) => ({ ...current, [field]: true }))
+  }
+
   useEffect(() => {
     if (!activeModal) return undefined
 
@@ -125,8 +154,14 @@ export default function RegisterRequest() {
     setPortalActivation(null)
     if (type === 'add') {
       setPatientCountry('')
+      setPatientCountryCode('')
       setPatientCity('')
       setPatientDateOfBirth('')
+      setPatientForm({
+        firstName: '', middleName: '', lastName: '', houseNumber: '', street: '',
+        email: '', contact: '', sex: '', validIdNumber: '',
+      })
+      setPatientTouched({})
       setValidIdSelection('')
       setValidIdType('')
     }
@@ -159,6 +194,13 @@ export default function RegisterRequest() {
 
   const handleRegisterPatient = (event) => {
     event.preventDefault()
+    const allFields = [
+      'firstName', 'middleName', 'lastName', 'country', 'city', 'houseNumber',
+      'street', 'email', 'validIdType', 'otherIdType', 'validIdNumber', 'sex',
+      'dateOfBirth', 'phone',
+    ]
+    setPatientTouched(Object.fromEntries(allFields.map((field) => [field, true])))
+    if (Object.values(patientErrors).some(Boolean)) return
     const formData = new FormData(event.currentTarget)
     setPatientConfirmData(formData)
     setShowPatientConfirm(true)
@@ -184,15 +226,18 @@ export default function RegisterRequest() {
       firstName: String(formData.get('firstName') ?? '').trim(),
       middleName: String(formData.get('middleName') ?? '').trim(),
       lastName: String(formData.get('lastName') ?? '').trim(),
-      country: String(formData.get('country') ?? '').trim(),
+      country: patientCountry,
       city: String(formData.get('city') ?? '').trim(),
       houseNumber: String(formData.get('houseNumber') ?? '').trim(),
       street: String(formData.get('street') ?? '').trim(),
       email: String(formData.get('email') ?? '').trim(),
       sex: String(formData.get('sex') ?? ''),
       dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
-      phone: String(formData.get('contact') ?? '').trim(),
-      validIdType: validIdSelection === 'other' ? validIdType.trim() : validIdLabels[validIdSelection],
+      phone: parsePhoneNumberFromString(String(formData.get('contact') ?? '').trim(), patientCountryCode)?.number ?? '',
+      countryCode: patientCountryCode,
+      validIdType: validIdSelection === 'other'
+        ? validIdType.trim()
+        : patientIdOptions.find(([value]) => value === validIdSelection)?.[1] ?? '',
       validIdNumber: String(formData.get('validIdNumber') ?? '').trim(),
     }
     try {
@@ -444,11 +489,11 @@ export default function RegisterRequest() {
                 )
               )}
               {activeModal === 'add' && !showRequestPrompt && (
-                <form className='register-request__modal-form' id='new-patient-form' onSubmit={handleRegisterPatient}>
+                <form className='register-request__modal-form' id='new-patient-form' noValidate onSubmit={handleRegisterPatient}>
                   <div className='register-request__form-row register-request__form-row--three'>
-                    <label htmlFor='new-patient-first-name'>First name<input id='new-patient-first-name' name='firstName' type='text' placeholder='First name' required /></label>
-                    <label htmlFor='new-patient-middle-name'>Middle name<input id='new-patient-middle-name' name='middleName' type='text' placeholder='Middle name' /></label>
-                    <label htmlFor='new-patient-last-name'>Surname<input id='new-patient-last-name' name='lastName' type='text' placeholder='Surname' required /></label>
+                    <label htmlFor='new-patient-first-name'>First name<input id='new-patient-first-name' name='firstName' type='text' autoComplete='given-name' placeholder='First name' value={patientForm.firstName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('firstName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('firstName'))} required />{visiblePatientError('firstName') && <span className='register-request__field-error'>{visiblePatientError('firstName')}</span>}</label>
+                    <label htmlFor='new-patient-middle-name'>Middle name<input id='new-patient-middle-name' name='middleName' type='text' autoComplete='additional-name' placeholder='Middle name' value={patientForm.middleName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('middleName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('middleName'))} />{visiblePatientError('middleName') && <span className='register-request__field-error'>{visiblePatientError('middleName')}</span>}</label>
+                    <label htmlFor='new-patient-last-name'>Surname<input id='new-patient-last-name' name='lastName' type='text' autoComplete='family-name' placeholder='Surname' value={patientForm.lastName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('lastName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('lastName'))} required />{visiblePatientError('lastName') && <span className='register-request__field-error'>{visiblePatientError('lastName')}</span>}</label>
                   </div>
                   <CountryCityFields
                     className='register-request__form-row'
@@ -456,28 +501,34 @@ export default function RegisterRequest() {
                     idPrefix='new-patient'
                     country={patientCountry}
                     city={patientCity}
-                    onCountryChange={setPatientCountry}
+                    onCountryChange={(country) => {
+                      setPatientCountry(country)
+                      setPatientForm((current) => ({ ...current, contact: '', validIdNumber: '' }))
+                      setPatientTouched((current) => ({ ...current, country: true, phone: false }))
+                      setValidIdSelection('')
+                      setValidIdType('')
+                    }}
+                    onCountryCodeChange={setPatientCountryCode}
                     onCityChange={setPatientCity}
+                    countryError={visiblePatientError('country')}
+                    cityError={visiblePatientError('city')}
+                    onCountryBlur={() => markPatientFieldTouched('country')}
+                    onCityBlur={() => markPatientFieldTouched('city')}
                   />
                   <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-house-number'>House no.<input id='new-patient-house-number' name='houseNumber' type='text' placeholder='House number' /></label>
-                    <label htmlFor='new-patient-street'>Street<input id='new-patient-street' name='street' type='text' placeholder='Street' /></label>
+                    <label htmlFor='new-patient-house-number'>House no.<input id='new-patient-house-number' name='houseNumber' type='text' autoComplete='address-line2' placeholder='House number' value={patientForm.houseNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('houseNumber')} maxLength={30} aria-invalid={Boolean(visiblePatientError('houseNumber'))} />{visiblePatientError('houseNumber') && <span className='register-request__field-error'>{visiblePatientError('houseNumber')}</span>}</label>
+                    <label htmlFor='new-patient-street'>Street<input id='new-patient-street' name='street' type='text' autoComplete='street-address' placeholder='Street' value={patientForm.street} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('street')} minLength={2} maxLength={100} aria-invalid={Boolean(visiblePatientError('street'))} />{visiblePatientError('street') && <span className='register-request__field-error'>{visiblePatientError('street')}</span>}</label>
                   </div>
-                  <label htmlFor='new-patient-email'>Email address<input id='new-patient-email' name='email' type='email' placeholder='name@example.com' /></label>
-                  <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} onChange={(event) => {
+                  <label htmlFor='new-patient-email'>Email address<input id='new-patient-email' name='email' type='email' autoComplete='email' placeholder='name@example.com' value={patientForm.email} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('email')} maxLength={254} aria-invalid={Boolean(visiblePatientError('email'))} />{visiblePatientError('email') && <span className='register-request__field-error'>{visiblePatientError('email')}</span>}</label>
+                  <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} aria-invalid={Boolean(visiblePatientError('validIdType'))} onBlur={() => markPatientFieldTouched('validIdType')} onChange={(event) => {
                     setValidIdSelection(event.target.value)
-                    if (event.target.value !== 'other') setValidIdType('')
+                    setPatientTouched((current) => ({ ...current, validIdType: true, otherIdType: true }))
+                    setValidIdType('')
+                    setPatientForm((current) => ({ ...current, validIdNumber: '' }))
                   }} required>
                     <option value='' disabled>Select an ID type</option>
-                    <option value='national-id'>Philippine National ID</option>
-                    <option value='drivers-license'>Driver’s License</option>
-                    <option value='passport'>Passport</option>
-                    <option value='philhealth'>PhilHealth ID</option>
-                    <option value='sss'>SSS ID</option>
-                    <option value='umid'>UMID</option>
-                    <option value='voters-id'>Voter’s ID</option>
-                    <option value='other'>Other</option>
-                  </select></label>
+                    {patientIdOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>{visiblePatientError('validIdType') && <span className='register-request__field-error'>{visiblePatientError('validIdType')}</span>}</label>
                   {validIdSelection === 'other' && (
                     <label htmlFor='new-patient-valid-id-type'>ID type / classification<input
                       id='new-patient-valid-id-type'
@@ -485,13 +536,20 @@ export default function RegisterRequest() {
                       type='text'
                       placeholder='Enter ID type or classification'
                       value={validIdType}
-                      onChange={(event) => setValidIdType(event.target.value)}
+                      onChange={(event) => {
+                        setValidIdType(event.target.value)
+                        markPatientFieldTouched('otherIdType')
+                      }}
+                      onBlur={() => markPatientFieldTouched('otherIdType')}
+                      minLength={2}
+                      maxLength={80}
+                      aria-invalid={Boolean(visiblePatientError('otherIdType'))}
                       required
-                    /></label>
+                    />{visiblePatientError('otherIdType') && <span className='register-request__field-error'>{visiblePatientError('otherIdType')}</span>}</label>
                   )}
-                  <label htmlFor='new-patient-valid-id-number'>ID or card number<input id='new-patient-valid-id-number' name='validIdNumber' type='text' placeholder='Enter the ID or card number' required /></label>
+                  <label htmlFor='new-patient-valid-id-number'>ID or card number<input id='new-patient-valid-id-number' name='validIdNumber' type='text' placeholder='Enter the ID or card number' value={patientForm.validIdNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('validIdNumber')} minLength={3} maxLength={50} aria-invalid={Boolean(visiblePatientError('validIdNumber'))} required />{visiblePatientError('validIdNumber') && <span className='register-request__field-error'>{visiblePatientError('validIdNumber')}</span>}</label>
                   <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-sex'>Sex<select id='new-patient-sex' name='sex' defaultValue='' required><option value='' disabled>Select sex</option><option>Female</option><option>Male</option></select></label>
+                    <label htmlFor='new-patient-sex'>Sex<select id='new-patient-sex' name='sex' value={patientForm.sex} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('sex')} aria-invalid={Boolean(visiblePatientError('sex'))} required><option value='' disabled>Select sex</option><option>Female</option><option>Male</option></select>{visiblePatientError('sex') && <span className='register-request__field-error'>{visiblePatientError('sex')}</span>}</label>
                     <label htmlFor='new-patient-dob'>Date of birth
                       <span
                         className='register-request__date-picker'
@@ -504,11 +562,15 @@ export default function RegisterRequest() {
                         <span className='register-request__date-picker-display' aria-hidden='true'>
                           {patientDateOfBirth ? formatDate(patientDateOfBirth) : 'MM/DD/YYYY'}
                         </span>
-                        <input id='new-patient-dob' name='dateOfBirth' type='date' autoComplete='bday' aria-hidden='true' tabIndex='-1' value={patientDateOfBirth} onChange={(event) => setPatientDateOfBirth(event.target.value)} required />
+                        <input id='new-patient-dob' name='dateOfBirth' type='date' autoComplete='bday' min={earliestBirthDate()} max={todayInputValue()} aria-hidden='true' tabIndex='-1' value={patientDateOfBirth} onBlur={() => markPatientFieldTouched('dateOfBirth')} onChange={(event) => {
+                          setPatientDateOfBirth(event.target.value)
+                          markPatientFieldTouched('dateOfBirth')
+                        }} required />
                       </span>
+                      {visiblePatientError('dateOfBirth') && <span className='register-request__field-error'>{visiblePatientError('dateOfBirth')}</span>}
                     </label>
                   </div>
-                  <label htmlFor='new-patient-contact'>Contact number<input id='new-patient-contact' name='contact' type='tel' placeholder='Enter contact number' required /></label>
+                  <label htmlFor='new-patient-contact'>Contact number{patientCallingCode && <span className='register-request__input-hint'>Country calling code: +{patientCallingCode}</span>}<input id='new-patient-contact' name='contact' type='tel' autoComplete='tel' inputMode='tel' placeholder={patientCallingCode ? `+${patientCallingCode} or local number` : 'Select a country first'} value={patientForm.contact} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('phone')} minLength={7} maxLength={25} aria-invalid={Boolean(visiblePatientError('phone'))} required />{visiblePatientError('phone') && <span className='register-request__field-error'>{visiblePatientError('phone')}</span>}</label>
                   <p className='register-request__modal-note'>A PID is generated by the system after the patient is saved.</p>
                 </form>
               )}

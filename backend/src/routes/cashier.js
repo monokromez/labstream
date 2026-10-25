@@ -1,10 +1,78 @@
 import { randomBytes } from "node:crypto";
 import { Router } from "express";
+import { isSupportedCountry, parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
 
 const ACTIVE_REQUEST_STATUSES = ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction"];
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
+const patientNamePattern = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u;
+const patientIdNumberPattern = /^[\p{L}\p{N}][\p{L}\p{N} /-]*$/u;
+
+export function validatePatientDetails(body) {
+  const errors = {};
+  const requiredStrings = ["firstName", "lastName", "dateOfBirth", "sex", "phone", "country", "city", "countryCode", "validIdType", "validIdNumber"];
+  for (const field of requiredStrings) {
+    if (typeof body[field] !== "string" || !body[field].trim()) errors[field] = "This field is required.";
+  }
+
+  for (const field of ["firstName", "middleName", "lastName"]) {
+    const value = body[field] ?? "";
+    if (typeof value !== "string") {
+      errors[field] = "Use letters only.";
+      continue;
+    }
+    if (!value && field === "middleName") continue;
+    if (value !== value.trim()) errors[field] = "Names cannot start or end with spaces.";
+    else if (value.length < 2 || value.length > 50) errors[field] = "Names must be between 2 and 50 characters.";
+    else if (!patientNamePattern.test(value)) errors[field] = "Names can contain letters and single spaces only.";
+  }
+
+  const dateValue = body.dateOfBirth;
+  if (typeof dateValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    const date = new Date(`${dateValue}T00:00:00.000Z`);
+    const today = new Date().toISOString().slice(0, 10);
+    const earliest = new Date(`${today}T00:00:00.000Z`);
+    earliest.setUTCFullYear(earliest.getUTCFullYear() - 120);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dateValue) errors.dateOfBirth = "Enter a valid date.";
+    else if (dateValue > today) errors.dateOfBirth = "Date of birth cannot be in the future.";
+    else if (dateValue < earliest.toISOString().slice(0, 10)) errors.dateOfBirth = "Date of birth must be within the last 120 years.";
+  } else if (dateValue) {
+    errors.dateOfBirth = "Use a valid YYYY-MM-DD date.";
+  }
+
+  if (typeof body.sex === "string" && !["Female", "Male"].includes(body.sex)) errors.sex = "Select a valid sex.";
+  if (typeof body.country === "string" && body.country.trim().length > 100) errors.country = "Country cannot exceed 100 characters.";
+  if (typeof body.city === "string" && (body.city.trim().length < 2 || body.city.trim().length > 100)) errors.city = "City must be between 2 and 100 characters.";
+
+  for (const [field, min, max] of [["houseNumber", 1, 30], ["street", 2, 100]]) {
+    const value = body[field];
+    if (value != null && value !== "") {
+      if (typeof value !== "string") errors[field] = "Use text for this field.";
+      else if (value.trim().length < min || value.trim().length > max) errors[field] = `Must be between ${min} and ${max} characters.`;
+    }
+  }
+
+  if (body.email != null && body.email !== "") {
+    if (typeof body.email !== "string" || body.email.length > 254 || body.email.trim().length < 6 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+      errors.email = "Enter a valid email address (up to 254 characters).";
+    }
+  }
+  if (typeof body.countryCode !== "string" || !isSupportedCountry(body.countryCode)) {
+    errors.countryCode = "Select a valid country.";
+  } else if (typeof body.phone === "string" && body.phone.trim()) {
+    const phone = parsePhoneNumberFromString(body.phone.trim(), body.countryCode);
+    if (!phone?.isValid() || phone.country !== body.countryCode) errors.phone = "Enter a valid phone number for the selected country.";
+  }
+
+  if (typeof body.validIdType === "string" && (body.validIdType.trim().length < 2 || body.validIdType.trim().length > 80)) errors.validIdType = "ID type must be between 2 and 80 characters.";
+  if (typeof body.validIdNumber === "string") {
+    const number = body.validIdNumber.trim();
+    if (number.length < 3 || number.length > 50) errors.validIdNumber = "ID number must be between 3 and 50 characters.";
+    else if (!patientIdNumberPattern.test(number)) errors.validIdNumber = "ID number contains unsupported characters.";
+  }
+  return errors;
+}
 
 export function createCashierRouter({ client }) {
   const router = Router();
@@ -39,10 +107,15 @@ export function createCashierRouter({ client }) {
   router.post("/patients", allowRoles("cashier"), async (req, res, next) => {
     try {
       const body = req.body ?? {};
-      const required = ["firstName", "lastName", "dateOfBirth", "sex", "phone", "country", "city", "validIdType", "validIdNumber"];
-      if (required.some((key) => !String(body[key] ?? "").trim()) || !/^\d{4}-\d{2}-\d{2}$/.test(String(body.dateOfBirth))) {
-        return res.status(400).json({ error: "INVALID_PATIENT_DETAILS", message: "Complete the required patient details and use an ISO date value." });
+      const validationErrors = validatePatientDetails(body);
+      if (Object.keys(validationErrors).length) {
+        return res.status(400).json({
+          error: "INVALID_PATIENT_DETAILS",
+          message: "Correct the patient details and try again.",
+          fields: validationErrors,
+        });
       }
+      const phone = parsePhoneNumberFromString(body.phone.trim(), body.countryCode).number;
       const pid = `PID-${new Date().getFullYear()}-${randomBytes(4).toString("hex").toUpperCase()}`;
       const patient = await client.begin(async (tx) => {
         const [created] = await tx.unsafe(
@@ -53,7 +126,7 @@ export function createCashierRouter({ client }) {
            returning id, pid, created_at`,
           [req.user.clinicId, pid, String(body.firstName).trim(), body.middleName?.trim() || null,
             String(body.lastName).trim(), body.dateOfBirth, String(body.sex).trim(), body.email?.trim()?.toLowerCase() || null,
-            String(body.phone).trim(), String(body.country).trim(), String(body.city).trim(), body.houseNumber?.trim() || null,
+            phone, String(body.country).trim(), String(body.city).trim(), body.houseNumber?.trim() || null,
             body.street?.trim() || null, String(body.validIdType).trim(), String(body.validIdNumber).trim(), req.user.sub],
         );
         await tx.unsafe(

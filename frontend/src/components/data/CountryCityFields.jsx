@@ -6,7 +6,12 @@ export default function CountryCityFields({
   country,
   city,
   onCountryChange,
+  onCountryCodeChange,
   onCityChange,
+  countryError = '',
+  cityError = '',
+  onCountryBlur,
+  onCityBlur,
   idPrefix,
   className = '',
   fieldClassName = '',
@@ -55,9 +60,12 @@ export default function CountryCityFields({
           name="country"
           autoComplete="country-name"
           value={selectedCountry?.alpha2Code ?? ''}
+          aria-invalid={Boolean(countryError)}
+          onBlur={onCountryBlur}
           onChange={(event) => {
             const nextCountry = countries.find((item) => item.alpha2Code === event.target.value)
             onCountryChange(nextCountry?.name ?? '')
+            onCountryCodeChange?.(nextCountry?.alpha2Code ?? '')
             onCityChange('')
           }}
           required
@@ -73,6 +81,8 @@ export default function CountryCityFields({
           name="city"
           autoComplete="address-level2"
           value={city}
+          aria-invalid={Boolean(cityError)}
+          onBlur={onCityBlur}
           onChange={(event) => onCityChange(event.target.value)}
           disabled={!selectedCountry || citiesLoading}
           required
@@ -84,6 +94,8 @@ export default function CountryCityFields({
           {cities.map((item) => <option key={`${item.geonameId}-${item.name}`} value={item.name}>{item.name}{item.admin1Code ? ` (${item.admin1Code})` : ''}</option>)}
         </select>
       </label>
+      {countryError && <p className="country-city-fields__error" role="alert">{countryError}</p>}
+      {cityError && <p className="country-city-fields__error" role="alert">{cityError}</p>}
       {error && <p className="country-city-fields__error" role="status">{error}</p>}
     </div>
   )

@@ -476,6 +476,25 @@
   outline: 3px solid rgb(15 118 110 / 14%);
 }
 
+.register-request__modal-form input[aria-invalid='true'],
+.register-request__modal-form select[aria-invalid='true'],
+.register-request__field select[aria-invalid='true'] {
+  border-color: var(--error, #b42318);
+}
+
+.register-request__field-error {
+  color: var(--error, #b42318);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.register-request__input-hint {
+  color: var(--text-muted-lightbg);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
 .register-request__modal-form input:disabled {
   background: var(--background);
   color: var(--text-muted-lightbg);
