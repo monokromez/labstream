@@ -476,6 +476,58 @@
   outline: 3px solid rgb(15 118 110 / 14%);
 }
 
+.register-request__phone-field {
+  display: flex;
+  align-items: center;
+  min-height: 2.875rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+}
+
+.register-request__phone-field:focus-within {
+  border-color: var(--primary);
+  outline: 3px solid rgb(15 118 110 / 14%);
+}
+
+.register-request__phone-field[aria-invalid='true'] {
+  border-color: var(--error, #b42318);
+}
+
+.register-request__phone-field > span {
+  flex: 0 0 auto;
+  padding: 0 0.75rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.register-request__modal-form .register-request__phone-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.875rem;
+  padding: 0.65rem 0.75rem 0.65rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.register-request__modal-form .register-request__phone-field input:focus-visible {
+  outline: none;
+}
+
+.register-request__phone-field:has(input:disabled) {
+  background: var(--background);
+  cursor: not-allowed;
+}
+
+.register-request__modal-form .register-request__phone-field input:disabled {
+  color: var(--text-muted-lightbg);
+  cursor: not-allowed;
+}
+
 .register-request__modal-form input[aria-invalid='true'],
 .register-request__modal-form select[aria-invalid='true'],
 .register-request__field select[aria-invalid='true'] {

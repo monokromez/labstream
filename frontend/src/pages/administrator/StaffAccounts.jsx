@@ -213,7 +213,7 @@ export default function StaffAccounts() {
             <label className="admin-dialog__field" htmlFor="staff-contact">Contact number
               <span className="admin-dialog__phone-field" aria-invalid={Boolean(visibleStaffError('contact'))}>
                 <span>+{staffCallingCode}</span>
-                <input id="staff-contact" required type="tel" autoComplete="tel-national" inputMode="tel" minLength={7} maxLength={30} placeholder="Mobile number" aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
+                <input id="staff-contact" required type="tel" autoComplete="tel-national" inputMode="tel" minLength={7} maxLength={30} placeholder={form.countryCode ? 'Mobile number' : 'Select a country first'} disabled={!form.countryCode} aria-invalid={Boolean(visibleStaffError('contact'))} value={form.contact} onBlur={() => markTouched('contact')} onChange={(event) => handleStaffPhoneChange(event.target.value)} />
               </span>
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>

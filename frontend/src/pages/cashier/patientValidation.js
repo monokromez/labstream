@@ -18,12 +18,9 @@ export function getPatientCallingCode(countryCode) {
 }
 
 export function formatPatientPhoneInput(value, countryCode) {
-  const input = String(value ?? '')
-  const digits = input.replace(/\D/g, '').slice(0, 15)
-  const sanitized = `${input.trimStart().startsWith('+') ? '+' : ''}${digits}`
-  if (!sanitized || sanitized === '+') return sanitized
-  if (!countryCode || !isSupportedCountry(countryCode)) return sanitized
-  return new AsYouType(countryCode).input(sanitized)
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 15)
+  if (!countryCode || !isSupportedCountry(countryCode)) return digits
+  return new AsYouType(countryCode).input(digits)
 }
 
 export function getPatientFieldError(field, value, context = {}) {
