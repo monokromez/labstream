@@ -1,4 +1,4 @@
-import { getCountryCallingCode, isSupportedCountry, parsePhoneNumberFromString } from 'libphonenumber-js/min'
+import { AsYouType, getCountryCallingCode, isSupportedCountry, parsePhoneNumberFromString } from 'libphonenumber-js/min'
 
 export const PATIENT_NAME_MIN = 2
 export const PATIENT_NAME_MAX = 50
@@ -15,6 +15,15 @@ const OPTIONAL_FIELD_LIMITS = {
 
 export function getPatientCallingCode(countryCode) {
   return countryCode && isSupportedCountry(countryCode) ? getCountryCallingCode(countryCode) : ''
+}
+
+export function formatPatientPhoneInput(value, countryCode) {
+  const input = String(value ?? '')
+  const digits = input.replace(/\D/g, '').slice(0, 15)
+  const sanitized = `${input.trimStart().startsWith('+') ? '+' : ''}${digits}`
+  if (!sanitized || sanitized === '+') return sanitized
+  if (!countryCode || !isSupportedCountry(countryCode)) return sanitized
+  return new AsYouType(countryCode).input(sanitized)
 }
 
 export function getPatientFieldError(field, value, context = {}) {
