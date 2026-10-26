@@ -5,6 +5,8 @@ const FAILURE_REASONS = {
   MAIL_AUTH_FAILED: 'The mail server rejected the sign-in. Ask the laboratory administrator to check the SMTP username and password.',
   MAIL_SENDER_REJECTED: 'The mail server rejected the sender address. Ask the administrator to verify the from-address with the email provider.',
   MAIL_RATE_LIMITED: 'The email provider is temporarily rate limiting messages. Wait a few minutes, then try again.',
+  MAIL_RECIPIENT_REJECTED: 'The mail server rejected the recipient address. Check it for typos, then try again.',
+  NO_DELIVERABLE_RECIPIENT: 'That address is a placeholder and cannot receive mail. Use a real inbox address.',
   MAIL_DELIVERY_FAILED: 'The email could not be delivered. Ask the laboratory administrator to check the mail settings.',
 }
 
@@ -16,6 +18,9 @@ export function describeEmailDelivery(delivery, overrides = {}) {
   if (!delivery) return { tone: 'error', text: 'No email delivery result was returned.' }
   if (delivery.status === 'sent') return { tone: 'success', text: overrides.sent ?? 'Email sent.' }
   if (delivery.status === 'skipped') {
+    if (delivery.reason === 'NO_DELIVERABLE_RECIPIENT') {
+      return { tone: 'error', text: delivery.message ?? FAILURE_REASONS.NO_DELIVERABLE_RECIPIENT }
+    }
     return { tone: 'info', text: overrides.skipped ?? delivery.message ?? 'No recipient email address is on file.' }
   }
   if (delivery.status === 'failed') {

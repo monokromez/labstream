@@ -8,7 +8,7 @@ const mailEnvironment = {
   MAIL_SCHEME: "smtp",
   MAIL_USERNAME: "mailer",
   MAIL_PASSWORD: "secret",
-  MAIL_FROM_ADDRESS: "no-reply@example.test",
+  MAIL_FROM_ADDRESS: "no-reply@labstream-mail.com",
   MAIL_FROM_NAME: "Labstream Test",
 };
 
@@ -24,14 +24,14 @@ test("sends activation, receipt, and released-result emails with escaped content
   });
 
   const activation = await service.sendActivationEmail({
-    to: "staff@example.test",
+    to: "staff@labstream-mail.com",
     name: "<Staff>",
     accountId: "TECH-01",
     code: "<code>",
     role: "medical technologist",
   });
   const receipt = await service.sendPaymentReceiptEmail({
-    to: "patient@example.test",
+    to: "patient@labstream-mail.com",
     name: "Patient",
     requestNumber: "REQ-01",
     invoiceNumber: "INV-01",
@@ -41,7 +41,7 @@ test("sends activation, receipt, and released-result emails with escaped content
     clinicName: "Labstream Clinic",
   });
   const released = await service.sendResultsReleasedEmail({
-    to: "patient@example.test",
+    to: "patient@labstream-mail.com",
     name: "Patient",
     requestNumber: "REQ-01",
     clinicName: "Labstream Clinic",
@@ -50,7 +50,7 @@ test("sends activation, receipt, and released-result emails with escaped content
 
   assert.deepEqual([activation.status, receipt.status, released.status], ["sent", "sent", "sent"]);
   assert.equal(messages.length, 3);
-  assert.equal(messages[0].from.address, "no-reply@example.test");
+  assert.equal(messages[0].from.address, "no-reply@labstream-mail.com");
   assert.equal(transportOptions.secure, false);
   assert.match(messages[0].html, /&lt;Staff&gt;/);
   assert.match(messages[0].html, /&lt;code&gt;/);
@@ -93,7 +93,7 @@ test("reports SMTP configuration and delivery failures", async () => {
   });
 
   const result = await service.sendActivationEmail({
-    to: "staff@example.test",
+    to: "staff@labstream-mail.com",
     name: "Staff",
     accountId: "TECH-01",
     code: "one-time-code",
@@ -109,7 +109,7 @@ test("reports SMTP configuration and delivery failures", async () => {
     logger: { error: (...args) => errors.push(args) },
   });
   const failedDelivery = await failingService.sendActivationEmail({
-    to: "staff@example.test",
+    to: "staff@labstream-mail.com",
     name: "Staff",
     accountId: "TECH-01",
     code: "one-time-code",
@@ -137,7 +137,7 @@ test("retries on a fallback port when the host blocks SMTP", async () => {
   });
 
   const receipt = {
-    to: "patient@example.test",
+    to: "patient@labstream-mail.com",
     name: "Patient",
     requestNumber: "REQ-01",
     invoiceNumber: "INV-01",
@@ -166,7 +166,7 @@ test("reports a blocked port when the primary and fallback connections both fail
   });
 
   const result = await service.sendPaymentReceiptEmail({
-    to: "patient@example.test",
+    to: "patient@labstream-mail.com",
     name: "Patient",
     requestNumber: "REQ-01",
     invoiceNumber: "INV-01",
@@ -190,7 +190,7 @@ test("classifies authentication and sender failures without leaking secrets", as
     logger: { error: () => {}, warn: () => {} },
   });
   const authResult = await authService.sendActivationEmail({
-    to: "staff@example.test",
+    to: "staff@labstream-mail.com",
     name: "Staff",
     accountId: "TECH-01",
     code: "one-time-code",
@@ -207,7 +207,7 @@ test("classifies authentication and sender failures without leaking secrets", as
     logger: { error: () => {}, warn: () => {} },
   });
   const senderResult = await senderService.sendPaymentReceiptEmail({
-    to: "patient@example.test",
+    to: "patient@labstream-mail.com",
     name: "Patient",
     requestNumber: "REQ-01",
     invoiceNumber: "INV-01",
@@ -226,11 +226,71 @@ test("sends an administrator test email through the relay", async () => {
     createTransporter: () => ({ sendMail: async (message) => messages.push(message) }),
   });
 
-  const result = await service.sendTestEmail({ to: "admin@example.test", name: "Admin" });
+  const result = await service.sendTestEmail({ to: "admin@labstream-mail.com", name: "Admin" });
 
   assert.equal(result.status, "sent");
   assert.equal(messages.length, 1);
-  assert.equal(messages[0].to, "admin@example.test");
+  assert.equal(messages[0].to, "admin@labstream-mail.com");
   assert.match(messages[0].subject, /test email/i);
   assert.match(messages[0].html, /relay is configured correctly/i);
+});
+
+test("skips placeholder recipients instead of reporting a successful send", async () => {
+  let transportCreated = false;
+  const service = createEmailService({
+    env: mailEnvironment,
+    createTransporter() {
+      transportCreated = true;
+      return { sendMail: async () => {} };
+    },
+  });
+
+  const result = await service.sendTestEmail({ to: "admin@labstream-demo.test", name: "Admin" });
+
+  assert.equal(result.status, "skipped");
+  assert.equal(result.reason, "NO_DELIVERABLE_RECIPIENT");
+  assert.match(result.message, /placeholder/i);
+  assert.equal(transportCreated, false);
+});
+
+test("returns the relay message id so a provider log can be matched", async () => {
+  const service = createEmailService({
+    env: mailEnvironment,
+    createTransporter: () => ({
+      sendMail: async () => ({ messageId: "<abc123@smtp-relay.brevo.com>", response: "250 OK queued", accepted: ["patient@labstream-mail.com"], rejected: [] }),
+    }),
+    logger: { info: () => {}, warn: () => {} },
+  });
+
+  const result = await service.sendResultsReleasedEmail({
+    to: "patient@labstream-mail.com",
+    name: "Patient",
+    requestNumber: "REQ-01",
+    clinicName: "Labstream Clinic",
+    portalUrl: "https://labstream.example.test",
+  });
+
+  assert.equal(result.status, "sent");
+  assert.equal(result.messageId, "<abc123@smtp-relay.brevo.com>");
+});
+
+test("reports a rejected recipient", async () => {
+  const service = createEmailService({
+    env: mailEnvironment,
+    createTransporter: () => ({
+      sendMail: async () => ({ accepted: [], rejected: ["patient@labstream-mail.com"], response: "250 OK" }),
+    }),
+    logger: { error: () => {}, warn: () => {} },
+  });
+
+  const result = await service.sendActivationEmail({
+    to: "patient@labstream-mail.com",
+    name: "Patient",
+    accountId: "PID-1",
+    code: "code",
+    role: "patient",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "MAIL_RECIPIENT_REJECTED");
 });

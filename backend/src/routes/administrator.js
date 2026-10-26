@@ -2,7 +2,7 @@ import { Router } from "express";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
-import { describeMailConfiguration, emailService } from "../email.js";
+import { describeMailConfiguration, emailService, isUndeliverableRecipient } from "../email.js";
 import { isUuid, validateCategoryDetails, validateReferenceRangeDetails, validateTestDetails } from "../adminValidation.js";
 
 const REPORT_PERIODS = new Set(["weekly", "monthly", "annual"]);
@@ -768,6 +768,12 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       }
       if (!recipient) {
         return res.status(409).json({ error: "NO_RECIPIENT_EMAIL", message: "Enter a recipient address; your account has no email on file." });
+      }
+      if (isUndeliverableRecipient(recipient)) {
+        return res.status(409).json({
+          error: "NO_DELIVERABLE_RECIPIENT",
+          message: `${recipient} is a placeholder address and cannot receive mail. Enter a real inbox such as your own Gmail address, then try again.`,
+        });
       }
       const emailDelivery = await emailService.sendTestEmail({ to: recipient, name });
       await client.unsafe(

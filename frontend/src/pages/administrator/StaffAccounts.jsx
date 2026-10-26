@@ -215,9 +215,12 @@ export default function StaffAccounts({ currentUserId }) {
       const delivery = response.mail?.configured === false
         ? { tone: 'error', text: 'Email is not configured on the server. Add MAIL_HOST, MAIL_PORT, MAIL_FROM_ADDRESS, and SMTP credentials to the host environment, then redeploy.' }
         : describeEmailDelivery(response.emailDelivery, {
-          sent: `Test email sent to ${response.data?.to ?? 'the administrator'}. If it is not in the inbox, check the junk folder.`,
+          sent: `Test email accepted by the mail server for ${response.data?.to ?? 'the administrator'}. If it is not in the inbox within a minute, check the junk folder.`,
           skipped: 'No recipient address was available, so no test email was sent.',
         })
+      if (delivery.tone === 'success' && response.emailDelivery?.messageId) {
+        delivery.text += ` Relay reference: ${response.emailDelivery.messageId}`
+      }
       setEmailTest((current) => ({ ...current, sending: false, status: delivery, mail: response.mail ?? null }))
     } catch (error) {
       setEmailTest((current) => ({ ...current, sending: false, status: { tone: 'error', text: error.message || 'Unable to send the test email.' } }))
@@ -227,7 +230,7 @@ export default function StaffAccounts({ currentUserId }) {
   const activationDelivery = dialog?.type === 'created' || dialog?.type === 'activation-reissued'
     ? (dialog.emailDelivery
       ? describeEmailDelivery(dialog.emailDelivery, {
-        sent: `Activation email sent to ${dialog.email}.`,
+        sent: `Activation email accepted by the mail server for ${dialog.email}. If it does not arrive, ask them to check the junk folder.`,
         skipped: `No activation email was sent${dialog.email ? ` to ${dialog.email}` : ''}. Give the username and code privately.`,
       })
       : { tone: 'info', text: 'The server did not confirm email delivery. Give the username and code privately.' })

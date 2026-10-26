@@ -10,7 +10,7 @@ const clinicId = "550e8400-e29b-41d4-a716-446655440011";
 const adminId = "550e8400-e29b-41d4-a716-446655440012";
 const origin = "http://localhost:5173";
 
-function createTestApp() {
+function createTestApp(accountEmail = "admin@labstream-mail.com") {
   process.env.AUTH_TOKEN_SECRET = secret;
   const writes = [];
   const client = {
@@ -20,7 +20,7 @@ function createTestApp() {
         return [{ id: adminId, clinic_id: clinicId, role: "administrator", is_active: true, must_change_password: false }];
       }
       if (query.startsWith("select u.email, concat_ws")) {
-        return [{ email: "admin@example.test", name: "Admin User" }];
+        return [{ email: accountEmail, name: "Admin User" }];
       }
       if (query.startsWith("insert into public.audit_logs")) {
         writes.push({ query, parameters });
@@ -83,7 +83,7 @@ test("admin test email reports a missing mail configuration without failing the 
     const payload = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(payload.data.to, "admin@example.test");
+    assert.equal(payload.data.to, "admin@labstream-mail.com");
     assert.equal(payload.emailDelivery.status, "failed");
     assert.equal(payload.emailDelivery.reason, "MAIL_NOT_CONFIGURED");
     assert.equal(payload.mail.configured, false);
@@ -102,5 +102,16 @@ test("admin test email rejects an invalid recipient before sending", async () =>
 
   assert.equal(response.status, 400);
   assert.equal(payload.error, "INVALID_EMAIL");
+  assert.equal(writes.length, 0);
+});
+
+test("admin test email warns when the account email is a placeholder address", async () => {
+  const { app, writes } = createTestApp("admin@labstream-demo.test");
+  const response = await postEmailTest(app, {});
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "NO_DELIVERABLE_RECIPIENT");
+  assert.match(payload.message, /placeholder/i);
   assert.equal(writes.length, 0);
 });

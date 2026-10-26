@@ -316,13 +316,13 @@ export default function RegisterRequest() {
   )
   const portalActivationEmail = portalActivation
     ? describeEmailDelivery(portalActivation.emailDelivery, {
-      sent: 'Activation email sent to the patient.',
+      sent: 'Activation email accepted by the mail server. If it does not arrive, ask the patient to check the junk folder.',
       skipped: 'No patient email is on file. Give the code above to the patient in person.',
     })
     : null
   const portalResetEmail = portalReset
     ? describeEmailDelivery(portalReset.emailDelivery, {
-      sent: 'Reset instructions emailed to the patient.',
+      sent: 'Reset email accepted by the mail server. If it does not arrive, ask the patient to check the junk folder.',
       skipped: 'No patient email is on file. Give the reset code above to the patient in person.',
     })
     : null
