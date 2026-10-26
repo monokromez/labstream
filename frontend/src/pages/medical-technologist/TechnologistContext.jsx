@@ -6,6 +6,16 @@ import useTestCatalog from '../../data/useTestCatalog.js'
 
 const statusLabels = { expected: 'Expected', received: 'Received', accepted: 'Accepted', rejected: 'Rejected', for_recollection: 'For Recollection' }
 
+function calculateAge(dateOfBirth) {
+  if (!dateOfBirth) return ''
+  const [year, month, day] = String(dateOfBirth).slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return ''
+  const today = new Date()
+  let age = today.getFullYear() - year
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1
+  return age >= 0 ? age : ''
+}
+
 function toApiAnalyteValue(field, values) {
   const current = values[field.key]
   const valueKey = { numeric: 'numericValue', select: 'selectValue', boolean: 'booleanValue', structured: 'structuredValue', text: 'textValue' }[field.valueType]
@@ -55,6 +65,8 @@ export function TechnologistProvider({ children, onNavigate }) {
         const tests = [...linkedTests.values()]
         return {
           ...row, backendId: row.id, id: row.requestNumber, patient: row.patientName,
+          patientId: row.pid, queueNo: `Q-${String(row.queueTicket).padStart(3, '0')}`,
+          receiptNo: row.receiptNumber ?? '', age: calculateAge(row.dateOfBirth),
           sex: row.sex, paidAt: row.paidAt, tests,
           priority: row.priority?.replace(/^./, (char) => char.toUpperCase()),
         }
@@ -104,16 +116,15 @@ export function TechnologistProvider({ children, onNavigate }) {
   }, [notice])
 
   const findSpecimen = useCallback((label) => specimens.find((item) => item.label === label), [specimens])
-  const markSpecimenReceived = useCallback(async (label) => {
-    const specimen = findSpecimen(label)
-    if (!specimen) return
-    try { await api.technologist.receiveSpecimen(specimen.id); await refresh(); setNotice(`${label} marked as received.`) }
-    catch (error) { setNotice(error.message || 'Unable to receive this specimen.') }
-  }, [findSpecimen, refresh])
   const acceptSpecimen = useCallback(async (label) => {
     const specimen = findSpecimen(label)
     if (!specimen) return
-    try { await api.technologist.acceptSpecimen(specimen.id); await refresh(); setNotice(`${label} accepted and sent to Results in Progress.`) }
+    try {
+      if (specimen.status !== 'Received') await api.technologist.receiveSpecimen(specimen.id)
+      await api.technologist.acceptSpecimen(specimen.id)
+      await refresh()
+      setNotice(`${label} accepted and sent to Results in Progress.`)
+    }
     catch (error) { setNotice(error.message || 'Unable to accept this specimen.') }
   }, [findSpecimen, refresh])
   const rejectSpecimen = useCallback(async (label, reason, notes) => {
@@ -171,10 +182,10 @@ export function TechnologistProvider({ children, onNavigate }) {
 
   const value = useMemo(() => ({
     requests, specimens, results, notice, loadError, specimenSearch, setSpecimenSearch,
-    markSpecimenReceived, acceptSpecimen, rejectSpecimen, saveDraft, submitRequest,
+    acceptSpecimen, rejectSpecimen, saveDraft, submitRequest,
     getRequestStatus: (request) => getRequestStatus(request, specimens, results),
     goToSpecimens: (requestId) => { setSpecimenSearch(requestId); onNavigate?.('specimens') },
-  }), [requests, specimens, results, notice, loadError, specimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen, saveDraft, submitRequest, onNavigate])
+  }), [requests, specimens, results, notice, loadError, specimenSearch, acceptSpecimen, rejectSpecimen, saveDraft, submitRequest, onNavigate])
 
   return <TechnologistContext.Provider value={value}>{children}<div className="medtech-toast" role="status" aria-live="polite" aria-atomic="true">{notice}</div></TechnologistContext.Provider>
 }

@@ -8,16 +8,24 @@ export function createTechnologistRouter({ client }) {
   router.get("/work-queue", async (req, res, next) => {
     try {
       const data = await client.unsafe(
-        `select r.id, r.request_number, r.status, r.priority, r.requested_at, r.paid_at,
+        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.status, r.priority, r.requested_at, r.paid_at,
+                receipt.receipt_number,
                 p.pid, p.sex, p.date_of_birth, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 count(ri.id)::integer as test_count,
                 count(ri.id) filter (where ri.status in ('drafted', 'submitted', 'approved', 'released'))::integer as completed_test_count
            from public.test_requests r
            join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
+           left join lateral (
+             select i.invoice_number as receipt_number
+               from public.payments payment
+               join public.invoices i on i.payment_id = payment.id and i.clinic_id = payment.clinic_id
+              where payment.request_id = r.id and payment.clinic_id = r.clinic_id and payment.voided_at is null
+              order by payment.paid_at desc limit 1
+           ) receipt on true
           where r.clinic_id = $1 and r.assigned_technologist_id = $2
             and r.status = any($3::public.request_status[])
-          group by r.id, p.id order by r.priority desc, r.paid_at`,
+          group by r.id, p.id, receipt.receipt_number order by r.priority desc, r.paid_at`,
         [req.user.clinicId, req.user.sub, ["paid", "specimen_collection", "processing", "correction"]],
       );
       return res.json({ data });
@@ -131,17 +139,30 @@ export function createTechnologistRouter({ client }) {
           [req.params.id, req.user.clinicId, req.user.sub],
         );
         if (!specimen) throw Object.assign(new Error("Specimen was not found in your work queue."), { code: "SPECIMEN_NOT_FOUND" });
-        if (specimen.status !== "received") throw Object.assign(new Error("A specimen must be received before it can be accepted."), { code: "INVALID_SPECIMEN_STATUS" });
+        if (!["expected", "for_recollection", "received"].includes(specimen.status)) throw Object.assign(new Error("Only expected or received specimens can be accepted."), { code: "INVALID_SPECIMEN_STATUS" });
+        if (specimen.status !== "received") {
+          await tx.unsafe(
+            `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id)
+             values ($1, $2, 'specimen.received', 'specimen', $3)`,
+            [req.user.clinicId, req.user.sub, specimen.id],
+          );
+        }
         const [updated] = await tx.unsafe(
-          `update public.specimens set status = 'accepted', accepted_at = now(), updated_at = now()
-            where id = $1 and clinic_id = $2 returning id, status, accepted_at`,
-          [specimen.id, req.user.clinicId],
+          `update public.specimens set status = 'accepted', received_at = coalesce(received_at, now()),
+                received_by = coalesce(received_by, $1), accepted_at = now(), updated_at = now()
+            where id = $2 and clinic_id = $3 returning id, status, accepted_at`,
+          [req.user.sub, specimen.id, req.user.clinicId],
         );
         await tx.unsafe(
           `update public.request_items ri set status = case when ri.status = 'for_recollection' then 'for_recollection'::public.request_item_status else 'processing'::public.request_item_status end, updated_at = now()
             where ri.id in (select request_item_id from public.specimen_request_items where specimen_id = $1 and clinic_id = $2)
-              and ri.status in ('specimen_received', 'for_recollection')`,
+              and ri.status in ('awaiting_specimen', 'specimen_received', 'for_recollection')`,
           [specimen.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `update public.test_requests set status = 'processing', updated_at = now()
+            where id = $1 and clinic_id = $2 and status in ('paid', 'specimen_collection')`,
+          [specimen.request_id, req.user.clinicId],
         );
         await tx.unsafe(
           `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id)
@@ -223,7 +244,7 @@ export function createTechnologistRouter({ client }) {
       const result = await client.begin(async (tx) => {
         const [context] = await tx.unsafe(
           `select r.id as request_id, r.status as request_status, r.assigned_technologist_id,
-                  ri.id as item_id, ri.test_id, ri.status as item_status, p.date_of_birth, p.sex,
+                  ri.id as item_id, ri.test_id, ri.status as item_status, p.date_of_birth, p.sex
              from public.test_requests r
              join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
              join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id

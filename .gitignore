@@ -1,5 +1,9 @@
 **/node_modules/
 **/dist/
+<<<<<<< HEAD
 **/.env
 **/.env.*
 !**/.env.example
+=======
+backend/.env
+>>>>>>> medtech

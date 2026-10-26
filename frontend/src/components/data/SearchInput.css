@@ -4,6 +4,15 @@
   gap: 0.25rem;
 }
 
+.app-search-field__label {
+  margin-bottom: 0.15rem;
+  color: var(--text-lightbg);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .app-search {
   display: flex;
   width: 100%;
