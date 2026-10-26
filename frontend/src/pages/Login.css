@@ -6,7 +6,6 @@
   padding: 1.5rem;
   background: var(--background);
 }
-
 .login-page__panel {
   width: min(100% - 2rem, 28rem);
   margin-inline: auto;

@@ -12,52 +12,15 @@
 }
 
 .register-request__search {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
   min-width: 16rem;
-  height: 2.875rem;
   flex: 1 1 24rem;
-  padding: 0 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 0.625rem;
-  background: var(--surface);
-  color: var(--text-muted-lightbg);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.register-request__search:focus-within,
 .register-request__field select:focus-visible,
 .register-request__field input:focus-visible {
   border-color: var(--primary);
   outline: none;
   box-shadow: 0 0 0 3px rgb(15 118 110 / 14%);
-}
-
-.register-request__search svg {
-  width: 1.2rem;
-  height: 1.2rem;
-  flex: 0 0 auto;
-}
-
-.register-request__search input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text-lightbg);
-  font: inherit;
-  font-size: 0.9rem;
-}
-
-.register-request__search input::placeholder {
-  color: var(--text-muted-lightbg);
-  opacity: 0.85;
-}
-
-.register-request__search input::-webkit-search-cancel-button {
-  cursor: pointer;
 }
 
 .register-request__filters {
@@ -81,7 +44,7 @@
   min-width: 8.5rem;
   padding: 0 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   color: var(--text-lightbg);
   font: inherit;
@@ -105,7 +68,7 @@
   height: 2.875rem;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   cursor: pointer;
   -webkit-user-select: none !important;
@@ -160,7 +123,7 @@
   margin-top: 1.25rem;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
+  border-radius: 0.625rem;
   background: var(--surface);
   box-shadow: 0 3px 12px rgb(19 78 74 / 6%);
 }
@@ -223,8 +186,8 @@
 }
 
 .register-request__table th {
-  background: var(--background);
-  color: var(--text-muted-lightbg);
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -271,7 +234,7 @@
   justify-content: center;
   gap: 0.35rem;
   border: 1px solid var(--primary);
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   font: inherit;
   font-size: 0.8rem;
   font-weight: 700;
@@ -286,15 +249,10 @@
   color: var(--surface);
 }
 
-.register-request__add-button span {
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
 .register-request__add-button:hover,
 .register-request__add-button:focus-visible {
-  border-color: var(--hover);
-  background: var(--hover);
+  border-color: var(--success);
+  background: var(--success);
 }
 
 .register-request__row-actions {
@@ -325,8 +283,8 @@
 
 .register-request__action-button--request:hover,
 .register-request__action-button--request:focus-visible {
-  border-color: var(--hover);
-  background: var(--hover);
+  border-color: var(--success);
+  background: var(--success);
 }
 
 .register-request__action-button--request:disabled {
@@ -377,7 +335,7 @@
   max-height: min(90vh, 48rem);
   overflow-y: auto;
   border: 1px solid rgb(255 255 255 / 65%);
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   background: var(--surface);
   box-shadow: 0 24px 70px rgb(0 0 0 / 28%);
   animation: register-request-modal-in 180ms ease-out;
@@ -421,7 +379,7 @@
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   background: transparent;
   color: var(--text-muted-lightbg);
   font: inherit;
@@ -464,7 +422,7 @@
   min-width: 0;
   padding: 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--background);
 }
 
@@ -501,7 +459,7 @@
   min-height: 2.875rem;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   color: var(--text-lightbg);
   font: inherit;
@@ -518,6 +476,77 @@
   outline: 3px solid rgb(15 118 110 / 14%);
 }
 
+.register-request__phone-field {
+  display: flex;
+  align-items: center;
+  min-height: 2.875rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+}
+
+.register-request__phone-field:focus-within {
+  border-color: var(--primary);
+  outline: 3px solid rgb(15 118 110 / 14%);
+}
+
+.register-request__phone-field[aria-invalid='true'] {
+  border-color: var(--error, #b42318);
+}
+
+.register-request__phone-field > span {
+  flex: 0 0 auto;
+  padding: 0 0.75rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.register-request__modal-form .register-request__phone-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.875rem;
+  padding: 0.65rem 0.75rem 0.65rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.register-request__modal-form .register-request__phone-field input:focus-visible {
+  outline: none;
+}
+
+.register-request__phone-field:has(input:disabled) {
+  background: var(--background);
+  cursor: not-allowed;
+}
+
+.register-request__modal-form .register-request__phone-field input:disabled {
+  color: var(--text-muted-lightbg);
+  cursor: not-allowed;
+}
+
+.register-request__modal-form input[aria-invalid='true'],
+.register-request__modal-form select[aria-invalid='true'],
+.register-request__field select[aria-invalid='true'] {
+  border-color: var(--error, #b42318);
+}
+
+.register-request__field-error {
+  color: var(--error, #b42318);
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.register-request__input-hint {
+  color: var(--text-muted-lightbg);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
 .register-request__modal-form input:disabled {
   background: var(--background);
   color: var(--text-muted-lightbg);
@@ -531,7 +560,7 @@
   margin: 0;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
 }
 
 .register-request__test-selection legend {
@@ -559,7 +588,7 @@
   min-width: 0;
   padding: 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--background);
 }
 
@@ -608,6 +637,10 @@
   gap: 1rem;
 }
 
+.country-city-fields.register-request__form-row {
+  display: grid;
+}
+
 .register-request__form-row--three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -625,6 +658,10 @@
   font-family: var(--main-font);
   font-size: 1.1rem;
   font-weight: 700;
+}
+
+.register-request__confirmation--portal {
+  margin-top: 1.25rem;
 }
 
 .register-request__confirmation p {
@@ -645,7 +682,7 @@
   min-height: 2.625rem;
   padding: 0.55rem 1rem;
   border: 1px solid var(--primary);
-  border-radius: 0.55rem;
+  border-radius: 0.3rem;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 700;
@@ -665,13 +702,62 @@
 }
 
 .register-request__modal-primary:hover {
-  border-color: var(--hover);
-  background: var(--hover);
+  border-color: var(--success);
+  background: var(--success);
 }
 
 .register-request__modal-secondary {
   background: var(--surface);
   color: var(--primary);
+}
+
+.register-request__modal-secondary:hover {
+  border-color: var(--error);
+  background: var(--error);
+  color: var(--surface);
+}
+
+.register-request__confirm-backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(8 28 27 / 58%);
+  backdrop-filter: blur(4px);
+}
+
+.register-request__confirm-dialog {
+  display: grid;
+  width: min(100%, 28rem);
+  gap: 1rem;
+  padding: 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--surface);
+  box-shadow: 0 1.5rem 4rem rgb(8 28 27 / 28%);
+}
+
+.register-request__confirm-dialog h2 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 1.05rem/1.35 var(--main-font);
+}
+
+.register-request__confirm-dialog p {
+  margin: 0;
+  color: var(--text-muted-lightbg);
+  line-height: 1.55;
+}
+
+.register-request__confirm-dialog strong { color: var(--text-lightbg); }
+
+.register-request__confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
 }
 
 .register-request__modal-primary:focus-visible,
@@ -743,7 +829,7 @@
 
   .register-request__modal {
     max-height: 92vh;
-    border-radius: 1rem 1rem 0.75rem 0.75rem;
+    border-radius: 0.75rem 0.75rem 0.5rem 0.5rem;
   }
 
   .register-request__modal-header,

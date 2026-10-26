@@ -1,5 +1,6 @@
 import './Sidebar.css'
 import labstreamIcon from '../../assets/labstream-icon.png'
+import logoutIcon from '../../assets/logout-icon.svg'
 import auditLogIcon from '../../assets/audit_log-icon.svg'
 import dashboardIcon from '../../assets/dashboard-icon.svg'
 import logoutIcon from '../../assets/logout-icon.svg'
@@ -49,8 +50,8 @@ const roleNavigation = {
     },
     {
       id: 'payments',
-      label: 'Payments & Receipts',
-      description: 'Manage payments and generate receipts.',
+      label: 'Payments & Invoice',
+      description: 'Manage patient payments and invoices.',
       icon: paymentReceiptIcon,
     },
   ],
@@ -64,13 +65,13 @@ const roleNavigation = {
     {
       id: 'specimens',
       label: 'Specimens',
-      description: 'Manage and track specimen samples.',
+      description: 'Track expected and received specimens.',
       icon: specimenIcon,
     },
     {
       id: 'results-in-progress',
       label: 'Results in Progress',
-      description: 'View and manage results that are currently being processed.',
+      description: 'Draft results and send them to the pathologist.',
       icon: resultInProgressIcon,
     },
   ],
@@ -159,7 +160,7 @@ export default function Sidebar({ role = 'cashier', userName = 'User', activeIte
   const selected = activeItem ?? navigationItems[0].id
 
   return (
-    <aside className="app-sidebar">
+    <aside className={`app-sidebar app-sidebar--${currentRole}`}>
       <a className="app-sidebar__brand" href="#dashboard" aria-label="Labstream home">
         <img className="app-sidebar__brand-icon" src={labstreamIcon} alt="" />
         <span>Labstream</span>

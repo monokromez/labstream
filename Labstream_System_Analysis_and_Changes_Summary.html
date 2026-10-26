@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Labstream - System Analysis, Findings, and Enhancements Summary</title>
+  <style>
+    :root {
+      --primary: #087f70;
+      --primary-dark: #065e53;
+      --primary-light: #f0fdfa;
+      --dark: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background-color: var(--bg);
+      color: var(--dark);
+      line-height: 1.5;
+      padding: 32px 16px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      padding: 32px;
+    }
+    .header h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    .header .subtitle {
+      font-size: 14px;
+      color: #d9f2ee;
+      margin-bottom: 12px;
+    }
+    .header .meta {
+      font-size: 12px;
+      color: #bbf7d0;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      padding-top: 10px;
+    }
+    .content {
+      padding: 32px;
+    }
+    .section {
+      margin-bottom: 28px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--primary);
+      background: var(--primary-light);
+      padding: 8px 14px;
+      border-radius: 6px;
+      border-left: 4px solid var(--primary);
+      margin-bottom: 14px;
+    }
+    p {
+      font-size: 13.5px;
+      color: var(--dark);
+      margin-bottom: 12px;
+      text-align: justify;
+    }
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bullet-item {
+      display: flex;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .bullet-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+      margin-top: 7px;
+      flex-shrink: 0;
+    }
+    .bullet-text strong {
+      color: var(--dark);
+      font-weight: 600;
+    }
+    .bullet-text span {
+      color: var(--muted);
+    }
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+    .category-card {
+      background: #fafafa;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+    }
+    .category-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--dark);
+      margin-bottom: 3px;
+    }
+    .category-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .table-container {
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    th, td {
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: #f1f5f9;
+      color: var(--dark);
+      font-weight: 600;
+    }
+    td code {
+      background: #e2e8f0;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 11.5px;
+      color: #0f172a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 16px 32px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      background: #f8fafc;
+    }
+    .action-bar {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 6px;
+      background: var(--primary);
+      color: white;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+    }
+    @media print {
+      body { background: white; padding: 0; }
+      .container { border: none; box-shadow: none; max-width: 100%; }
+      .action-bar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>LABSTREAM: SYSTEM ANALYSIS & ENHANCEMENTS</h1>
+      <div class="subtitle">Diagnostic Laboratory & Test Result Portal | ITP 108 Event-Driven Programming</div>
+      <div class="meta">Authors: Keegan P. Alviz, Raiven A. De Omania, Ian Keane R. Gregorio, Mark Joseph C. Navarro | Adviser: Prof. Jayson P. Joble</div>
+    </div>
+
+    <div class="content">
+      <div class="section">
+        <div class="section-title">1. Executive Summary & Scope Realignment</div>
+        <p>The supplied proposal defines Labstream as a system for one diagnostic laboratory and excludes multi-branch management from the initial implementation. The current implementation is constrained to that baseline: one laboratory record per database, no branch entities, and no clinic-code prompt at sign-in. clinic_id remains an internal key for the single laboratory record.</p>
+        <ul class="bullet-list">
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Scope Decision:</strong> <span>The canonical schema and API enforce one laboratory per database. Branch assignments and branch tables are removed. Existing databases must pass the guarded single-laboratory migration; it stops if it finds multiple labs or branch data requiring manual review.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Supported Result Modalities:</strong> <span>Aligned with Proposal Limitation #4 (Text and numeric results with reference ranges). Complex antimicrobial susceptibility matrices and cytology narrative templates were deprioritized, focusing on scalar and panel laboratory testing.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Walk-In Cash Billing:</strong> <span>Aligned with Proposal Limitation #5 & #6 (In-person cashier settlement). Third-party payment gateways and HMO claim workflows were excluded in accordance with the proposal.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Manual Encoding Model:</strong> <span>Aligned with Proposal Limitation #3. Technologists encode values manually; hardware analyzer/LIS interfaces are omitted.</span></div></li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">2. Deployed Environment Root Cause Analysis (Render)</div>
+        <p>A discrepancy was observed where the local development instance correctly retrieved and displayed staff accounts and catalog records, whereas the deployed Render production instance returned empty tables despite reporting a successful database connection.</p>
+        <ul class="bullet-list">
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Root Cause Diagnosis:</strong> <span>Render hosts the frontend as a static site and the backend as a distinct web service on different subdomains. The session cookie was configured with SameSite=Lax, preventing browsers from transmitting the HttpOnly authentication cookie on cross-origin fetch requests (credentials: include).</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Secondary Vulnerability:</strong> <span>The requireSameOrigin middleware strictly inspects Origin headers. If FRONTEND_ORIGIN does not strictly match the static site domain, state-changing POST/PATCH requests were rejected with HTTP 403.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Implemented Resolution:</strong> <span>Updated cookie options in backend/src/routes/auth.js: <code>sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"</code> with <code>secure: true</code>. This allows modern browsers to safely attach the session cookie across domains.</span></div></li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">3. Core Enhancements Implemented (Aligned to Proposal)</div>
+        <ul class="bullet-list">
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Admin Operational & Revenue Reports:</strong> <span>Upgraded <code>backend/src/routes/administrator.js</code> to compute live Total Revenue (month-to-date) and Average Turnaround Time (TAT from payment to release). Integrated dynamic cards and tables into Reports.jsx and AdminDashboard.jsx, complete with Excel/CSV export and print stylesheets.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Patient Portal Result Report:</strong> <span>The report includes patient identity, laboratory name, per-test results, units, saved reference-limit snapshots, abnormal flags, and pathologist interpretation. It uses neutral release wording and does not imply an electronic signature that the system does not record. Print styles support browser PDF export.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Multi-Analyte Diagnostic Panel Builder:</strong> <span>Transformed the administrator test catalog form (TestCatalog.jsx) to support multi-parameter panels (e.g. Complete Blood Count indices, Urinalysis) with custom units, options, and validation. Added a "Params" inspector modal backed by a new endpoint: GET /api/admin/tests/:id/configuration.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Persistent Cashier Queue:</strong> <span>Queue tickets and currently called requests are stored in the database. Authenticated call, call-next, and dismiss operations are audited and synchronized within the single laboratory.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Zero-Fee Waiver Processing:</strong> <span>Zero-total requests use a distinct waiver payment method; positive settlements remain cash. The additive migration for existing databases is documented but has not been run against the user's Supabase database.</span></div></li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <div class="section-title">4. Diagnostic Test Catalog Standard (12 Categories, 77 Unique Tests)</div>
+        <p>The repository design document lists 81 category entries across 12 categories. Albumin, Total Protein, Creatinine, and BUN recur across categories, leaving 77 unique test names. It is a setup guide, not a clinical protocol:</p>
+        <div class="category-grid">
+          <div class="category-card"><div class="category-name">1. Hematology (9 tests)</div><div class="category-desc">CBC, Hgb, Hct, WBC, Platelet Count, Differential WBC Count, ESR, Peripheral Blood Smear, Reticulocyte Count</div></div>
+          <div class="category-card"><div class="category-name">2. Clinical Chemistry (12 tests)</div><div class="category-desc">FBS, RBS, HbA1c, BUN, Creatinine, Uric Acid, Total Protein, Albumin, Electrolytes (Na/K/Cl/Ca)</div></div>
+          <div class="category-card"><div class="category-name">3. Lipid Profile (4 tests)</div><div class="category-desc">Total Cholesterol, HDL Cholesterol, LDL Cholesterol, Triglycerides</div></div>
+          <div class="category-card"><div class="category-name">4. Liver Function Tests (7 tests)</div><div class="category-desc">ALT/SGPT, AST/SGOT, Alkaline Phosphatase (ALP), Total Bilirubin, Direct Bilirubin</div></div>
+          <div class="category-card"><div class="category-name">5. Renal Function (6 tests)</div><div class="category-desc">eGFR, Urine Albumin-to-Creatinine Ratio (UACR), Urine Total Protein, Creatinine Clearance</div></div>
+          <div class="category-card"><div class="category-name">6. Clinical Microscopy (7 tests)</div><div class="category-desc">Routine Urinalysis, Routine Fecalysis, FOBT, Pregnancy Test, Semen Analysis, Parasite Exam</div></div>
+          <div class="category-card"><div class="category-name">7. Microbiology (7 tests)</div><div class="category-desc">Gram Stain, Acid-Fast Bacilli (AFB), KOH Mount, Bacterial Culture, Culture & Sensitivity</div></div>
+          <div class="category-card"><div class="category-name">8. Immunology & Serology (7 tests)</div><div class="category-desc">CRP, Rheumatoid Factor, Dengue NS1 & IgM/IgG, HBsAg, HIV Screening, Syphilis</div></div>
+          <div class="category-card"><div class="category-name">9. Coagulation (5 tests)</div><div class="category-desc">Prothrombin Time (PT), INR, aPTT, Fibrinogen, D-dimer</div></div>
+          <div class="category-card"><div class="category-name">10. Endocrinology (8 tests)</div><div class="category-desc">TSH, FT4, FT3, Total T4/T3, Cortisol, Testosterone, Prolactin</div></div>
+          <div class="category-card"><div class="category-name">11. Blood Banking (5 tests)</div><div class="category-desc">ABO Grouping, Rh(D) Typing, Crossmatching, Direct/Indirect Antiglobulin Tests</div></div>
+          <div class="category-card"><div class="category-name">12. Histopathology (4 tests)</div><div class="category-desc">Pap Smear, Tissue Biopsy Examination, Cytology Examination, FNAC</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">5. File Modification Matrix</div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>File Path</th>
+                <th>Description of Modification</th>
+              </tr>
+            </thead>
+            <tbody>
+          <tr><td><code>backend/src/routes/auth.js</code></td><td>Production cross-site cookie uses SameSite=None and Secure=true.</td></tr>
+              <tr><td><code>backend/src/routes/administrator.js</code></td><td>Added Revenue & TAT metrics to summary; added test configuration query endpoint.</td></tr>
+          <tr><td><code>backend/supabase/schema.sql</code></td><td>Canonical database schema; existing installations need the documented additive waiver migration.</td></tr>
+              <tr><td><code>frontend/src/api/client.js</code></td><td>Registered testConfiguration API helper method.</td></tr>
+              <tr><td><code>frontend/src/pages/administrator/AdminDashboard.jsx</code></td><td>Added Revenue & TAT summary cards; wired dynamic turnaround display.</td></tr>
+              <tr><td><code>frontend/src/pages/administrator/Reports.jsx</code></td><td>Surfaced Revenue & TAT indicators in summary, performance table, and Excel export.</td></tr>
+              <tr><td><code>frontend/src/pages/administrator/TestCatalog.jsx</code></td><td>Built dynamic multi-analyte parameter builder and parameter inspection modal.</td></tr>
+              <tr><td><code>frontend/src/pages/administrator/TestCatalog.css</code></td><td>Added styling for parameter cards, grids, and configuration views.</td></tr>
+          <tr><td><code>frontend/src/pages/cashier/CashierQueue.jsx</code></td><td>Displays and operates the persisted cashier queue.</td></tr>
+              <tr><td><code>frontend/src/pages/patient/MyResults.jsx</code></td><td>Added Diagnostic Laboratory Report view with printable layout and release notice.</td></tr>
+              <tr><td><code>frontend/src/pages/patient/MyResults.css</code></td><td>Configured @media print rules to isolate diagnostic report for clean PDF export.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">6. Quality Assurance & Verification Results</div>
+        <ul class="bullet-list">
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Static Code Analysis (oxlint):</strong> <span>Evaluated across 74 frontend modules: 0 errors.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Production Bundler (vite build):</strong> <span>Transformed 139 modules and generated optimized production assets in 921ms without warnings.</span></div></li>
+          <li class="bullet-item"><div class="bullet-dot"></div><div class="bullet-text"><strong>Database Integrity:</strong> <span>The live database and its deployed migrations have not been independently re-verified for this report. The schema permits one laboratory per database; existing deployments require the guarded single-laboratory migration after a backup. It has not been run against Supabase.</span></div></li>
+        </ul>
+      </div>
+
+      <div class="action-bar">
+        <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Labstream Project Documentation &bull; Diagnostic Laboratory &amp; Test Result Portal</div>
+      <div>ITP 108 Capstone Project</div>
+    </div>
+  </div>
+</body>
+</html>

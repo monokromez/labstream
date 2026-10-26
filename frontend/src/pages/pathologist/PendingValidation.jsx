@@ -9,6 +9,7 @@ import {
   usePathologistWorklist,
 } from './usePathologistData.js'
 import './PendingValidation.css'
+import { resultValueForDisplay } from '../../utils/resultValue.js'
 
 const PAGE_SIZE = 10
 
@@ -16,6 +17,8 @@ export default function PendingValidation() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [remarks, setRemarks] = useState('')
+  const [interpretations, setInterpretations] = useState({})
+  const [recollectionItems, setRecollectionItems] = useState([])
   const [notice, setNotice] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -76,6 +79,16 @@ export default function PendingValidation() {
           </table>
           <TablePagination currentPage={currentPage} pageSize={PAGE_SIZE} totalItems={total} onPageChange={setCurrentPage} />
         </div>
+        <div className="pathologist-table-scroll"><table className="admin-table pathologist-list-table">
+          <thead><tr><th scope="col">Request</th><th scope="col">Patient</th><th scope="col">Test</th><th scope="col">Submitted</th><th scope="col">Priority</th><th scope="col"><span className="visually-hidden">Review action</span></th></tr></thead>
+          <tbody>{visibleCases.map((item) => <tr key={item.id}>
+            <td className="admin-table__primary">{item.id}</td><td>{item.patient}</td><td>{item.test}</td><td>{item.submitted}</td>
+            <td><span className={`admin-badge ${item.priority === 'Urgent' ? 'admin-badge--warning' : 'admin-badge--muted'}`}>{item.priority}</span></td>
+            <td><button className="admin-button admin-button--positive admin-button--small" type="button" onClick={() => openReview(item)}>Review <span aria-hidden="true">→</span></button></td>
+          </tr>)}
+          {visibleCases.length === 0 && <tr><td className="admin-empty" colSpan="6">{result ? 'No pending results match your filters.' : 'Loading pending results…'}</td></tr>}</tbody>
+        </table></div>
+        <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={filteredCases.length} onPageChange={setCurrentPage} />
       </section>
 
       {selectedCase && <section className="admin-panel pathologist-review" aria-labelledby="review-title">

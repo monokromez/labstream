@@ -16,3 +16,11 @@ export function formatDate(value) {
   const year = date.getFullYear()
   return `${month}/${day}/${year}`
 }
+
+/** Format date/time values as MM/DD/YYYY HH:MM using a 24-hour clock. */
+export function formatDateTime(value) {
+  if (!value) return '—'
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return `${formatDate(date)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}

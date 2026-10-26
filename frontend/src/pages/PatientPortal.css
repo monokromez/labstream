@@ -6,7 +6,7 @@
 
 .patient-portal__notice {
   border-inline-start: 3px solid #0f766e;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   background: #f0fdfa;
   padding: 0.875rem 1rem;
 }

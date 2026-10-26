@@ -1,3 +1,9 @@
 @import './RolePage.css';
 
 /* Add page-specific styles below. */
+.medtech-structured-result { display: grid; gap: 0.5rem; min-width: 280px; }
+.medtech-structured-result__table-wrap { max-width: 100%; overflow-x: auto; }
+.medtech-structured-result table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.medtech-structured-result th, .medtech-structured-result td { padding: 0.35rem; border: 1px solid var(--border-color, #b8d5d0); text-align: left; }
+.medtech-structured-result input { width: 100%; min-width: 90px; padding: 0.45rem; border: 1px solid var(--border-color, #b8d5d0); border-radius: 4px; }
+.medtech-structured-result[aria-invalid="true"] { outline: 1px solid #b42318; outline-offset: 2px; }

@@ -1,165 +1,101 @@
 import { useMemo, useState } from 'react'
+import SearchInput from '../../components/data/SearchInput.jsx'
+import AdminDialog from '../../components/data/AdminDialog.jsx'
+import TablePagination from '../../components/data/TablePagination.jsx'
+import PlusIcon from '../../components/data/PlusIcon.jsx'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
+import useTestCatalog from '../../data/useTestCatalog.js'
 import './ReferenceRanges.css'
 
-const initialRanges = [
-  { id: 1, test: 'Hemoglobin', ageGroup: 'Adults', sex: 'Female', low: 12, high: 16, unit: 'g/dL' },
-  { id: 2, test: 'Hemoglobin', ageGroup: 'Adults', sex: 'Male', low: 13.5, high: 17.5, unit: 'g/dL' },
-  { id: 3, test: 'Fasting Blood Sugar', ageGroup: 'Adults', sex: 'All', low: 70, high: 99, unit: 'mg/dL' },
-  { id: 4, test: 'Platelet Count', ageGroup: 'Adults', sex: 'All', low: 150, high: 400, unit: '10³/µL' },
-]
+const units = ['g/dL', 'mg/dL', 'mmol/L', '10³/µL', '10⁶/µL', 'µIU/mL', 'U/L', 'Other']
+const blankRange = { test: '', analyteId: '', gender: 'All', minAge: '', maxAge: '', lower: '', upper: '', unit: 'mg/dL' }
 
 export default function ReferenceRanges() {
-  const [ranges, setRanges] = useState(initialRanges)
-  const [testFilter, setTestFilter] = useState('All tests')
-  const [isAdding, setIsAdding] = useState(false)
-  const [editingRangeId, setEditingRangeId] = useState(null)
-  const [form, setForm] = useState({ test: 'Hemoglobin', ageGroup: 'Adults', sex: 'All', low: '', high: '', unit: '' })
+  const [search, setSearch] = useState('')
+  const [genderFilter, setGenderFilter] = useState('All genders')
+  const [dialog, setDialog] = useState(null)
+  const [form, setForm] = useState(blankRange)
+  const [page, setPage] = useState(1)
+  const [saveError, setSaveError] = useState('')
+  const pageSize = 10
+  const { catalog } = useTestCatalog()
+  const { result: rangeResult, error: loadError, refresh } = useApiResource(() => api.administrator.referenceRanges({ page: 1, pageSize: 100, q: search }), [search])
+  const ranges = (rangeResult?.data ?? []).map((range) => ({
+    ...range, test: range.testName, gender: range.sex ? range.sex[0].toUpperCase() + range.sex.slice(1) : 'All',
+    minAge: Math.floor(Number(range.minAgeDays ?? 0) / 365.25), maxAge: Math.floor(Number(range.maxAgeDays ?? 120 * 365.25) / 365.25),
+    lower: range.lowerLimit, upper: range.upperLimit,
+  }))
+  const selectedTest = catalog.tests.find((test) => test.id === form.test)
+  const analytes = selectedTest?.analytes ?? []
 
-  const testNames = [...new Set(ranges.map((range) => range.test))]
-  const visibleRanges = useMemo(() => (
-    ranges.filter((range) => testFilter === 'All tests' || range.test === testFilter)
-  ), [ranges, testFilter])
+  const visibleRanges = useMemo(() => ranges.filter((range) => (
+    range.test.toLowerCase().includes(search.toLowerCase())
+      && (genderFilter === 'All genders' || range.gender === genderFilter)
+  )), [genderFilter, ranges, search])
+  const pageRows = visibleRanges.slice((page - 1) * pageSize, page * pageSize)
 
-  function addRange(event) {
-    event.preventDefault()
-    if (editingRangeId === null) {
-      setRanges((current) => [
-        ...current,
-        { ...form, id: Date.now(), low: Number(form.low), high: Number(form.high) },
-      ])
-    } else {
-      setRanges((current) => current.map((range) => (
-        range.id === editingRangeId
-          ? { ...form, id: range.id, low: Number(form.low), high: Number(form.high) }
-          : range
-      )))
-    }
-    setForm({ test: 'Hemoglobin', ageGroup: 'Adults', sex: 'All', low: '', high: '', unit: '' })
-    setEditingRangeId(null)
-    setIsAdding(false)
+  function openAdd() {
+    setSaveError('')
+    const test = catalog.tests[0]
+    setForm({ ...blankRange, test: test?.id || '', analyteId: test?.analytes?.[0]?.id || '' })
+    setDialog({ type: 'form' })
   }
-
-  function editRange(range) {
-    setForm({
-      test: range.test,
-      ageGroup: range.ageGroup,
-      sex: range.sex,
-      low: String(range.low),
-      high: String(range.high),
-      unit: range.unit,
-    })
-    setEditingRangeId(range.id)
-    setIsAdding(true)
+  function openEdit(range) {
+    const test = catalog.tests.find((item) => item.id === range.testId)
+    setForm({ test: range.testId, analyteId: range.analyteId, gender: range.gender, minAge: String(range.minAge), maxAge: String(range.maxAge), lower: String(range.lower), upper: String(range.upper), unit: range.unit || test?.analytes?.find((item) => item.id === range.analyteId)?.unit || 'Other' })
+    setSaveError('')
+    setDialog({ type: 'form', editingId: range.id })
   }
-
-  function closeForm() {
-    setIsAdding(false)
-    setEditingRangeId(null)
-    setForm({ test: 'Hemoglobin', ageGroup: 'Adults', sex: 'All', low: '', high: '', unit: '' })
+  async function commitSave() {
+    try {
+      const body = { analyteId: form.analyteId, sex: form.gender === 'All' ? null : form.gender.toLowerCase(), minAgeDays: Math.round(Number(form.minAge) * 365.25), maxAgeDays: Math.round(Number(form.maxAge) * 365.25), lowerLimit: Number(form.lower), upperLimit: Number(form.upper), unit: form.unit }
+      if (dialog.editingId) await api.administrator.updateReferenceRange(dialog.editingId, body)
+      else await api.administrator.addReferenceRange(body)
+      setDialog(null)
+      await refresh()
+    } catch (error) { setSaveError(error.message || 'Unable to save reference range.') }
+  }
+  async function commitDelete() {
+    try { await api.administrator.removeReferenceRange(dialog.range.id); setDialog(null); await refresh() }
+    catch (error) { setSaveError(error.message || 'Unable to remove reference range.') }
   }
 
   return (
     <section className="admin-page" aria-label="Reference ranges">
-      <div className="admin-page__title-row">
-        <div>
-          <h2>Result reference ranges</h2>
-          <p>Maintain test ranges by age group and sex for result interpretation.</p>
+      {(loadError || saveError) && <p role="alert">{saveError || loadError}</p>}
+      <div className="admin-page__controls-row">
+        <div className="admin-toolbar" role="search">
+          <SearchInput className="admin-toolbar__search" label="Search reference ranges" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
+          <label className="admin-toolbar__field">Filter by gender<select value={genderFilter} onChange={(event) => { setGenderFilter(event.target.value); setPage(1) }}><option>All genders</option><option>All</option><option>Female</option><option>Male</option></select></label>
         </div>
-        <button className="admin-button" type="button" onClick={() => {
-          if (isAdding) closeForm()
-          else setIsAdding(true)
-        }}>
-          {isAdding ? 'Close form' : 'Add reference range'}
-        </button>
       </div>
+      <section className="admin-list-card" aria-labelledby="reference-ranges-title">
+      <header className="admin-list-card__heading"><div><h2 id="reference-ranges-title">REFERENCE RANGES</h2><p>Maintain result boundaries by test, gender, and age.</p></div><div><span>{visibleRanges.length} {visibleRanges.length === 1 ? 'range' : 'ranges'}</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> REFERENCE RANGE</button></div></header>
+      <div className="admin-table-wrap"><table className="admin-table">
+        <thead><tr><th>Test</th><th>Gender</th><th>Age range</th><th>Boundary limits</th><th>Unit</th><th>Actions</th></tr></thead>
+        <tbody>
+          {pageRows.map((range) => <tr key={range.id}><td className="admin-table__primary">{range.test}</td><td>{range.gender}</td><td>{range.minAge}–{range.maxAge}</td><td>{range.lower}–{range.upper}</td><td>{range.unit}</td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => openEdit(range)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'delete', range })}>Delete</button></td></tr>)}
+          {visibleRanges.length === 0 && <tr><td className="admin-empty" colSpan="6">No reference ranges match your filters.</td></tr>}
+        </tbody>
+      </table></div></section>
+      <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleRanges.length} onPageChange={setPage} />
 
-      {isAdding && (
-        <form className="admin-form" onSubmit={addRange}>
-          <label className="admin-form__field">
-            Test
-            <select value={form.test} onChange={(event) => setForm({ ...form, test: event.target.value })}>
-              {testNames.map((test) => <option key={test}>{test}</option>)}
-            </select>
-          </label>
-          <label className="admin-form__field">
-            Age group
-            <input required placeholder="e.g. Adults 18–65" value={form.ageGroup} onChange={(event) => setForm({ ...form, ageGroup: event.target.value })} />
-          </label>
-          <label className="admin-form__field">
-            Sex
-            <select value={form.sex} onChange={(event) => setForm({ ...form, sex: event.target.value })}>
-              <option>All</option>
-              <option>Female</option>
-              <option>Male</option>
-            </select>
-          </label>
-          <label className="admin-form__field">
-            Lower limit
-            <input type="number" step="any" required value={form.low} onChange={(event) => setForm({ ...form, low: event.target.value })} />
-          </label>
-          <label className="admin-form__field">
-            Upper limit
-            <input type="number" step="any" min={form.low || undefined} required value={form.high} onChange={(event) => setForm({ ...form, high: event.target.value })} />
-          </label>
-          <label className="admin-form__field">
-            Unit
-            <input required placeholder="e.g. mg/dL" value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} />
-          </label>
-          <div className="admin-form__actions">
-            <button className="admin-button" type="submit">{editingRangeId === null ? 'Save range' : 'Save changes'}</button>
-            <button className="admin-button admin-button--secondary" type="button" onClick={closeForm}>Cancel</button>
-          </div>
+      {dialog?.type === 'form' && <AdminDialog title={dialog.editingId ? 'Edit reference range' : 'Add reference change'} description="Enter the applicable demographic range and result boundaries." onClose={() => setDialog(null)} size="large">
+        <form id="range-form" className="admin-dialog__form" onSubmit={(event) => { event.preventDefault(); setDialog({ ...dialog, type: 'confirm-save' }) }}>
+          <label className="admin-dialog__field admin-dialog__span">Test<select required value={form.test} onChange={(event) => { const test = catalog.tests.find((item) => item.id === event.target.value); setForm({ ...form, test: event.target.value, analyteId: test?.analytes?.[0]?.id || '' }) }}>{catalog.tests.map((test) => <option key={test.id} value={test.id}>{test.name}</option>)}</select></label>
+          <label className="admin-dialog__field admin-dialog__span">Result field<select required value={form.analyteId} onChange={(event) => setForm({ ...form, analyteId: event.target.value })}>{analytes.map((analyte) => <option key={analyte.id} value={analyte.id}>{analyte.label}{analyte.unit ? ` (${analyte.unit})` : ''}</option>)}</select></label>
+          <label className="admin-dialog__field">Gender<select value={form.gender} onChange={(event) => setForm({ ...form, gender: event.target.value })}><option>All</option><option>Female</option><option>Male</option></select></label>
+          <label className="admin-dialog__field">Minimum age<input type="number" min="0" max="120" required value={form.minAge} onChange={(event) => setForm({ ...form, minAge: event.target.value })} /></label>
+          <label className="admin-dialog__field">Maximum age<input type="number" min={form.minAge || 0} max="120" required value={form.maxAge} onChange={(event) => setForm({ ...form, maxAge: event.target.value })} /></label>
+          <label className="admin-dialog__field">Lower limit<input type="number" step="any" required value={form.lower} onChange={(event) => setForm({ ...form, lower: event.target.value })} /></label>
+          <label className="admin-dialog__field">Upper limit<input type="number" step="any" required value={form.upper} onChange={(event) => setForm({ ...form, upper: event.target.value })} /></label>
+          <label className="admin-dialog__field">Unit<select value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })}>{units.map((unit) => <option key={unit}>{unit}</option>)}</select></label>
         </form>
-      )}
-
-      <div className="admin-toolbar">
-        <label className="admin-toolbar__field">
-          Filter by test
-          <select value={testFilter} onChange={(event) => setTestFilter(event.target.value)}>
-            <option>All tests</option>
-            {testNames.map((test) => <option key={test}>{test}</option>)}
-          </select>
-        </label>
-      </div>
-
-      <div className="admin-table-wrap">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th scope="col">Test</th>
-              <th scope="col">Age group</th>
-              <th scope="col">Sex</th>
-              <th scope="col">Reference interval</th>
-              <th scope="col">Unit</th>
-              <th scope="col"><span className="visually-hidden">Range action</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRanges.map((range) => (
-              <tr key={range.id}>
-                <td className="admin-table__primary">{range.test}</td>
-                <td>{range.ageGroup}</td>
-                <td>{range.sex}</td>
-                <td>{range.low} – {range.high}</td>
-                <td>{range.unit}</td>
-                <td>
-                  <button
-                    className="admin-button admin-button--secondary admin-button--small"
-                    type="button"
-                    onClick={() => editRange(range)}
-                    aria-label={`Edit ${range.test} range for ${range.ageGroup}, ${range.sex}`}
-                  >
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {visibleRanges.length === 0 && (
-              <tr><td className="admin-empty" colSpan="6">No reference ranges are available for this test.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+        <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="range-form">Review changes</button></div>
+      </AdminDialog>}
+      {dialog?.type === 'confirm-save' && <AdminDialog title="Confirm reference range" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">{dialog.editingId ? 'Save the updated boundaries for' : 'Add a reference range for'} <strong>{selectedTest?.name}</strong> · <strong>{analytes.find((item) => item.id === form.analyteId)?.label}</strong>, {form.gender.toLowerCase()}, ages <strong>{form.minAge}–{form.maxAge}</strong>?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ ...dialog, type: 'form' })}>Back</button><button className="admin-button" type="button" onClick={commitSave}>Confirm</button></div></AdminDialog>}
+      {dialog?.type === 'delete' && <AdminDialog title="Delete reference range?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Delete the reference range for <strong>{dialog.range.test}</strong> ({dialog.range.gender}, {dialog.range.minAge}–{dialog.range.maxAge})?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button admin-button--negative" type="button" onClick={commitDelete}>Confirm delete</button></div></AdminDialog>}
     </section>
   )
 }

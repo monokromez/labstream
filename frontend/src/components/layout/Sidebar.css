@@ -1,10 +1,17 @@
 .app-sidebar {
+  display: flex;
+  flex-direction: column;
   grid-area: sidebar;
-  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   width: 16rem;
   min-width: 0;
   overflow: hidden;
-  background: #134e4a;
+  background: var(--sidebar-background);
   color: var(--text-darkbg);
   padding: 1.25rem 0.875rem;
 }
@@ -37,7 +44,7 @@
   width: 2.25rem;
   height: 2.25rem;
   flex: 0 0 2.25rem;
-  border-radius: 0.55rem;
+  border-radius: 0.3rem;
   object-fit: cover;
 }
 
@@ -70,6 +77,8 @@
 .app-sidebar__nav {
   display: grid;
   gap: 0.35rem;
+  flex: 1 1 auto;
+  align-content: start;
 }
 
 .app-sidebar__link {
@@ -77,7 +86,7 @@
   min-height: 2.875rem;
   align-items: center;
   gap: 0.75rem;
-  border-radius: 0.65rem;
+  border-radius: 0.4rem;
   padding: 0.65rem 0.75rem;
   color: var(--text-darkbg);
   font-family: var(--main-font);
@@ -134,6 +143,10 @@
 
 @media (max-width: 760px) {
   .app-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: auto;
     min-height: 0;
     width: 100%;
     padding: 0.65rem 0.75rem;
@@ -165,6 +178,32 @@
     overflow-x: auto;
     padding: 0.1rem 0.1rem 0.4rem;
     scrollbar-width: thin;
+  }
+
+  .app-sidebar--medical_technologist .app-sidebar__heading {
+    display: none;
+  }
+
+  .app-sidebar--medical_technologist .app-sidebar__nav {
+    gap: 0.25rem;
+    overflow-x: hidden;
+  }
+
+  .app-sidebar--medical_technologist .app-sidebar__link {
+    min-width: 0;
+    min-height: 2.6rem;
+    flex: 1 1 0;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.3rem;
+    font-size: 0.72rem;
+    white-space: normal;
+  }
+
+  .app-sidebar--medical_technologist .app-sidebar__link .app-sidebar__icon {
+    width: 1rem;
+    height: 1rem;
+    flex-basis: 1rem;
   }
 
   .app-sidebar__link {

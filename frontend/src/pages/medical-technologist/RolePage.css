@@ -1,13 +1,1034 @@
-.role-page-placeholder {
-  min-height: 5rem;
-  padding: 1rem 1.25rem;
-  border: 1px dashed var(--border);
-  border-radius: 0.75rem;
-  background: var(--surface);
-  color: var(--text-muted-lightbg);
-  font-family: var(--main-font);
+.medtech-page {
+  min-width: 0;
+  padding-bottom: 2rem;
+  color: var(--text-lightbg);
+  caret-color: var(--primary);
 }
 
-.role-page-placeholder p {
+.medtech-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.medtech-page ::selection {
+  color: var(--surface);
+  background: var(--primary);
+}
+
+.medtech-page :focus-visible,
+.medtech-dialog :focus-visible {
+  outline: 3px solid var(--secondary);
+  outline-offset: 2px;
+}
+
+.medtech-panel {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgb(19 78 74 / 8%);
+}
+
+/* Queue and specimen tables sit directly on the page, not inside a card. */
+.medtech-page > .medtech-panel {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.medtech-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.medtech-panel__heading h2 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 1.05rem/1.35 var(--main-font);
+  text-transform: uppercase;
+}
+
+.medtech-panel__heading p {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.medtech-panel__count { flex: 0 0 auto; padding: .35rem .65rem; border-radius: 999px; background: #d9f2ee; color: var(--text-lightbg); font-size: .8rem; }
+
+.medtech-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.medtech-toolbar__search {
+  min-width: 0;
+}
+
+.medtech-select-field,
+.medtech-form__field {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.4rem;
+  color: var(--text-lightbg);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.medtech-select-field select,
+.medtech-form__field input,
+.medtech-form__field select,
+.medtech-form__field textarea {
+  width: 100%;
+  min-height: 2.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  font: 400 0.88rem/1.4 var(--main-font);
+}
+
+.medtech-form__field textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.medtech-select-field select:focus,
+.medtech-form__field input:focus,
+.medtech-form__field select:focus,
+.medtech-form__field textarea:focus,
+.medtech-result-input:focus {
+  border-color: var(--primary);
+  outline: 3px solid color-mix(in srgb, var(--primary) 24%, transparent);
+  outline-offset: 1px;
+}
+
+.medtech-form__field input[aria-invalid="true"],
+.medtech-form__field select[aria-invalid="true"],
+.medtech-form__field textarea[aria-invalid="true"],
+.medtech-result-input[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.medtech-count {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.medtech-count strong {
+  color: var(--text-lightbg);
+  font-weight: 700;
+}
+
+.medtech-table-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow: auto;
+  contain: layout paint;
+  border-inline: 1px solid var(--sidebar-background);
+  border-block: 0;
+  border-radius: 0;
+  scrollbar-color: var(--primary) var(--background);
+  scrollbar-width: thin;
+  background: #fff;
+}
+
+.medtech-table-wrap--nested,
+.medtech-table-wrap--result {
+  border-inline: 1px solid var(--sidebar-background);
+  border-block: 0;
+  border-radius: 0;
+}
+
+.medtech-table {
+  width: 100%;
+  border-block: 1px solid var(--sidebar-background);
+  border-inline: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 0;
+  color: var(--text-lightbg);
+  font-size: 0.8rem;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.medtech-table th {
+  padding: 0.75rem 0.8rem;
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.medtech-table td {
+  padding: 0.7rem 0.8rem;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.medtech-table tbody tr:first-child td {
+  border-top: 0;
+}
+
+.medtech-table tbody tr:hover {
+  background: color-mix(in srgb, var(--background) 68%, var(--surface));
+}
+
+.medtech-table--queue {
+  min-width: 70rem;
+}
+
+.medtech-table--specimens {
+  min-width: 67rem;
+}
+
+.medtech-table--result-entry {
+  min-width: 42rem;
+}
+
+.medtech-table__primary {
+  display: block;
+  color: var(--text-lightbg);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.medtech-table--specimens .medtech-table__request-id {
+  width: 12.5rem;
+  min-width: 12.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.medtech-table--specimens th.medtech-table__request-id,
+.medtech-table--specimens td.medtech-table__request-id {
+  text-align: center;
+}
+
+.medtech-table__note {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.medtech-tests-summary {
+  display: block;
+  max-width: 17rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.medtech-status-cell {
+  display: grid;
+  justify-items: start;
+  gap: 0.2rem;
+}
+
+.medtech-table__action-cell {
+  min-width: 11rem;
+}
+
+.medtech-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.medtech-badge {
+  display: inline-flex;
+  min-height: 1.55rem;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.medtech-badge--neutral {
+  border-color: var(--status-neutral);
+  background: var(--status-neutral);
+  color: var(--status-text);
+}
+
+.medtech-badge--primary {
+  border-color: var(--status-success);
+  background: var(--status-success);
+  color: var(--status-text);
+}
+
+.medtech-badge--warning {
+  border-color: var(--status-warning);
+  background: var(--status-warning);
+  color: var(--status-text);
+}
+
+.medtech-badge--danger {
+  border-color: var(--status-danger);
+  background: var(--status-danger);
+  color: var(--status-text);
+}
+
+.medtech-button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.25rem;
+  padding: 0.55rem 0.85rem;
+  background: var(--primary);
+  color: var(--surface);
+  cursor: pointer;
+  font: 700 0.78rem/1.2 var(--main-font);
+  text-align: center;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.medtech-button:hover:not(:disabled) {
+  border-color: var(--hover);
+  background: var(--hover);
+}
+
+.medtech-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.medtech-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.medtech-button--secondary {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text-lightbg);
+}
+
+.medtech-button--secondary:hover:not(:disabled) {
+  border-color: var(--error);
+  background: var(--error);
+  color: var(--surface);
+}
+
+.medtech-button--positive:hover:not(:disabled) {
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--surface);
+}
+
+.medtech-button--danger {
+  border-color: var(--error);
+  background: var(--error);
+  color: var(--surface);
+}
+
+.medtech-button--danger:hover:not(:disabled) {
+  border-color: var(--error);
+  background: var(--error);
+}
+
+.medtech-button--small {
+  min-height: 2rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.72rem;
+}
+
+.medtech-empty {
+  margin: 0;
+  padding: 1.5rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.medtech-empty--compact {
+  padding: 1.2rem 0.6rem;
+  text-align: left;
+}
+
+.medtech-dialog-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 1rem;
+  background: rgb(8 35 33 / 62%);
+}
+
+.medtech-dialog {
+  width: min(100%, 34rem);
+  max-height: min(90dvh, 52rem);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: var(--surface);
+  box-shadow: 0 12px 34px rgb(8 35 33 / 24%);
+}
+
+.medtech-dialog--wide {
+  width: min(100%, 48rem);
+}
+
+.medtech-dialog__header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+}
+
+.medtech-dialog__header h2 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 1.05rem/1.35 var(--main-font);
+}
+
+.medtech-request-dialog-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.medtech-request-dialog-title .medtech-badge {
+  min-height: 2rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+}
+
+.medtech-icon-button {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  cursor: pointer;
+}
+
+.medtech-icon-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+.medtech-dialog__body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem 1.25rem;
+}
+
+.medtech-dialog__context {
+  margin: 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.84rem;
+}
+
+.medtech-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0 1.25rem 1.15rem;
+}
+
+.medtech-dialog__body > .medtech-dialog__actions {
+  padding: 0;
+}
+
+.medtech-form {
+  gap: 0.9rem;
+}
+
+.medtech-form__field small {
+  color: var(--text-muted-lightbg);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.medtech-form__notice,
+.medtech-lock-notice,
+.medtech-reference-note {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--background);
+  color: var(--text-lightbg);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.medtech-form__error {
+  margin: 0;
+  color: var(--error);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.medtech-detail-section {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.medtech-detail-section h3 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 0.85rem/1.3 var(--main-font);
+}
+
+.medtech-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem 1rem;
   margin: 0;
 }
+
+.medtech-detail-grid div {
+  min-width: 0;
+}
+
+.medtech-detail-grid dt {
+  color: var(--text-muted-lightbg);
+  font-size: 0.7rem;
+}
+
+.medtech-detail-grid dd {
+  margin: 0.2rem 0 0;
+  color: var(--text-lightbg);
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.medtech-specimen-summary {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.medtech-specimen-summary li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+  color: var(--text-lightbg);
+  font-size: 0.78rem;
+}
+
+.medtech-specimen-summary__name {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.medtech-table--specimens .medtech-table__primary {
+  font-size: 0.9rem;
+}
+
+.medtech-toast {
+  position: fixed;
+  z-index: 40;
+  right: 1rem;
+  bottom: 1rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  border: 1px solid var(--primary);
+  border-radius: 0.35rem;
+  padding: 0.8rem 1rem;
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
+  box-shadow: 0 6px 18px rgb(8 35 33 / 22%);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.medtech-toast:empty {
+  display: none;
+}
+
+.medtech-result-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.72fr) minmax(0, 1.8fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.medtech-result-list .medtech-result-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0 0 0.8rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.medtech-result-list {
+  position: sticky;
+  top: 0;
+}
+
+.medtech-result-list .medtech-panel__heading {
+  margin-bottom: 0.7rem;
+}
+
+.medtech-filter-chip {
+  display: flex;
+  min-width: 0;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.45rem 0.55rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  cursor: pointer;
+  font: 700 0.74rem/1.25 var(--main-font);
+  text-align: center;
+  white-space: normal;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.medtech-filter-chip:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+.medtech-filter-chip.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--surface);
+  box-shadow: 0 2px 6px rgb(19 78 74 / 18%);
+}
+
+.medtech-filter-chip:hover:not(.is-active) {
+  background: var(--surface);
+}
+
+.medtech-result-cards {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.medtech-result-request-group {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.medtech-result-request-group:not(:last-child) {
+  margin-bottom: 0.3rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.medtech-result-request-group__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0.1rem;
+}
+
+.medtech-result-request-group__heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.medtech-result-request-group__heading strong {
+  color: var(--text-lightbg);
+  font-size: 0.78rem;
+}
+
+.medtech-result-request-group__heading > div span {
+  overflow: hidden;
+  color: var(--text-muted-lightbg);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.medtech-result-request-group__status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  background: #fff0d5;
+  color: #865300;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.medtech-result-request-group__status.is-complete {
+  background: #dff4e9;
+  color: #116348;
+}
+
+.medtech-result-card {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.medtech-result-card:hover {
+  background: var(--background);
+}
+
+.medtech-result-card.is-selected {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.medtech-result-card__top {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.medtech-result-card__top strong {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.medtech-result-card__patient,
+.medtech-result-card__tests {
+  color: var(--text-muted-lightbg);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.medtech-result-card__tests {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.medtech-result-detail {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.medtech-result-detail__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.85rem;
+}
+
+.medtech-result-detail__heading h2 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 1.15rem/1.3 var(--main-font);
+}
+
+.medtech-result-detail__heading p {
+  margin: 0.3rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.78rem;
+}
+
+.medtech-detail-grid--result {
+  gap: 0.75rem 1rem;
+}
+
+.medtech-detail-grid__wide {
+  grid-column: 1 / -1;
+}
+
+.medtech-lab-number {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.medtech-feedback {
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+  border-radius: 0.35rem;
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+
+.medtech-feedback h3 {
+  margin: 0;
+  color: #7c3d00;
+  font: 700 0.8rem/1.4 var(--main-font);
+}
+
+.medtech-feedback p {
+  margin: 0.3rem 0 0;
+  color: #663300;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.medtech-reference-note {
+  background: var(--surface);
+  color: var(--text-muted-lightbg);
+}
+
+.medtech-result-form {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.medtech-test-section {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+
+.medtech-test-section__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0.9rem;
+  background: var(--background);
+}
+
+.medtech-test-section__heading h3 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font: 700 0.82rem/1.35 var(--main-font);
+}
+
+.medtech-test-section__heading span {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.68rem;
+}
+
+.medtech-result-input {
+  width: 8rem;
+  min-height: 2.2rem;
+  border: 1px solid var(--border);
+  border-radius: 0.15rem;
+  padding: 0.4rem 0.55rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  font: 400 0.78rem/1.3 var(--main-font);
+}
+
+.medtech-findings-chart {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  background: var(--surface);
+}
+
+.medtech-findings-chart figcaption { display: grid; gap: 0.25rem; }
+.medtech-findings-chart figcaption strong { color: var(--text-lightbg); font-size: 0.88rem; }
+.medtech-findings-chart figcaption span,
+.medtech-findings-chart__row small { color: var(--text-muted-lightbg); font-size: 0.72rem; }
+.medtech-findings-chart__rows { display: grid; gap: 0.85rem; }
+.medtech-findings-chart__row { display: grid; gap: 0.35rem; }
+.medtech-findings-chart__label { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; color: var(--text-lightbg); font-size: 0.78rem; }
+.medtech-findings-chart__label strong { font-variant-numeric: tabular-nums; }
+.medtech-findings-chart__track { position: relative; height: 0.7rem; border-radius: 999px; background: #e2e8f0; }
+.medtech-findings-chart__range { position: absolute; top: 0; bottom: 0; background: #a7f3d0; }
+.medtech-findings-chart__value-marker { position: absolute; top: -0.2rem; width: 0.2rem; height: 1.1rem; transform: translateX(-50%); border-radius: 999px; background: var(--primary); }
+.medtech-findings-chart__value-marker.is-out-of-range { background: var(--warning); }
+
+.medtech-result-input:disabled,
+.medtech-form__field textarea:disabled {
+  background: var(--background);
+  color: var(--text-muted-lightbg);
+  cursor: not-allowed;
+}
+
+.medtech-text-results {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem;
+}
+
+.medtech-result-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.medtech-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--error);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.medtech-flag span {
+  font-size: 0.68rem;
+}
+
+.medtech-result-placeholder {
+  min-height: 14rem;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted-lightbg);
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.medtech-result-placeholder p {
+  margin: 0;
+}
+
+.medtech-page .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@media (max-width: 1050px) {
+  .medtech-result-layout {
+    grid-template-columns: minmax(14rem, 0.8fr) minmax(0, 1.5fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .medtech-summary-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .medtech-result-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .medtech-result-list {
+    position: static;
+  }
+
+  .medtech-result-cards {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .medtech-panel {
+    padding: 1rem;
+  }
+
+  .medtech-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .medtech-summary-cards { grid-template-columns: 1fr; gap: 0.75rem; }
+
+  .medtech-toolbar__search {
+    width: 100%;
+  }
+
+  .medtech-select-field {
+    min-width: 0;
+  }
+
+  .medtech-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .medtech-detail-grid__wide {
+    grid-column: auto;
+  }
+
+  .medtech-dialog-backdrop {
+    place-items: end center;
+    padding: 0;
+  }
+
+  .medtech-dialog {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: 0.55rem 0.55rem 0 0;
+  }
+
+  .medtech-dialog__header,
+  .medtech-dialog__body {
+    padding-inline: 1rem;
+  }
+
+  .medtech-dialog__actions {
+    padding-inline: 1rem;
+  }
+
+  .medtech-result-detail__heading {
+    flex-direction: column;
+  }
+
+  .medtech-result-actions {
+    justify-content: stretch;
+  }
+
+  .medtech-result-actions .medtech-button {
+    flex: 1;
+  }
+}
+.medtech-page__error { margin: 0 0 1rem; padding: 0.75rem 1rem; border: 1px solid var(--error); border-radius: 0.4rem; color: var(--error); background: color-mix(in srgb, var(--error) 7%, white); }

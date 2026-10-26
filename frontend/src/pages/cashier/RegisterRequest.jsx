@@ -1,30 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
+import { parsePhoneNumberFromString } from 'libphonenumber-js/min'
+import SearchInput from '../../components/data/SearchInput.jsx'
+import CountryCityFields from '../../components/data/CountryCityFields.jsx'
+import { CharacterCount, LimitedInput } from '../../components/forms/LimitedInput.jsx'
+import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
-import { testCategories } from '../../data/testCatalog.js'
+import useTestCatalog from '../../data/useTestCatalog.js'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
 import { formatDate } from '../../utils/dateFormat.js'
-import {
-  createCashierTransaction,
-  getCashierTransactions,
-  subscribeToCashierTransactions,
-} from '../../utils/cashierTransactions.js'
+import { formatPatientPhoneInput, getAvailablePatientIds, getPatientCallingCode, getPatientFormErrors, PATIENT_AGE_LIMIT } from './patientValidation.js'
 import './RegisterRequest.css'
 
 const ROWS_PER_PAGE = 10
 
-const samplePatients = [
-  { pid: 'PID-2026-00124', firstName: 'Ariana', middleName: 'Mae', lastName: 'Santos', houseNumber: '18', street: 'Rizal Street', city: 'Quezon City', country: 'Philippines', email: 'ariana.santos@example.com', sex: 'Female', dateOfBirth: '1998-04-16', contact: '0917 234 6810', previousVisitDate: '2026-10-18', validId: 'Philippine National ID', validIdNumber: '•••• •••• 4812' },
-  { pid: 'PID-2026-00123', firstName: 'Miguel', middleName: 'Luis', lastName: 'Reyes', houseNumber: '204', street: 'Mabini Avenue', city: 'Manila', country: 'Philippines', email: 'miguel.reyes@example.com', sex: 'Male', dateOfBirth: '1987-11-02', contact: '0928 517 4403', previousVisitDate: '2026-10-18', validId: 'Driver’s License', validIdNumber: 'N02-••••-451267' },
-  { pid: 'PID-2026-00122', firstName: 'Leah', middleName: 'Anne', lastName: 'Dela Cruz', houseNumber: '7B', street: 'Sampaguita Road', city: 'Pasig City', country: 'Philippines', email: 'leah.delacruz@example.com', sex: 'Female', dateOfBirth: '2001-07-29', contact: '0916 802 1957', previousVisitDate: '2026-10-17', validId: 'Passport', validIdNumber: 'P•••••731' },
-  { pid: 'PID-2026-00121', firstName: 'Noah', middleName: 'Rafael', lastName: 'Garcia', houseNumber: '55', street: 'Bonifacio Street', city: 'Makati City', country: 'Philippines', email: 'noah.garcia@example.com', sex: 'Male', dateOfBirth: '1975-02-11', contact: '0995 310 7624', previousVisitDate: '2026-10-16', validId: 'PhilHealth ID', validIdNumber: '12-••••••••-3' },
-]
-const validIdLabels = {
-  'national-id': 'Philippine National ID',
-  'drivers-license': 'Driver’s License',
-  passport: 'Passport',
-  philhealth: 'PhilHealth ID',
-  sss: 'SSS ID',
-  umid: 'UMID',
-  'voters-id': 'Voter’s ID',
+const dateInputValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const todayInputValue = () => dateInputValue(new Date())
+const earliestBirthDate = () => {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() - PATIENT_AGE_LIMIT)
+  return dateInputValue(date)
 }
 
 const getPatientName = (patient) => [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ') || patient.name || ''
@@ -64,21 +59,19 @@ const handleDatePickerKeyDown = (event) => {
     openDatePicker(event)
   }
 }
-const getTodayISODate = () => {
-  const today = new Date()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-  return `${today.getFullYear()}-${month}-${day}`
-}
-
 export default function RegisterRequest() {
-  const [patients, setPatients] = useState(samplePatients)
   const [searchQuery, setSearchQuery] = useState('')
   const [sexFilter, setSexFilter] = useState('all')
   const [previousVisitFilter, setPreviousVisitFilter] = useState('')
   const [patientCountry, setPatientCountry] = useState('')
+  const [patientCountryCode, setPatientCountryCode] = useState('')
   const [patientCity, setPatientCity] = useState('')
   const [patientDateOfBirth, setPatientDateOfBirth] = useState('')
+  const [patientForm, setPatientForm] = useState({
+    firstName: '', middleName: '', lastName: '', houseNumber: '', street: '',
+    email: '', contact: '', sex: '', validIdNumber: '',
+  })
+  const [patientTouched, setPatientTouched] = useState({})
   const [validIdSelection, setValidIdSelection] = useState('')
   const [validIdType, setValidIdType] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -86,36 +79,105 @@ export default function RegisterRequest() {
   const [selectedPatient, setSelectedPatient] = useState(null)
   const [selectedTestIds, setSelectedTestIds] = useState([])
   const [requestSubmitted, setRequestSubmitted] = useState(false)
+  const [requestSubmitting, setRequestSubmitting] = useState(false)
   const [showRequestPrompt, setShowRequestPrompt] = useState(false)
-  const [transactions, setTransactions] = useState(getCashierTransactions)
+  const [showPatientConfirm, setShowPatientConfirm] = useState(false)
+  const [patientConfirmData, setPatientConfirmData] = useState(null)
+  const [showRequestConfirm, setShowRequestConfirm] = useState(false)
+  const [showPortalConfirm, setShowPortalConfirm] = useState(false)
+  const [portalSubmitting, setPortalSubmitting] = useState(false)
+  const [portalActivation, setPortalActivation] = useState(null)
+  const [portalReset, setPortalReset] = useState(null)
+  const [identityVerified, setIdentityVerified] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const { result: patientResult, refresh: refreshPatients, error: patientLoadError } = useApiResource(
+    () => api.patients.list({ page: 1, pageSize: 100, q: searchQuery }), [searchQuery],
+  )
+  const patients = (patientResult?.data ?? []).map((patient) => ({
+    ...patient,
+    contact: patient.phone,
+    previousVisitDate: patient.previousVisit?.slice(0, 10) ?? patient.createdAt?.slice(0, 10),
+    validId: patient.validIdType?.toLowerCase() === 'other' ? 'Other' : patient.validIdType,
+    hasPendingRequest: patient.hasPendingRequest,
+    hasPortalAccount: patient.hasPortalAccount,
+    portalActive: patient.portalActive,
+  }))
+  const { categories: testCategories, loading: testCatalogLoading, error: testCatalogError } = useTestCatalog({ availableOnly: true })
+  const requestTestCategories = testCategories
+    .map((category) => ({
+      ...category,
+      tests: category.tests.filter((test) => !test.categoryId || test.categoryId === category.id),
+    }))
+    .filter((category) => category.tests.length > 0)
+  const patientIdOptions = getAvailablePatientIds(patientCountryCode, patientCountry)
+  const patientCallingCode = getPatientCallingCode(patientCountryCode)
+  const patientErrors = getPatientFormErrors({
+    ...patientForm,
+    phone: patientForm.contact,
+    country: patientCountry,
+    city: patientCity,
+    dateOfBirth: patientDateOfBirth,
+    validIdType: validIdSelection,
+    otherIdType: validIdType,
+  }, { countryCode: patientCountryCode, countryName: patientCountry, idSelection: validIdSelection })
+  const visiblePatientError = (field) => patientTouched[field] ? patientErrors[field] : ''
 
-  useEffect(() => subscribeToCashierTransactions(() => setTransactions(getCashierTransactions())), [])
+  const handlePatientFieldChange = (event) => {
+    const { name, value } = event.target
+    const nextValue = name === 'contact' ? formatPatientPhoneInput(value, patientCountryCode) : value
+    setPatientForm((current) => ({ ...current, [name]: nextValue }))
+    setPatientTouched((current) => ({ ...current, [name === 'contact' ? 'phone' : name]: true }))
+  }
+
+  const markPatientFieldTouched = (field) => {
+    setPatientTouched((current) => ({ ...current, [field]: true }))
+  }
 
   useEffect(() => {
     if (!activeModal) return undefined
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setActiveModal(null)
+      if (event.key !== 'Escape') return
+      if (showPortalConfirm) setShowPortalConfirm(false)
+      else if (showPatientConfirm) setShowPatientConfirm(false)
+      else if (showRequestConfirm) setShowRequestConfirm(false)
+      else setActiveModal(null)
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [activeModal])
+  }, [activeModal, showPatientConfirm, showRequestConfirm, showPortalConfirm])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, sexFilter, previousVisitFilter])
 
   const openPatientModal = (type, patient = null) => {
-    if (type === 'request' && transactions.some((transaction) => transaction.pid === patient?.pid && transaction.status === 'pending')) return
+    if (type === 'request' && patient?.hasPendingRequest) return
+    setActionError('')
     setSelectedPatient(patient)
     setSelectedTestIds([])
     setRequestSubmitted(false)
+    setRequestSubmitting(false)
     setShowRequestPrompt(false)
+    setShowPatientConfirm(false)
+    setPatientConfirmData(null)
+    setShowRequestConfirm(false)
+    setShowPortalConfirm(false)
+    setPortalSubmitting(false)
+    setPortalActivation(null)
+    setPortalReset(null)
+    setIdentityVerified(false)
     if (type === 'add') {
       setPatientCountry('')
+      setPatientCountryCode('')
       setPatientCity('')
       setPatientDateOfBirth('')
+      setPatientForm({
+        firstName: '', middleName: '', lastName: '', houseNumber: '', street: '',
+        email: '', contact: '', sex: '', validIdNumber: '',
+      })
+      setPatientTouched({})
       setValidIdSelection('')
       setValidIdType('')
     }
@@ -123,61 +185,123 @@ export default function RegisterRequest() {
   }
 
   const toggleTest = (testId) => {
+    setActionError('')
     setSelectedTestIds((current) => current.includes(testId)
       ? current.filter((id) => id !== testId)
       : [...current, testId])
   }
 
   const handleCreateTestRequest = () => {
-    const transaction = createCashierTransaction({ patient: selectedPatient, testIds: selectedTestIds })
-    if (transaction) setRequestSubmitted(true)
+    setShowRequestConfirm(true)
   }
 
-  const patientHasActiveRequest = (patientPid) => transactions.some(
-    (transaction) => transaction.pid === patientPid && transaction.status === 'pending',
-  )
+  const confirmCreateTestRequest = async () => {
+    if (!selectedPatient || requestSubmitting) return
+    setRequestSubmitting(true)
+    setActionError('')
+    try {
+      await api.cashier.createRequest({ patientId: selectedPatient.id, testIds: selectedTestIds, priority: 'routine' })
+      setRequestSubmitted(true)
+      setShowRequestConfirm(false)
+      try {
+        await refreshPatients()
+      } catch (refreshError) {
+        setActionError(`Request was created, but the patient list could not be refreshed: ${refreshError.message}`)
+      }
+    } catch (requestError) {
+      setActionError(requestError.message || 'Unable to create the test request.')
+    } finally {
+      setRequestSubmitting(false)
+    }
+  }
+
+  const patientHasActiveRequest = (patient) => Boolean(patient?.hasPendingRequest)
 
   const handleRegisterPatient = (event) => {
     event.preventDefault()
+    const allFields = [
+      'firstName', 'middleName', 'lastName', 'country', 'city', 'houseNumber',
+      'street', 'email', 'validIdType', 'otherIdType', 'validIdNumber', 'sex',
+      'dateOfBirth', 'phone',
+    ]
+    setPatientTouched(Object.fromEntries(allFields.map((field) => [field, true])))
+    if (Object.values(patientErrors).some(Boolean)) return
     const formData = new FormData(event.currentTarget)
-    const nextNumber = patients.reduce((highest, patient) => {
-      const patientNumber = Number(patient.pid.split('-').at(-1)) || 0
-      return Math.max(highest, patientNumber)
-    }, 0) + 1
-    const patient = {
-      pid: `PID-${new Date().getFullYear()}-${String(nextNumber).padStart(5, '0')}`,
+    setPatientConfirmData(formData)
+    setShowPatientConfirm(true)
+  }
+
+  const issuePortalActivation = async () => {
+    if (!selectedPatient || portalSubmitting) return
+    setPortalSubmitting(true)
+    setActionError('')
+    try {
+      const response = await api.cashier.issuePatientPortalActivation(selectedPatient.id)
+      setPortalActivation({ pid: selectedPatient.pid, code: response.activation.code, emailDelivery: response.emailDelivery })
+      setShowPortalConfirm(false)
+    } catch (requestError) {
+      setActionError(requestError.message || 'Unable to issue patient portal activation.')
+    } finally {
+      setPortalSubmitting(false)
+    }
+  }
+
+  const issuePatientPasswordReset = async () => {
+    if (!selectedPatient) return
+    setPortalSubmitting(true)
+    setActionError('')
+    try {
+      const response = await api.cashier.issuePatientPasswordReset(selectedPatient.id, identityVerified)
+      setPortalReset({ pid: selectedPatient.pid, code: response.reset.code, emailDelivery: response.emailDelivery })
+      setShowPortalConfirm(false)
+    } catch (error) { setActionError(error.message || 'Unable to issue a password reset code.') }
+    finally { setPortalSubmitting(false) }
+  }
+
+  const confirmRegisterPatient = async () => {
+    if (!patientConfirmData) return
+    const formData = patientConfirmData
+    const patientDetails = {
       firstName: String(formData.get('firstName') ?? '').trim(),
       middleName: String(formData.get('middleName') ?? '').trim(),
       lastName: String(formData.get('lastName') ?? '').trim(),
-      country: String(formData.get('country') ?? '').trim(),
+      country: patientCountry,
       city: String(formData.get('city') ?? '').trim(),
       houseNumber: String(formData.get('houseNumber') ?? '').trim(),
       street: String(formData.get('street') ?? '').trim(),
       email: String(formData.get('email') ?? '').trim(),
       sex: String(formData.get('sex') ?? ''),
       dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
-      contact: String(formData.get('contact') ?? '').trim(),
-      previousVisitDate: getTodayISODate(),
-      validId: validIdSelection === 'other' ? 'Other' : validIdLabels[validIdSelection],
-      validIdType: validIdSelection === 'other' ? validIdType.trim() : '',
+      phone: parsePhoneNumberFromString(String(formData.get('contact') ?? '').trim(), patientCountryCode)?.number ?? '',
+      countryCode: patientCountryCode,
+      validIdType: validIdSelection === 'other'
+        ? validIdType.trim()
+        : patientIdOptions.find(([value]) => value === validIdSelection)?.[1] ?? '',
       validIdNumber: String(formData.get('validIdNumber') ?? '').trim(),
     }
-
-    setPatients((currentPatients) => [patient, ...currentPatients])
-    setSelectedPatient(patient)
-    setSearchQuery('')
-    setSexFilter('all')
-    setPreviousVisitFilter('')
-    setCurrentPage(1)
-    setShowRequestPrompt(true)
+    try {
+      const response = await api.cashier.registerPatient(patientDetails)
+      const patient = { ...patientDetails, ...response.data, id: response.data.id, contact: patientDetails.phone, previousVisitDate: response.data.createdAt?.slice(0, 10), validId: validIdSelection === 'other' ? 'Other' : patientDetails.validIdType, validIdType: validIdSelection === 'other' ? validIdType.trim() : '' }
+      await refreshPatients()
+      setSelectedPatient(patient)
+      setSearchQuery('')
+      setSexFilter('all')
+      setPreviousVisitFilter('')
+      setCurrentPage(1)
+      setPatientConfirmData(null)
+      setShowPatientConfirm(false)
+      setShowRequestPrompt(true)
+    } catch (requestError) {
+      setActionError(requestError.message || 'Unable to register the patient.')
+    }
   }
 
   const filteredPatients = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     return patients.filter((patient) => {
       const matchesQuery = !query || [patient.pid, getPatientName(patient), patient.contact, patient.email]
-        .some((value) => value.toLowerCase().includes(query))
-      const matchesSex = sexFilter === 'all' || patient.sex.toLowerCase() === sexFilter
+        .some((value) => String(value ?? '').toLowerCase().includes(query))
+      const matchesSex = sexFilter === 'all' || String(patient.sex ?? '').toLowerCase() === sexFilter
       const matchesPreviousVisit = !previousVisitFilter || patient.previousVisitDate === previousVisitFilter
 
       return matchesQuery && matchesSex && matchesPreviousVisit
@@ -190,20 +314,15 @@ export default function RegisterRequest() {
 
   return (
     <section className='register-request' aria-label='Find a patient'>
+      {(actionError || patientLoadError) && <p className='register-request__modal-note' role='alert'>{actionError || patientLoadError}</p>}
       <div className='register-request__toolbar'>
-        <label className='register-request__search' htmlFor='search-bar'>
-          <svg aria-hidden='true' viewBox='0 0 24 24' fill='none'>
-            <circle cx='10.8' cy='10.8' r='6.3' stroke='currentColor' strokeWidth='1.8' />
-            <path d='m15.4 15.4 4.1 4.1' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' />
-          </svg>
-          <input
-            type='search'
-            placeholder='Search by patient name, PID, or contact number'
-            id='search-bar'
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </label>
+        <SearchInput
+          className='register-request__search'
+          label='Search patients'
+          placeholder='Search by patient name, PID, or contact number'
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+        />
 
         <div className='register-request__filters' aria-label='Patient filters'>
           <label className='register-request__field' htmlFor='filter-sex'>
@@ -243,13 +362,13 @@ export default function RegisterRequest() {
       <section className='register-request__registry' aria-labelledby='patient-registry-title'>
         <div className='register-request__registry-heading'>
           <div>
-            <h2 id='patient-registry-title'>Patient Registry</h2>
+            <h2 id='patient-registry-title'>Patients</h2>
             <p>Select an existing patient to continue with their test request.</p>
           </div>
           <div className='register-request__registry-actions'>
             <span className='register-request__count'>{filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}</span>
             <button className='register-request__add-button' type='button' onClick={() => openPatientModal('add')}>
-              <span aria-hidden='true'>+</span> Add New Patient
+              <PlusIcon /> PATIENT
             </button>
           </div>
         </div>
@@ -280,12 +399,12 @@ export default function RegisterRequest() {
                       <button
                         className='register-request__action-button register-request__action-button--request'
                         type='button'
-                        disabled={patientHasActiveRequest(patient.pid)}
-                        title={patientHasActiveRequest(patient.pid) ? 'This patient has a pending request. Process or cancel it before creating another.' : undefined}
-                        aria-label={patientHasActiveRequest(patient.pid) ? `Request unavailable for ${getPatientName(patient)}: an active request is pending` : `Create request for ${getPatientName(patient)}`}
+                        disabled={patientHasActiveRequest(patient)}
+                        title={patientHasActiveRequest(patient) ? 'This patient has a pending request. Process or cancel it before creating another.' : undefined}
+                        aria-label={patientHasActiveRequest(patient) ? `Request unavailable for ${getPatientName(patient)}: an active request is pending` : `Create request for ${getPatientName(patient)}`}
                         onClick={() => openPatientModal('request', patient)}
                       >
-                        {patientHasActiveRequest(patient.pid) ? 'Request Pending' : 'Request'}
+                        {patientHasActiveRequest(patient) ? 'Request Pending' : 'Request'}
                       </button>
                     </div>
                   </td>
@@ -322,7 +441,7 @@ export default function RegisterRequest() {
                 <p>
                   {activeModal === 'details' && 'Review the selected patient’s registry information.'}
                   {activeModal === 'request' && (requestSubmitted
-                    ? 'The request has been added to Payments & Receipts as pending.'
+                    ? 'The request has been added to Payments & Invoice as pending.'
                     : `Create a test request for ${getPatientName(selectedPatient ?? {})}.`)}
                   {activeModal === 'add' && !showRequestPrompt && 'Enter the patient’s information to create a registry record.'}
                   {activeModal === 'add' && showRequestPrompt && 'Patient registration is complete.'}
@@ -333,6 +452,7 @@ export default function RegisterRequest() {
 
             <div className='register-request__modal-body'>
               {activeModal === 'details' && selectedPatient && (
+                <>
                 <dl className='register-request__details-grid'>
                   <div className='register-request__details-row'>
                     <div><dt>PID</dt><dd>{selectedPatient.pid}</dd></div>
@@ -362,22 +482,27 @@ export default function RegisterRequest() {
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
                 </dl>
+                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>This code expires in 24 hours and can only be used once. The patient chooses their own password.</p><p role={portalActivation.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalActivation.emailDelivery?.status === 'sent' ? 'Activation email sent to the patient.' : portalActivation.emailDelivery?.message}</p></div>}
+                {portalReset && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Password reset code issued</h3><p>PID: <strong>{portalReset.pid}</strong></p><p>One-time reset code: <strong>{portalReset.code}</strong></p><p>The patient can use this code once within 24 hours at the sign-in page.</p><p role={portalReset.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalReset.emailDelivery?.status === 'sent' ? 'Reset instructions emailed to the patient.' : portalReset.emailDelivery?.message}</p></div>}
+                </>
               )}
 
               {activeModal === 'request' && (
                 requestSubmitted ? (
                   <div className='register-request__confirmation'>
                     <h3>Request registered</h3>
-                    <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Receipts with a Pending status. The cashier can record the in-person cash payment there.</p>
+                  <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Invoice with a Pending status. The cashier can record the in-person cash payment there.</p>
+                  {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
                   </div>
                 ) : (
                 <form className='register-request__modal-form'>
                   <label>Patient<input value={`${getPatientName(selectedPatient ?? {})} (${selectedPatient?.pid})`} readOnly /></label>
                   <fieldset className='register-request__test-selection'>
                     <legend>Select tests</legend>
-                    <p className='register-request__test-selection-hint'>Choose one or more tests, grouped by category.</p>
+                    <p className='register-request__test-selection-hint'>Choose one or more tests. A test assigned to multiple categories is listed once under its primary category.</p>
+                    {testCatalogError && <p className='register-request__field-error' role='alert'>{testCatalogError}</p>}
                     <div className='register-request__test-categories'>
-                      {testCategories.map((category) => (
+                      {requestTestCategories.map((category) => (
                         <section className='register-request__test-category' key={category.name} aria-labelledby={`test-category-${category.name}`}>
                           <h3 id={`test-category-${category.name}`}>{category.name}</h3>
                           <div className='register-request__test-options'>
@@ -394,6 +519,7 @@ export default function RegisterRequest() {
                               </label>
                             ))}
                           </div>
+                          {!testCatalogLoading && !testCatalogError && requestTestCategories.length === 0 && <p className='register-request__modal-note'>No available tests are configured yet.</p>}
                         </section>
                       ))}
                     </div>
@@ -401,58 +527,72 @@ export default function RegisterRequest() {
                       {selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'} selected
                     </p>
                   </fieldset>
-                  <p className='register-request__modal-note'>Sample catalog and prices are used in this prototype. The real request will use the administrator’s active test catalog.</p>
+                  <p className='register-request__modal-note'>Available tests and prices come from the administrator’s current catalog.</p>
                 </form>
                 )
               )}
-
               {activeModal === 'add' && !showRequestPrompt && (
-                <form className='register-request__modal-form' id='new-patient-form' onSubmit={handleRegisterPatient}>
+                <form className='register-request__modal-form' id='new-patient-form' noValidate onSubmit={handleRegisterPatient}>
                   <div className='register-request__form-row register-request__form-row--three'>
-                    <label htmlFor='new-patient-first-name'>First name<input id='new-patient-first-name' name='firstName' type='text' placeholder='First name' required /></label>
-                    <label htmlFor='new-patient-middle-name'>Middle name<input id='new-patient-middle-name' name='middleName' type='text' placeholder='Middle name' /></label>
-                    <label htmlFor='new-patient-last-name'>Surname<input id='new-patient-last-name' name='lastName' type='text' placeholder='Surname' required /></label>
+                    <label htmlFor='new-patient-first-name'>First name<LimitedInput id='new-patient-first-name' name='firstName' type='text' autoComplete='given-name' placeholder='First name' value={patientForm.firstName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('firstName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('firstName'))} required />{visiblePatientError('firstName') && <span className='register-request__field-error'>{visiblePatientError('firstName')}</span>}</label>
+                    <label htmlFor='new-patient-middle-name'>Middle name<LimitedInput id='new-patient-middle-name' name='middleName' type='text' autoComplete='additional-name' placeholder='Middle name' value={patientForm.middleName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('middleName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('middleName'))} />{visiblePatientError('middleName') && <span className='register-request__field-error'>{visiblePatientError('middleName')}</span>}</label>
+                    <label htmlFor='new-patient-last-name'>Surname<LimitedInput id='new-patient-last-name' name='lastName' type='text' autoComplete='family-name' placeholder='Surname' value={patientForm.lastName} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('lastName')} minLength={2} maxLength={50} aria-invalid={Boolean(visiblePatientError('lastName'))} required />{visiblePatientError('lastName') && <span className='register-request__field-error'>{visiblePatientError('lastName')}</span>}</label>
                   </div>
+                  <CountryCityFields
+                    className='register-request__form-row'
+                    fieldClassName='register-request__field'
+                    idPrefix='new-patient'
+                    country={patientCountry}
+                    city={patientCity}
+                    onCountryChange={(country) => {
+                      setPatientCountry(country)
+                      setPatientForm((current) => ({ ...current, contact: '', validIdNumber: '' }))
+                      setPatientTouched((current) => ({ ...current, country: true, phone: false }))
+                      setValidIdSelection('')
+                      setValidIdType('')
+                    }}
+                    onCountryCodeChange={setPatientCountryCode}
+                    onCityChange={setPatientCity}
+                    countryError={visiblePatientError('country')}
+                    cityError={visiblePatientError('city')}
+                    onCountryBlur={() => markPatientFieldTouched('country')}
+                    onCityBlur={() => markPatientFieldTouched('city')}
+                  />
                   <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-country'>Country<input id='new-patient-country' name='country' type='text' placeholder='Country' autoComplete='country-name' value={patientCountry} onChange={(event) => {
-                      setPatientCountry(event.target.value)
-                      setPatientCity('')
-                    }} required /></label>
-                    <label htmlFor='new-patient-city'>City<input id='new-patient-city' name='city' type='text' placeholder={patientCountry ? 'City' : 'Enter a country first'} autoComplete='address-level2' disabled={!patientCountry.trim()} value={patientCity} onChange={(event) => setPatientCity(event.target.value)} required /></label>
+                    <label htmlFor='new-patient-house-number'>House no.<LimitedInput id='new-patient-house-number' name='houseNumber' type='text' autoComplete='address-line2' placeholder='House number' value={patientForm.houseNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('houseNumber')} maxLength={30} aria-invalid={Boolean(visiblePatientError('houseNumber'))} />{visiblePatientError('houseNumber') && <span className='register-request__field-error'>{visiblePatientError('houseNumber')}</span>}</label>
+                    <label htmlFor='new-patient-street'>Street<LimitedInput id='new-patient-street' name='street' type='text' autoComplete='street-address' placeholder='Street' value={patientForm.street} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('street')} minLength={2} maxLength={100} aria-invalid={Boolean(visiblePatientError('street'))} />{visiblePatientError('street') && <span className='register-request__field-error'>{visiblePatientError('street')}</span>}</label>
                   </div>
-                  <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-house-number'>House no.<input id='new-patient-house-number' name='houseNumber' type='text' placeholder='House number' /></label>
-                    <label htmlFor='new-patient-street'>Street<input id='new-patient-street' name='street' type='text' placeholder='Street' /></label>
-                  </div>
-                  <label htmlFor='new-patient-email'>Email address<input id='new-patient-email' name='email' type='email' placeholder='name@example.com' /></label>
-                  <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} onChange={(event) => {
+                  <label htmlFor='new-patient-email'>Email address<LimitedInput id='new-patient-email' name='email' type='email' autoComplete='email' placeholder='name@example.com' value={patientForm.email} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('email')} maxLength={254} aria-invalid={Boolean(visiblePatientError('email'))} />{visiblePatientError('email') && <span className='register-request__field-error'>{visiblePatientError('email')}</span>}</label>
+                  <label htmlFor='new-patient-valid-id'>Valid ID type<select id='new-patient-valid-id' name='validId' value={validIdSelection} disabled={!patientCountryCode} aria-invalid={Boolean(visiblePatientError('validIdType'))} onBlur={() => markPatientFieldTouched('validIdType')} onChange={(event) => {
                     setValidIdSelection(event.target.value)
-                    if (event.target.value !== 'other') setValidIdType('')
+                    setPatientTouched((current) => ({ ...current, validIdType: true, otherIdType: true }))
+                    setValidIdType('')
+                    setPatientForm((current) => ({ ...current, validIdNumber: '' }))
                   }} required>
-                    <option value='' disabled>Select an ID type</option>
-                    <option value='national-id'>Philippine National ID</option>
-                    <option value='drivers-license'>Driver’s License</option>
-                    <option value='passport'>Passport</option>
-                    <option value='philhealth'>PhilHealth ID</option>
-                    <option value='sss'>SSS ID</option>
-                    <option value='umid'>UMID</option>
-                    <option value='voters-id'>Voter’s ID</option>
-                    <option value='other'>Other</option>
-                  </select></label>
+                    <option value='' disabled>{patientCountryCode ? 'Select an ID type' : 'Select a country first'}</option>
+                    {patientIdOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>{visiblePatientError('validIdType') && <span className='register-request__field-error'>{visiblePatientError('validIdType')}</span>}</label>
                   {validIdSelection === 'other' && (
-                    <label htmlFor='new-patient-valid-id-type'>ID type / classification<input
+                    <label htmlFor='new-patient-valid-id-type'>ID type / classification<LimitedInput
                       id='new-patient-valid-id-type'
                       name='validIdType'
                       type='text'
                       placeholder='Enter ID type or classification'
                       value={validIdType}
-                      onChange={(event) => setValidIdType(event.target.value)}
+                      maxLength={80}
+                      onChange={(event) => {
+                        setValidIdType(event.target.value)
+                        markPatientFieldTouched('otherIdType')
+                      }}
+                      onBlur={() => markPatientFieldTouched('otherIdType')}
+                      minLength={2}
+                      aria-invalid={Boolean(visiblePatientError('otherIdType'))}
                       required
-                    /></label>
+                    />{visiblePatientError('otherIdType') && <span className='register-request__field-error'>{visiblePatientError('otherIdType')}</span>}</label>
                   )}
-                  <label htmlFor='new-patient-valid-id-number'>ID or card number<input id='new-patient-valid-id-number' name='validIdNumber' type='text' placeholder='Enter the ID or card number' required /></label>
+                  <label htmlFor='new-patient-valid-id-number'>ID or card number<LimitedInput id='new-patient-valid-id-number' name='validIdNumber' type='text' placeholder='Enter the ID or card number' value={patientForm.validIdNumber} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('validIdNumber')} minLength={3} maxLength={50} aria-invalid={Boolean(visiblePatientError('validIdNumber'))} required />{visiblePatientError('validIdNumber') && <span className='register-request__field-error'>{visiblePatientError('validIdNumber')}</span>}</label>
                   <div className='register-request__form-row'>
-                    <label htmlFor='new-patient-sex'>Sex<select id='new-patient-sex' name='sex' defaultValue='' required><option value='' disabled>Select sex</option><option>Female</option><option>Male</option></select></label>
+                    <label htmlFor='new-patient-sex'>Sex<select id='new-patient-sex' name='sex' value={patientForm.sex} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('sex')} aria-invalid={Boolean(visiblePatientError('sex'))} required><option value='' disabled>Select sex</option><option>Female</option><option>Male</option></select>{visiblePatientError('sex') && <span className='register-request__field-error'>{visiblePatientError('sex')}</span>}</label>
                     <label htmlFor='new-patient-dob'>Date of birth
                       <span
                         className='register-request__date-picker'
@@ -465,12 +605,23 @@ export default function RegisterRequest() {
                         <span className='register-request__date-picker-display' aria-hidden='true'>
                           {patientDateOfBirth ? formatDate(patientDateOfBirth) : 'MM/DD/YYYY'}
                         </span>
-                        <input id='new-patient-dob' name='dateOfBirth' type='date' autoComplete='bday' aria-hidden='true' tabIndex='-1' value={patientDateOfBirth} onChange={(event) => setPatientDateOfBirth(event.target.value)} required />
+                        <input id='new-patient-dob' name='dateOfBirth' type='date' autoComplete='bday' min={earliestBirthDate()} max={todayInputValue()} aria-hidden='true' tabIndex='-1' value={patientDateOfBirth} onBlur={() => markPatientFieldTouched('dateOfBirth')} onChange={(event) => {
+                          setPatientDateOfBirth(event.target.value)
+                          markPatientFieldTouched('dateOfBirth')
+                        }} required />
                       </span>
+                      {visiblePatientError('dateOfBirth') && <span className='register-request__field-error'>{visiblePatientError('dateOfBirth')}</span>}
                     </label>
                   </div>
-                  <label htmlFor='new-patient-contact'>Contact number<input id='new-patient-contact' name='contact' type='tel' placeholder='Enter contact number' required /></label>
-                  <p className='register-request__modal-note'>A sample PID will be generated. This prototype keeps the new record in page state; it is not saved to the database.</p>
+                  <label htmlFor='new-patient-contact'>Contact number
+                    <span className='register-request__phone-field' aria-invalid={Boolean(visiblePatientError('phone'))}>
+                      {patientCallingCode && <span>+{patientCallingCode}</span>}
+                      <input id='new-patient-contact' name='contact' type='tel' autoComplete='tel-national' inputMode='tel' placeholder={patientCountryCode ? 'Mobile number' : 'Select a country first'} value={patientForm.contact} onChange={handlePatientFieldChange} onBlur={() => markPatientFieldTouched('phone')} minLength={7} maxLength={30} disabled={!patientCountryCode} aria-invalid={Boolean(visiblePatientError('phone'))} required />
+                    </span>
+                    <CharacterCount value={patientForm.contact} limit={30} />
+                    {visiblePatientError('phone') && <span className='register-request__field-error'>{visiblePatientError('phone')}</span>}
+                  </label>
+                  <p className='register-request__modal-note'>A PID is generated by the system after the patient is saved.</p>
                 </form>
               )}
 
@@ -488,9 +639,11 @@ export default function RegisterRequest() {
               )}
               {activeModal === 'request' && (
                 <button className='register-request__modal-primary' type='button' disabled={!requestSubmitted && selectedTestIds.length === 0} onClick={requestSubmitted ? () => setActiveModal(null) : handleCreateTestRequest}>
-                  {requestSubmitted ? 'Done' : `Create Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
+                  {requestSubmitted ? 'Done' : `Review Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
                 </button>
               )}
+              {activeModal === 'details' && selectedPatient && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setShowPortalConfirm(true) }}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
+              {activeModal === 'details' && selectedPatient && selectedPatient.portalActive && !portalReset && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setIdentityVerified(false); setShowPortalConfirm(true) }}>Reset Portal Password</button>}
               {activeModal === 'add' && !showRequestPrompt && (
                 <button className='register-request__modal-primary' type='submit' form='new-patient-form'>Register Patient</button>
               )}
@@ -503,6 +656,48 @@ export default function RegisterRequest() {
                   }}>Proceed to Request</button>
                 </>
               )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showPatientConfirm && patientConfirmData && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-patient-title'>
+            <h2 id='confirm-patient-title'>Confirm Patient Registration?</h2>
+            <p>Register <strong>{[patientConfirmData.get('firstName'), patientConfirmData.get('middleName'), patientConfirmData.get('lastName')].filter(Boolean).join(' ')}</strong> in the patient registry?</p>
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' onClick={() => setShowPatientConfirm(false)}>Back to Form</button>
+              <button className='register-request__modal-primary' type='button' onClick={confirmRegisterPatient}>Confirm Registration</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showRequestConfirm && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-request-title'>
+            <h2 id='confirm-request-title'>Confirm Test Request?</h2>
+            <p>Create a request for <strong>{getPatientName(selectedPatient ?? {})}</strong> with <strong>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test' : 'tests'}</strong>? It will appear in Payments &amp; Invoice as pending.</p>
+            {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' disabled={requestSubmitting} onClick={() => setShowRequestConfirm(false)}>Back to Tests</button>
+              <button className='register-request__modal-primary' type='button' disabled={requestSubmitting} onClick={confirmCreateTestRequest}>{requestSubmitting ? 'Creating Request…' : 'Confirm Request'}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showPortalConfirm && selectedPatient && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-portal-title'>
+            <h2 id='confirm-portal-title'>{selectedPatient.portalActive ? 'Reset patient portal password?' : 'Issue patient portal access?'}</h2>
+            <p>{selectedPatient.portalActive ? <>Confirm the patient’s identity in person using their valid ID before issuing a one-time reset code for <strong>{getPatientName(selectedPatient)}</strong>. The code is shown once, expires in 24 hours, and invalidates any earlier reset code.</> : <>This is optional and only needed if the patient wants online portal access. Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? It will be emailed to the patient when an email address is on file and shown once here. The code expires in 24 hours and can only be used once.</>}</p>
+            {selectedPatient.portalActive && <label><input type='checkbox' checked={identityVerified} onChange={(event) => setIdentityVerified(event.target.checked)} /> I verified the patient’s identity in person using their valid ID.</label>}
+            {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' disabled={portalSubmitting} onClick={() => setShowPortalConfirm(false)}>Cancel</button>
+              <button className='register-request__modal-primary' type='button' disabled={portalSubmitting || (selectedPatient.portalActive && !identityVerified)} onClick={selectedPatient.portalActive ? issuePatientPasswordReset : issuePortalActivation}>{portalSubmitting ? 'Issuing…' : selectedPatient.portalActive ? 'Issue Reset Code' : 'Issue Activation Code'}</button>
             </div>
           </section>
         </div>

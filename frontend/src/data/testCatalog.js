@@ -1,29 +1,20 @@
-// Prototype catalog data. Replace with active records loaded from test_catalog.
-export const testCategories = [
-  {
-    name: 'Hematology',
-    tests: [
-      { id: 'cbc', name: 'Complete Blood Count (CBC)', price: 400 },
-      { id: 'blood-typing', name: 'Blood Typing', price: 250 },
-    ],
-  },
-  {
-    name: 'Clinical Chemistry',
-    tests: [
-      { id: 'fasting-blood-sugar', name: 'Fasting Blood Sugar', price: 150 },
-      { id: 'lipid-profile', name: 'Lipid Profile', price: 650 },
-      { id: 'creatinine', name: 'Creatinine', price: 250 },
-    ],
-  },
-  {
-    name: 'Clinical Microscopy',
-    tests: [
-      { id: 'urinalysis', name: 'Urinalysis', price: 200 },
-      { id: 'fecalysis', name: 'Fecalysis', price: 250 },
-    ],
-  },
-]
+import { readCatalog } from './administratorCatalog.js'
 
-export const testCatalog = testCategories.flatMap((category) =>
-  category.tests.map((test) => ({ ...test, category: category.name })),
-)
+// Read the administrator-maintained catalog at call time so workflow code never
+// falls back to a separate, stale list of tests.
+export function getTestCategories({ availableOnly = false } = {}) {
+  const catalog = readCatalog()
+  return catalog.categories
+    .map((name) => ({
+      name,
+      tests: catalog.tests.filter((test) => test.category === name
+        && (!availableOnly || test.availability === 'Available')),
+    }))
+    .filter((category) => category.tests.length > 0)
+}
+
+export function getTestCatalog({ availableOnly = false } = {}) {
+  return getTestCategories({ availableOnly }).flatMap((category) =>
+    category.tests.map((test) => ({ ...test, category: category.name })),
+  )
+}

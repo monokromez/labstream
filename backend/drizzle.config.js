@@ -1,11 +1,3 @@
-import "dotenv/config";
-import { defineConfig } from "drizzle-kit";
-
-export default defineConfig({
-  schema: "./src/db/schema.js",
-  out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL ?? "",
-  },
-});
+// Drizzle migrations are disabled until a reconciled model is intentionally
+// introduced. `supabase/schema.sql` is the source of truth at this stage.
+throw new Error("Drizzle migrations are disabled. Use the reviewed Supabase SQL schema.");

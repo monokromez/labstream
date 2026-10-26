@@ -9,10 +9,18 @@
   gap: 1rem;
 }
 
+.cashier-dashboard__recent > h2 {
+  text-transform: uppercase;
+}
+.cashier-dashboard__table-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .75rem; }
+.cashier-dashboard__table-heading h2 { margin: 0; text-transform: uppercase; }
+.cashier-dashboard__table-heading p { margin: .25rem 0 0; color: var(--text-muted-lightbg); font-size: .85rem; }
+.cashier-dashboard__table-heading > span { padding: .35rem .65rem; border-radius: 999px; background: #d9f2ee; color: var(--text-lightbg); font-size: .8rem; white-space: nowrap; }
+
 .cashier-dashboard__table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
+  border-radius: 0.625rem;
   background: var(--surface);
 }
 
@@ -31,8 +39,8 @@
 }
 
 .cashier-dashboard__table th {
-  background: var(--background);
-  color: var(--text-muted-lightbg);
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
   font-family: var(--main-font);
   font-size: 0.75rem;
   font-weight: 700;
@@ -59,30 +67,44 @@
   background: var(--background);
 }
 
+.cashier-dashboard__empty {
+  padding: 2rem 1rem !important;
+  color: var(--text-muted-lightbg) !important;
+  text-align: center;
+}
+
 .cashier-dashboard__payment-status,
 .cashier-dashboard__workflow-status {
   display: inline-flex;
+  min-height: 1.55rem;
   align-items: center;
-  border-radius: 999px;
-  padding: 0.3rem 0.65rem;
-  font-size: 0.78rem;
+  width: fit-content;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .cashier-dashboard__payment-status--paid {
-  background: #d1fae5;
-  color: var(--success);
+  border-color: var(--status-success);
+  background: var(--status-success);
+  color: var(--status-text);
 }
 
 .cashier-dashboard__payment-status--unpaid {
-  background: #fef3c7;
-  color: var(--warning);
+  border-color: var(--status-warning);
+  background: var(--status-warning);
+  color: var(--status-text);
 }
 
 .cashier-dashboard__workflow-status {
-  background: #ccfbf1;
-  color: var(--primary);
+  border-color: var(--status-neutral);
+  background: var(--status-neutral);
+  color: var(--status-text);
 }
 
 @media (max-width: 1050px) {

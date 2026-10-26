@@ -2,7 +2,7 @@
   min-width: 0;
   padding: 1.125rem;
   border: 1px solid var(--border);
-  border-radius: 0.500rem;
+  border-radius: 0.25rem;
   background: var(--surface);
 }
 
@@ -12,6 +12,7 @@
   font-family: var(--main-font);
   font-size: 0.9rem;
   font-weight: 700;
+  text-transform: uppercase;
 }
 
 .summary-card__value {

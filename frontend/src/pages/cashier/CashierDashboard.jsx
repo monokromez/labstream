@@ -2,37 +2,33 @@ import { useState } from 'react'
 import './CashierDashboard.css'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import { api } from '../../api/client.js'
+import useApiResource from '../../api/useApiResource.js'
+import { formatDateTime } from '../../utils/dateFormat.js'
 
 const ROWS_PER_PAGE = 10
 
-const summary = [
-  { label: 'Requests Today', value: '24' },
-  { label: 'Payments Collected', value: '₱12,450' },
-  { label: 'Unpaid Requests', value: '5' },
-  { label: 'Awaiting Next Step', value: '8' },
-]
-
-const recentRequests = [
-  {
-    number: 'REQ-2026-0012',
-    patient: 'Maria Santos',
-    tests: 'CBC, Fasting Blood Sugar',
-    amount: '₱850',
-    payment: 'Paid',
-    status: 'For specimen collection',
-  },
-  {
-    number: 'REQ-2026-0011',
-    patient: 'Juan Reyes',
-    tests: 'Urinalysis',
-    amount: '₱300',
-    payment: 'Unpaid',
-    status: 'Awaiting payment',
-  },
-]
-
 export default function CashierDashboard() {
   const [currentPage, setCurrentPage] = useState(1)
+  const { result, loading, error } = useApiResource(() => api.cashier.dashboard(), [])
+  const report = result?.data
+  const summaryData = report?.summary ?? {}
+  const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
+  const summary = [
+    { label: 'REQUESTS TODAY', value: String(summaryData.requestsToday ?? 0) },
+    { label: 'PAYMENTS COLLECTED', value: currency.format(Number(summaryData.paymentsToday ?? 0)) },
+    { label: 'UNPAID REQUESTS', value: String(summaryData.unpaidRequests ?? 0) },
+    { label: 'AWAITING NEXT STEP', value: String(summaryData.awaitingNextStep ?? 0) },
+  ]
+  const recentRequests = (report?.recent ?? []).map((request) => ({
+    number: request.requestNumber,
+    patient: request.patientName,
+    tests: (request.tests ?? []).join(', '),
+    amount: currency.format(Number(request.totalAmount ?? 0)),
+    payment: request.isPaid ? 'Paid' : 'Unpaid',
+    status: request.status.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    requestedAt: request.requestedAt,
+  }))
   const visibleRequests = recentRequests.slice(
     (currentPage - 1) * ROWS_PER_PAGE,
     currentPage * ROWS_PER_PAGE,
@@ -40,6 +36,7 @@ export default function CashierDashboard() {
 
   return (
     <section className="cashier-dashboard" aria-label="Cashier dashboard">
+      {error && <p role="alert">{error}</p>}
       <div className="cashier-dashboard__summary">
         {summary.map((item) => (
           <SummaryCard
@@ -51,7 +48,7 @@ export default function CashierDashboard() {
       </div>
 
       <section className="cashier-dashboard__recent">
-        <h2>Recent Requests</h2>
+        <header className="cashier-dashboard__table-heading"><div><h2>Recent Requests</h2><p>Latest patient requests and payment progress.</p></div><span>{recentRequests.length} entries</span></header>
 
         <div className="cashier-dashboard__table-wrap">
           <table className="cashier-dashboard__table">
@@ -86,6 +83,7 @@ export default function CashierDashboard() {
                   </td>
                 </tr>
               ))}
+              {(loading || visibleRequests.length === 0) && <tr><td colSpan="6" className="cashier-dashboard__empty">{loading ? 'Loading requests…' : 'No requests have been registered.'}</td></tr>}
             </tbody>
           </table>
           <TablePagination

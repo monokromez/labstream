@@ -1,11 +1,14 @@
 .app-shell {
   display: grid;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   width: 100%;
   grid-template-columns: 16rem minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas:
     "sidebar main";
+  overflow: hidden;
   background: var(--background);
 }
 
@@ -13,8 +16,13 @@
   grid-area: main;
   width: 100%;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin-inline: auto;
   padding: 1.5rem;
+  scrollbar-gutter: stable;
 }
 
 .app-shell__content-divider {
@@ -31,6 +39,10 @@
     grid-template-areas:
       "sidebar"
       "main";
+  }
+
+  .app-shell__main {
+    height: 100%;
   }
 
   .app-shell__main {

@@ -1,0 +1,9 @@
+.character-count {
+  display: block;
+  justify-self: end;
+  color: var(--text-muted-lightbg, #64748b);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: right;
+}

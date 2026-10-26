@@ -40,45 +40,14 @@
 }
 
 .payments-receipts__search {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
   width: min(100%, 34rem);
-  height: 2.875rem;
-  padding: 0 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 0.625rem;
-  background: var(--surface);
-  color: var(--text-muted-lightbg);
+  flex: 0 1 34rem;
 }
 
-.payments-receipts__search:focus-within,
 .payments-receipts__filter select:focus-visible {
   border-color: var(--primary);
   outline: none;
   box-shadow: 0 0 0 3px rgb(15 118 110 / 14%);
-}
-
-.payments-receipts__search svg {
-  width: 1.2rem;
-  height: 1.2rem;
-  flex: 0 0 auto;
-}
-
-.payments-receipts__search input {
-  width: 100%;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text-lightbg);
-  font: inherit;
-  font-size: 0.9rem;
-}
-
-.payments-receipts__search input::placeholder {
-  color: var(--text-muted-lightbg);
-  opacity: 0.85;
 }
 
 .payments-receipts__filter {
@@ -94,7 +63,7 @@
   height: 2.875rem;
   padding: 0 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--surface);
   color: var(--text-lightbg);
   font: inherit;
@@ -105,7 +74,7 @@
 .payments-receipts__table-card {
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 0.875rem;
+  border-radius: 0.625rem;
   background: var(--surface);
   box-shadow: 0 3px 12px rgb(19 78 74 / 6%);
 }
@@ -120,6 +89,7 @@
   color: var(--text-lightbg);
   font-family: var(--title-font);
   font-size: 1.05rem;
+  text-transform: uppercase;
 }
 
 .payments-receipts__table-heading p {
@@ -158,8 +128,8 @@
 }
 
 .payments-receipts__table th {
-  background: var(--background);
-  color: var(--text-muted-lightbg);
+  background: var(--sidebar-background);
+  color: var(--text-darkbg);
   font-family: var(--main-font);
   font-size: 0.75rem;
   font-weight: 700;
@@ -204,29 +174,35 @@
 
 .payments-receipts__status {
   display: inline-flex;
+  min-height: 1.55rem;
   align-items: center;
-  min-height: 1.65rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
+  width: fit-content;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  text-transform: capitalize;
+  line-height: 1.2;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .payments-receipts__status--pending {
-  background: #fff3d6;
-  color: #8a5a00;
+  border-color: var(--status-warning);
+  background: var(--status-warning);
+  color: var(--status-text);
 }
 
 .payments-receipts__status--paid {
-  background: #dcfce7;
-  color: #166534;
+  border-color: var(--status-success);
+  background: var(--status-success);
+  color: var(--status-text);
 }
 
 .payments-receipts__status--cancelled {
-  background: #fee2e2;
-  color: #991b1b;
+  border-color: var(--status-danger);
+  background: var(--status-danger);
+  color: var(--status-text);
 }
 
 .payments-receipts__actions {
@@ -239,7 +215,7 @@
   min-height: 2.2rem;
   padding: 0.4rem 0.65rem;
   border: 1px solid transparent;
-  border-radius: 0.45rem;
+  border-radius: 0.2rem;
   background: transparent;
   font: inherit;
   font-size: 0.78rem;
@@ -249,21 +225,29 @@
 }
 
 .payments-receipts__action--cancel {
-  border-color: var(--border);
-  color: #991b1b;
+  border-color: var(--error);
+  color: var(--error);
 }
 
 .payments-receipts__action--cancel:hover {
-  background: #fef2f2;
+  background: var(--error);
+  color: white;
 }
 
-.payments-receipts__action--process,
+.payments-receipts__action--process {
+  background: var(--success);
+  color: var(--surface);
+}
+
 .payments-receipts__action--receipt {
   background: var(--primary);
   color: var(--surface);
 }
 
-.payments-receipts__action--process:hover,
+.payments-receipts__action--process:hover {
+  background: #065f46;
+}
+
 .payments-receipts__action--receipt:hover {
   background: var(--hover);
 }
@@ -295,7 +279,7 @@
   max-height: calc(100vh - 2rem);
   overflow: auto;
   border: 1px solid rgb(255 255 255 / 65%);
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   background: var(--surface);
   box-shadow: 0 24px 70px rgb(0 0 0 / 28%);
 }
@@ -337,13 +321,15 @@
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   background: transparent;
   color: var(--text-muted-lightbg);
   font: inherit;
   font-size: 1.5rem;
   cursor: pointer;
 }
+
+.payments-receipts__close:hover { background: var(--error); color: white; }
 
 .payments-receipts__dialog-content {
   display: grid;
@@ -369,7 +355,7 @@
   margin: 0;
   padding: 0.85rem;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
 }
 
 .payments-receipts__test-selection legend {
@@ -395,7 +381,7 @@
   min-width: 0;
   padding: 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   background: var(--background);
 }
 
@@ -448,7 +434,7 @@
   min-height: 2.6rem;
   padding: 0.55rem 0.9rem;
   border: 1px solid var(--primary);
-  border-radius: 0.55rem;
+  border-radius: 0.3rem;
   font: inherit;
   font-size: 0.85rem;
   font-weight: 700;
@@ -456,12 +442,14 @@
 }
 
 .payments-receipts__dialog-primary {
-  background: var(--primary);
+  border-color: var(--success);
+  background: var(--success);
   color: var(--surface);
 }
 
 .payments-receipts__dialog-primary:hover {
-  background: var(--hover);
+  border-color: #065f46;
+  background: #065f46;
 }
 
 .payments-receipts__dialog-secondary {
@@ -469,11 +457,19 @@
   color: var(--primary);
 }
 
+.payments-receipts__dialog-secondary:hover {
+  border-color: var(--error);
+  background: var(--error);
+  color: white;
+}
+
 .payments-receipts__dialog-danger {
   border-color: #b42318;
   background: #b42318;
   color: #fff;
 }
+
+.payments-receipts__dialog-danger:hover { border-color: #991b1b; background: #991b1b; }
 
 .payments-receipts__receipt {
   display: grid;
@@ -529,7 +525,7 @@
 .payments-receipts__receipt > p {
   margin: 0.25rem 0 0;
   padding: 0.85rem;
-  border-radius: 0.55rem;
+  border-radius: 0.3rem;
   background: var(--background);
   color: var(--text-muted-lightbg);
   font-size: 0.8rem;
