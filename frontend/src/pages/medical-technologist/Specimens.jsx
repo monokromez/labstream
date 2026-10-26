@@ -12,11 +12,6 @@ import './Specimens.css'
 
 const statusOptions = ['All', 'Expected', 'Received', 'Accepted', 'Rejected', 'For Recollection']
 
-function localDateTimeValue(date = new Date()) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 16)
-}
-
 function formatDateTime(value) {
   if (!value) return '-'
   return new Date(value).toLocaleString('en-US', {
@@ -29,11 +24,10 @@ function formatDateTime(value) {
 }
 
 export default function Specimens() {
-  const { requests, specimens, specimenSearch, setSpecimenSearch, markSpecimenReceived, acceptSpecimen, rejectSpecimen, loadError } = useTechnologist()
+  const { requests, specimens, specimenSearch, setSpecimenSearch, acceptSpecimen, rejectSpecimen, loadError } = useTechnologist()
   const [status, setStatus] = useState('All')
   const [specimenType, setSpecimenType] = useState('All types')
   const [activeSpecimen, setActiveSpecimen] = useState(null)
-  const [collectedAt, setCollectedAt] = useState(localDateTimeValue)
   const [reason, setReason] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
@@ -59,28 +53,12 @@ export default function Specimens() {
     setConfirmReject(false)
   }
 
-  function openReceiveDialog(specimen) {
-    setCollectedAt(localDateTimeValue())
-    setError('')
-    setActiveSpecimen({ ...specimen, action: 'receive' })
-  }
-
   function openRejectDialog(specimen) {
     setReason('')
     setNotes('')
     setError('')
     setConfirmReject(false)
     setActiveSpecimen({ ...specimen, action: 'reject' })
-  }
-
-  function submitReceive(event) {
-    event.preventDefault()
-    if (!collectedAt) {
-      setError('Enter the collection time.')
-      return
-    }
-    markSpecimenReceived(activeSpecimen.label, new Date(collectedAt).toISOString())
-    closeDialog()
   }
 
   function submitReject(event) {
@@ -114,7 +92,7 @@ export default function Specimens() {
         <div className="medtech-panel__heading">
           <div>
             <h2 id="specimens-title">Specimens</h2>
-            <p>Record arrivals, then check specimen quality before processing.</p>
+            <p>Review specimens on arrival, then accept or reject after the quality check.</p>
           </div>
           <span className="medtech-panel__count">{visibleSpecimens.length} {visibleSpecimens.length === 1 ? 'specimen' : 'specimens'}</span>
         </div>
@@ -171,12 +149,7 @@ export default function Specimens() {
                     <td>{formatDateTime(specimen.collectedAt)}</td>
                     <td><TechnologistStatusBadge status={specimen.status} /></td>
                     <td className="medtech-table__action-cell">
-                      {['Expected', 'For Recollection'].includes(specimen.status) && (
-                        <button className="medtech-button medtech-button--positive medtech-button--small" type="button" onClick={() => openReceiveDialog(specimen)}>
-                          Mark as received
-                        </button>
-                      )}
-                      {specimen.status === 'Received' && (
+                      {['Expected', 'For Recollection', 'Received'].includes(specimen.status) && (
                         <div className="medtech-inline-actions">
                           <button className="medtech-button medtech-button--positive medtech-button--small" type="button" onClick={() => setActiveSpecimen({ ...specimen, action: 'accept' })}>
                             Accept
@@ -199,39 +172,11 @@ export default function Specimens() {
         <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={visibleSpecimens.length} onPageChange={setCurrentPage} />
       </section>
 
-      {activeSpecimen?.action === 'receive' && (
-        <TechnologistDialog title="Mark as received" onClose={closeDialog}>
-          <form className="medtech-dialog__body medtech-form" onSubmit={submitReceive}>
-            <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
-            <label className="medtech-form__field" htmlFor="collection-time">
-              <span>Collection time</span>
-              <input
-                id="collection-time"
-                type="datetime-local"
-                value={collectedAt}
-                aria-required="true"
-                aria-invalid={error === 'Enter the collection time.'}
-                aria-describedby={error ? 'receive-error' : undefined}
-                onChange={(event) => {
-                  setCollectedAt(event.target.value)
-                  setError('')
-                }}
-              />
-            </label>
-            {error && <p className="medtech-form__error" id="receive-error" role="alert">{error}</p>}
-            <div className="medtech-dialog__actions">
-              <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
-              <button className="medtech-button" type="submit">Confirm received</button>
-            </div>
-          </form>
-        </TechnologistDialog>
-      )}
-
       {activeSpecimen?.action === 'accept' && (
         <TechnologistDialog title="Accept specimen?" onClose={closeDialog}>
           <div className="medtech-dialog__body">
             <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
-            <p className="medtech-form__notice medtech-form__notice--quiet">Accepting confirms this specimen passed the quality check and can proceed to result entry.</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">Accepting records this specimen as received, confirms it passed the quality check, and sends it to result entry.</p>
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
               <button className="medtech-button medtech-button--positive" type="button" onClick={() => { acceptSpecimen(activeSpecimen.label); closeDialog() }}>Confirm acceptance</button>

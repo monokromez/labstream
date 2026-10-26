@@ -202,7 +202,6 @@
 }
 
 .medtech-table__primary {
-  display: block;
   color: var(--text-lightbg);
   font-weight: 700;
   white-space: nowrap;
