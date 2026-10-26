@@ -159,11 +159,11 @@ export default function WorkQueue() {
               <h3 id="request-patient-title">Patient</h3>
               <dl className="medtech-detail-grid">
                 <div><dt>Patient</dt><dd>{selectedRequest.patient}</dd></div>
-                <div><dt>Patient ID</dt><dd>{selectedRequest.patientId}</dd></div>
-                <div><dt>Age / Sex</dt><dd>{selectedRequest.age} / {selectedRequest.sex}</dd></div>
-                <div><dt>Queue No.</dt><dd>{selectedRequest.queueNo}</dd></div>
+                <div><dt>Patient ID</dt><dd>{selectedRequest.patientId || '—'}</dd></div>
+                <div><dt>Age / Sex</dt><dd>{selectedRequest.age || '—'} / {selectedRequest.sex || '—'}</dd></div>
+                <div><dt>Queue No.</dt><dd>{selectedRequest.queueNo || '—'}</dd></div>
                 <div><dt>Paid</dt><dd>{formatDateTime(selectedRequest.paidAt)}</dd></div>
-                <div><dt>Receipt No.</dt><dd>{selectedRequest.receiptNo}</dd></div>
+                <div><dt>Receipt No.</dt><dd>{selectedRequest.receiptNo || '—'}</dd></div>
                 <div><dt>Pathologist</dt><dd>{selectedRequest.pathologist || 'To be assigned'}</dd></div>
               </dl>
             </section>

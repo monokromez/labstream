@@ -6,6 +6,16 @@ import useTestCatalog from '../../data/useTestCatalog.js'
 
 const statusLabels = { expected: 'Expected', received: 'Received', accepted: 'Accepted', rejected: 'Rejected', for_recollection: 'For Recollection' }
 
+function calculateAge(dateOfBirth) {
+  if (!dateOfBirth) return ''
+  const [year, month, day] = String(dateOfBirth).slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return ''
+  const today = new Date()
+  let age = today.getFullYear() - year
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1
+  return age >= 0 ? age : ''
+}
+
 function toApiAnalyteValue(field, values) {
   const current = values[field.key]
   const valueKey = { numeric: 'numericValue', select: 'selectValue', boolean: 'booleanValue', structured: 'structuredValue', text: 'textValue' }[field.valueType]
@@ -55,6 +65,8 @@ export function TechnologistProvider({ children, onNavigate }) {
         const tests = [...linkedTests.values()]
         return {
           ...row, backendId: row.id, id: row.requestNumber, patient: row.patientName,
+          patientId: row.pid, queueNo: `Q-${String(row.queueTicket).padStart(3, '0')}`,
+          receiptNo: row.receiptNumber ?? '', age: calculateAge(row.dateOfBirth),
           sex: row.sex, paidAt: row.paidAt, tests,
           priority: row.priority?.replace(/^./, (char) => char.toUpperCase()),
         }

@@ -8,16 +8,24 @@ export function createTechnologistRouter({ client }) {
   router.get("/work-queue", async (req, res, next) => {
     try {
       const data = await client.unsafe(
-        `select r.id, r.request_number, r.status, r.priority, r.requested_at, r.paid_at,
+        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.status, r.priority, r.requested_at, r.paid_at,
+                receipt.receipt_number,
                 p.pid, p.sex, p.date_of_birth, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 count(ri.id)::integer as test_count,
                 count(ri.id) filter (where ri.status in ('drafted', 'submitted', 'approved', 'released'))::integer as completed_test_count
            from public.test_requests r
            join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
+           left join lateral (
+             select i.invoice_number as receipt_number
+               from public.payments payment
+               join public.invoices i on i.payment_id = payment.id and i.clinic_id = payment.clinic_id
+              where payment.request_id = r.id and payment.clinic_id = r.clinic_id and payment.voided_at is null
+              order by payment.paid_at desc limit 1
+           ) receipt on true
           where r.clinic_id = $1 and r.assigned_technologist_id = $2
             and r.status = any($3::public.request_status[])
-          group by r.id, p.id order by r.priority desc, r.paid_at`,
+          group by r.id, p.id, receipt.receipt_number order by r.priority desc, r.paid_at`,
         [req.user.clinicId, req.user.sub, ["paid", "specimen_collection", "processing", "correction"]],
       );
       return res.json({ data });
