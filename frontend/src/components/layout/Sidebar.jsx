@@ -2,6 +2,7 @@ import './Sidebar.css'
 import labstreamIcon from '../../assets/labstream-icon.png'
 import auditLogIcon from '../../assets/audit_log-icon.svg'
 import dashboardIcon from '../../assets/dashboard-icon.svg'
+import logoutIcon from '../../assets/logout-icon.svg'
 import myResultsIcon from '../../assets/my_results-icon.svg'
 import paymentReceiptIcon from '../../assets/payment_receipt-icon.svg'
 import pendingValidationIcon from '../../assets/pending_validation-icon.svg'
@@ -151,7 +152,7 @@ export function getRoleNavigation(role = 'cashier') {
   return roleNavigation[role] ?? roleNavigation.cashier
 }
 
-export default function Sidebar({ role = 'cashier', userName = 'User', activeItem, onSelect }) {
+export default function Sidebar({ role = 'cashier', userName = 'User', activeItem, onSelect, onSignOut }) {
   const currentRole = roleNavigation[role] ? role : 'cashier'
   const navigationItems = getRoleNavigation(currentRole)
   const currentRoleLabel = roleLabels[currentRole]
@@ -190,6 +191,13 @@ export default function Sidebar({ role = 'cashier', userName = 'User', activeIte
           </a>
         ))}
       </nav>
+
+      {onSignOut && (
+        <button className="app-sidebar__sign-out" type="button" onClick={onSignOut}>
+          <img src={logoutIcon} alt="" aria-hidden="true" />
+          <span>Sign out</span>
+        </button>
+      )}
     </aside>
   )
 }

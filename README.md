@@ -55,9 +55,10 @@ Set these values in `backend/.env`:
 DATABASE_URL=postgresql://...
 PORT=3000
 FRONTEND_ORIGIN=http://localhost:5173
+SESSION_SECRET=generate-a-private-random-secret-with-at-least-32-characters
 ```
 
-Keep `.env` and database credentials private. Never put the database connection string in frontend code.
+Replace the example `SESSION_SECRET` with a private random value of at least 32 characters. Keep `.env` and database credentials private. Never put the database connection string in frontend code.
 
 ### Set up the database
 
@@ -71,6 +72,15 @@ npm run db:migrate
 ```
 
 Choose one setup path for a database. Do not run the fresh-database SQL script and the existing Drizzle migrations against the same database; the repo's initial Drizzle migration describes an earlier starter schema. For an existing database, create and review an upgrade migration instead of running the fresh setup script.
+
+After the database tables are ready, create the first staff account from an interactive backend terminal:
+
+```powershell
+cd backend
+npm run staff:create
+```
+
+Enter a staff email, select `pathologist` for the Pathologist role, and set a password of at least 12 characters. The password prompt is hidden. Create other staff accounts with the same command when needed.
 
 ### Start the API
 
@@ -94,7 +104,13 @@ Open the local URL printed by Vite, usually `http://localhost:5173`. Vite update
 
 ## Preview a page or component
 
-`frontend/src/App.jsx` renders `AppShell`. The shell selects the page component using the current role and selected Sidebar item. To preview a role, temporarily pass its role key:
+The frontend opens a staff sign-in page. After signing in, `App.jsx` renders `AppShell` for the role on the authenticated staff account. The shell selects the page using the role and selected Sidebar item. To preview the Pathologist workflow, sign in with an active user whose role is `pathologist`.
+
+The backend issues an eight-hour signed session in an HTTP-only cookie. The Pathologist endpoints check the active user's role on every request and audit worklist result access. They provide a summary and searchable, paginated worklists at `/api/pathologist/summary` and `/api/pathologist/worklist?view=pending|returned|released`. Submit a review decision to `/api/pathologist/requests/:requestId/review`; approvals mark the request released and returns move it back to `processing` with the pathologist's comments recorded.
+
+The API reads existing laboratory request, patient, test, and result records from the configured database. The cashier, technologist, and patient frontends still use prototype data and do not create or retrieve those records through the API yet.
+
+To preview a role without signing in, `AppShell` can still be rendered directly with a role key:
 
 ```jsx
 import AppShell from './components/layout/AppShell.jsx'

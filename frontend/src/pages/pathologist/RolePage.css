@@ -24,6 +24,7 @@
 .pathologist-button--return:hover { background: #fef3c7; }
 .pathologist-review__hint { margin: 0.55rem 0 0; color: var(--text-muted-lightbg); font-size: 0.72rem; text-align: right; }
 .pathologist-page__notice { margin: 0; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 0.6rem; color: var(--text-lightbg); background: var(--background); font-size: 0.84rem; }
+.pathologist-page__notice--error { border-color: #fecaca; color: var(--error); background: #fef2f2; }
 .pathologist-feedback { display: flex; align-items: flex-start; gap: 0.9rem; }
 .pathologist-feedback__icon { display: grid; flex: 0 0 2.3rem; height: 2.3rem; place-items: center; border-radius: 50%; color: #92400e; background: #fef3c7; font-size: 1.1rem; }
 .pathologist-feedback--released .pathologist-feedback__icon { color: var(--success); background: #d1fae5; }
