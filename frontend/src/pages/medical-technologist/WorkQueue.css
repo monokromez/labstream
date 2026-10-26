@@ -1,3 +1,10 @@
 @import './RolePage.css';
 
-/* Add page-specific styles below. */
+.medtech-priority {
+  color: var(--text-lightbg);
+  font-weight: 700;
+}
+
+.medtech-priority--urgent {
+  color: #b42318;
+}

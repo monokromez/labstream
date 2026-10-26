@@ -267,9 +267,9 @@ export function createCashierRouter({ client }) {
     try {
       const patientId = String(req.body?.patientId ?? "");
       const testIds = [...new Set(Array.isArray(req.body?.testIds) ? req.body.testIds : [])];
-      const priority = req.body?.priority === "urgent" ? "urgent" : "routine";
-      if (!patientId || testIds.length === 0 || testIds.length > 50) {
-        return res.status(400).json({ error: "INVALID_REQUEST", message: "Choose a patient and between 1 and 50 tests." });
+      const priority = req.body?.priority ?? "routine";
+      if (!patientId || testIds.length === 0 || testIds.length > 50 || !["routine", "urgent"].includes(priority)) {
+        return res.status(400).json({ error: "INVALID_REQUEST", message: "Choose a patient, between 1 and 50 tests, and a valid request priority." });
       }
       const request = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(

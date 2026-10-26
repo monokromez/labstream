@@ -111,6 +111,7 @@ export default function WorkQueue() {
                 <th scope="col">Patient</th>
                 <th scope="col">Age / Sex</th>
                 <th scope="col">Tests</th>
+                <th scope="col">Priority</th>
                 <th scope="col">Paid</th>
                 <th scope="col">Status</th>
                 <th scope="col"><span className="visually-hidden">Details</span></th>
@@ -129,6 +130,7 @@ export default function WorkQueue() {
                     <td title={request.tests.map((test) => test.name).join(', ')}>
                       <span className="medtech-tests-summary">{testSummary}{moreTests}</span>
                     </td>
+                    <td><span className={`medtech-priority${request.priority === 'Urgent' ? ' medtech-priority--urgent' : ''}`}>{request.priority || 'Routine'}</span></td>
                     <td>{formatTime(request.paidAt)}</td>
                     <td>
                       <div className="medtech-status-cell"><TechnologistStatusBadge status={request.status} /></div>
@@ -162,6 +164,7 @@ export default function WorkQueue() {
                 <div><dt>Patient ID</dt><dd>{selectedRequest.patientId || '—'}</dd></div>
                 <div><dt>Age / Sex</dt><dd>{selectedRequest.age || '—'} / {selectedRequest.sex || '—'}</dd></div>
                 <div><dt>Queue No.</dt><dd>{selectedRequest.queueNo || '—'}</dd></div>
+                <div><dt>Priority</dt><dd>{selectedRequest.priority || 'Routine'}</dd></div>
                 <div><dt>Paid</dt><dd>{formatDateTime(selectedRequest.paidAt)}</dd></div>
                 <div><dt>Receipt No.</dt><dd>{selectedRequest.receiptNo || '—'}</dd></div>
                 <div><dt>Pathologist</dt><dd>{selectedRequest.pathologist || 'To be assigned'}</dd></div>

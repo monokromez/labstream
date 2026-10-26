@@ -79,6 +79,7 @@ export default function RegisterRequest() {
   const [activeModal, setActiveModal] = useState(null)
   const [selectedPatient, setSelectedPatient] = useState(null)
   const [selectedTestIds, setSelectedTestIds] = useState([])
+  const [requestPriority, setRequestPriority] = useState('routine')
   const [requestSubmitted, setRequestSubmitted] = useState(false)
   const [requestSubmitting, setRequestSubmitting] = useState(false)
   const [showRequestPrompt, setShowRequestPrompt] = useState(false)
@@ -158,6 +159,7 @@ export default function RegisterRequest() {
     setActionError('')
     setSelectedPatient(patient)
     setSelectedTestIds([])
+    setRequestPriority('routine')
     setRequestSubmitted(false)
     setRequestSubmitting(false)
     setShowRequestPrompt(false)
@@ -201,7 +203,7 @@ export default function RegisterRequest() {
     setRequestSubmitting(true)
     setActionError('')
     try {
-      await api.cashier.createRequest({ patientId: selectedPatient.id, testIds: selectedTestIds, priority: 'routine' })
+      await api.cashier.createRequest({ patientId: selectedPatient.id, testIds: selectedTestIds, priority: requestPriority })
       setRequestSubmitted(true)
       setShowRequestConfirm(false)
       try {
@@ -504,12 +506,19 @@ export default function RegisterRequest() {
                 requestSubmitted ? (
                   <div className='register-request__confirmation'>
                     <h3>Request registered</h3>
-                  <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Invoice with a Pending status. The cashier can record the in-person cash payment there.</p>
+                  <p>{selectedTestIds.length} {selectedTestIds.length === 1 ? 'test was' : 'tests were'} added to Payments &amp; Invoice with {requestPriority === 'urgent' ? 'Urgent' : 'Routine'} priority and a Pending status. The cashier can record the in-person cash payment there.</p>
                   {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
                   </div>
                 ) : (
                 <form className='register-request__modal-form'>
                   <label>Patient<input value={`${getPatientName(selectedPatient ?? {})} (${selectedPatient?.pid})`} readOnly /></label>
+                  <label htmlFor='request-priority'>Priority
+                    <select id='request-priority' value={requestPriority} onChange={(event) => setRequestPriority(event.target.value)}>
+                      <option value='routine'>Routine</option>
+                      <option value='urgent'>Urgent</option>
+                    </select>
+                  </label>
+                  <p className='register-request__modal-note'>Record the priority stated on the laboratory request or explicitly instructed by the ordering clinician. If none is stated, leave Routine selected.</p>
                   <fieldset className='register-request__test-selection'>
                     <legend>Select tests</legend>
                     <p className='register-request__test-selection-hint'>Choose one or more tests. A test assigned to multiple categories is listed once under its primary category.</p>
