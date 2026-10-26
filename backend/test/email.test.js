@@ -118,3 +118,119 @@ test("reports SMTP configuration and delivery failures", async () => {
   assert.equal(failedDelivery.status, "failed");
   assert.equal(errors.length, 2);
 });
+
+test("retries on a fallback port when the host blocks SMTP", async () => {
+  const attempts = [];
+  const messages = [];
+  const service = createEmailService({
+    env: { ...mailEnvironment, MAIL_PORT: "587", MAIL_FALLBACK_PORT: "2525" },
+    createTransporter(options) {
+      attempts.push(options.port);
+      return {
+        sendMail: async (message) => {
+          if (options.port === 587) throw Object.assign(new Error("Connection timeout"), { code: "ETIMEDOUT" });
+          messages.push(message);
+        },
+      };
+    },
+    logger: { error: () => {}, warn: () => {} },
+  });
+
+  const receipt = {
+    to: "patient@example.test",
+    name: "Patient",
+    requestNumber: "REQ-01",
+    invoiceNumber: "INV-01",
+    amount: "125.50",
+    paidAt: "2026-10-26T06:00:00.000Z",
+    paymentMethod: "cash",
+    clinicName: "Labstream Clinic",
+  };
+
+  assert.equal((await service.sendPaymentReceiptEmail(receipt)).status, "sent");
+  assert.deepEqual(attempts, [587, 2525]);
+  assert.equal(messages.length, 1);
+
+  // The working fallback transport is reused by later messages.
+  assert.equal((await service.sendPaymentReceiptEmail(receipt)).status, "sent");
+  assert.deepEqual(attempts, [587, 2525]);
+});
+
+test("reports a blocked port when the primary and fallback connections both fail", async () => {
+  const service = createEmailService({
+    env: { ...mailEnvironment, MAIL_PORT: "587" },
+    createTransporter: () => ({
+      sendMail: async () => { throw Object.assign(new Error("connect ETIMEDOUT"), { code: "ETIMEDOUT" }); },
+    }),
+    logger: { error: () => {}, warn: () => {} },
+  });
+
+  const result = await service.sendPaymentReceiptEmail({
+    to: "patient@example.test",
+    name: "Patient",
+    requestNumber: "REQ-01",
+    invoiceNumber: "INV-01",
+    amount: "125.50",
+    paidAt: "2026-10-26T06:00:00.000Z",
+    paymentMethod: "cash",
+    clinicName: "Labstream Clinic",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "MAIL_PORT_BLOCKED");
+  assert.match(result.message, /2525|hosting/i);
+});
+
+test("classifies authentication and sender failures without leaking secrets", async () => {
+  const authService = createEmailService({
+    env: mailEnvironment,
+    createTransporter: () => ({
+      sendMail: async () => { throw Object.assign(new Error("Invalid login: 535 auth failed"), { code: "EAUTH", responseCode: 535 }); },
+    }),
+    logger: { error: () => {}, warn: () => {} },
+  });
+  const authResult = await authService.sendActivationEmail({
+    to: "staff@example.test",
+    name: "Staff",
+    accountId: "TECH-01",
+    code: "one-time-code",
+    role: "medical technologist",
+  });
+  assert.equal(authResult.reason, "MAIL_AUTH_FAILED");
+  assert.doesNotMatch(authResult.message, /secret/i);
+
+  const senderService = createEmailService({
+    env: mailEnvironment,
+    createTransporter: () => ({
+      sendMail: async () => { throw Object.assign(new Error("Sender not verified"), { responseCode: 550 }); },
+    }),
+    logger: { error: () => {}, warn: () => {} },
+  });
+  const senderResult = await senderService.sendPaymentReceiptEmail({
+    to: "patient@example.test",
+    name: "Patient",
+    requestNumber: "REQ-01",
+    invoiceNumber: "INV-01",
+    amount: "125.50",
+    paidAt: "2026-10-26T06:00:00.000Z",
+    paymentMethod: "cash",
+    clinicName: "Labstream Clinic",
+  });
+  assert.equal(senderResult.reason, "MAIL_SENDER_REJECTED");
+});
+
+test("sends an administrator test email through the relay", async () => {
+  const messages = [];
+  const service = createEmailService({
+    env: mailEnvironment,
+    createTransporter: () => ({ sendMail: async (message) => messages.push(message) }),
+  });
+
+  const result = await service.sendTestEmail({ to: "admin@example.test", name: "Admin" });
+
+  assert.equal(result.status, "sent");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, "admin@example.test");
+  assert.match(messages[0].subject, /test email/i);
+  assert.match(messages[0].html, /relay is configured correctly/i);
+});

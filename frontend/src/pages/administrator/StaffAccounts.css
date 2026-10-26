@@ -6,6 +6,12 @@
 .staff-accounts__details > div { min-width: 0; }
 .staff-accounts__details dt { color: var(--text-muted-lightbg); font-size: .76rem; font-weight: 700; }
 .staff-accounts__details dd { margin: .2rem 0 0; color: var(--text-lightbg); overflow-wrap: anywhere; }
+.staff-accounts__heading-actions { flex-wrap: wrap; }
+.staff-accounts__email-status { margin: .9rem 0 0; padding: .6rem .75rem; border: 1px solid var(--border); border-inline-start: 3px solid var(--primary); border-radius: .3rem; background: #f0fdfa; color: var(--text-lightbg); font-size: .84rem; }
+.staff-accounts__email-status--success { border-inline-start-color: var(--success); background: #ecfdf5; }
+.staff-accounts__email-status--error { border-inline-start-color: var(--error); background: #fef2f2; color: #8b2525; }
+.staff-accounts__email-hint { margin: .6rem 0 0; padding: .55rem .7rem; border: 1px solid #fcd34d; border-radius: .3rem; background: #fffbeb; color: #92400e; font-size: .8rem; }
+.staff-accounts__email-hint code { font-size: .78rem; }
 
 @media (max-width: 560px) {
   .staff-accounts__details { grid-template-columns: minmax(0, 1fr); }

@@ -1,12 +1,198 @@
-.patient-portal__result-list {
+.patient-portal {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  min-width: 0;
+}
+
+.patient-portal__error {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--error);
+  border-radius: 0.35rem;
+  background: #fef2f2;
+  color: #8b2525;
+  font-size: 0.85rem;
+}
+
+.patient-portal__welcome {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: linear-gradient(135deg, #f0fdfa 0%, #ffffff 70%);
+}
+
+.patient-portal__eyebrow {
+  margin: 0;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.patient-portal__welcome h2 {
+  margin: 0.35rem 0 0;
+  color: var(--text-lightbg);
+  font-size: 1.25rem;
+}
+
+.patient-portal__identity {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.86rem;
+}
+
+.patient-portal__welcome-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.patient-portal__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.patient-portal__columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.patient-portal__panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: #fff;
+}
+
+.patient-portal__panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.patient-portal__panel-heading h3 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+.patient-portal__panel-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.82rem;
+}
+
+.patient-portal__panel-heading > span {
+  flex: 0 0 auto;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: #d9f2ee;
+  color: var(--text-lightbg);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.patient-portal__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.patient-portal__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1.15rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.patient-portal__item:last-child {
+  border-bottom: none;
+}
+
+.patient-portal__item-title {
+  color: var(--primary);
+  font-size: 0.9rem;
+}
+
+.patient-portal__item p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.8rem;
+}
+
+.patient-portal__status {
+  display: inline-flex;
+  padding: 0.28rem 0.55rem;
+  border-radius: 0.3rem;
+  background: #dcecff;
+  color: #164b80;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.patient-portal__empty {
+  padding: 2rem 1.15rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.patient-portal__button {
+  min-height: 2.2rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: #fff;
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.patient-portal__button:hover {
+  background: #e0f2ef;
+}
+
+.patient-portal__button--primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.patient-portal__button--primary:hover {
+  background: var(--hover);
 }
 
 .patient-portal__notice {
-  border-inline-start: 3px solid #0f766e;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-inline-start: 3px solid var(--primary);
   border-radius: 0.25rem;
   background: #f0fdfa;
-  padding: 0.875rem 1rem;
+  color: var(--text-lightbg);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 900px) {
+  .patient-portal__summary,
+  .patient-portal__columns {
+    grid-template-columns: 1fr;
+  }
 }

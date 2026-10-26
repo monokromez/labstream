@@ -583,3 +583,25 @@
     color: #111;
   }
 }
+
+.payments-receipts__email-status {
+  margin: 0 1.35rem 0.35rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--primary);
+  border-radius: 0.3rem;
+  background: #f0fdfa;
+  color: var(--text-lightbg);
+  font-size: 0.82rem;
+}
+
+.payments-receipts__email-status--success {
+  border-inline-start-color: var(--success);
+  background: #ecfdf5;
+}
+
+.payments-receipts__email-status--error {
+  border-inline-start-color: var(--error);
+  background: #fef2f2;
+  color: #8b2525;
+}

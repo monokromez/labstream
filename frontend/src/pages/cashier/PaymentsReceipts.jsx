@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { formatDate } from '../../utils/dateFormat.js'
+import { describeEmailDelivery } from '../../utils/emailDelivery.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import './PaymentsReceipts.css'
@@ -14,6 +15,8 @@ export default function PaymentsReceipts() {
   const [dateFilter, setDateFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [dialog, setDialog] = useState(null)
+  const [emailStatus, setEmailStatus] = useState(null)
+  const [emailSending, setEmailSending] = useState(false)
   const { result, loading, error } = useApiResource(() => api.cashier.invoices({ page: currentPage, pageSize: ROWS_PER_PAGE, q: searchQuery, period: dateFilter === 'all' ? '' : dateFilter }), [currentPage, searchQuery, dateFilter])
   const transactions = (result?.data ?? []).map((invoice) => ({
     id: invoice.id,
@@ -30,6 +33,28 @@ export default function PaymentsReceipts() {
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, dateFilter])
+
+  function openReceipt(transaction) {
+    setEmailStatus(null)
+    setEmailSending(false)
+    setDialog({ type: 'receipt', transaction })
+  }
+
+  async function emailReceipt() {
+    if (!dialog?.transaction || emailSending) return
+    setEmailSending(true)
+    setEmailStatus({ tone: 'info', text: 'Sending the receipt email…' })
+    try {
+      const response = await api.cashier.emailInvoiceReceipt(dialog.transaction.id)
+      setEmailStatus(describeEmailDelivery(response.emailDelivery, {
+        sent: `Receipt emailed to the patient${response.data?.invoiceNumber ? ` for ${response.data.invoiceNumber}` : ''}.`,
+      }))
+    } catch (requestError) {
+      setEmailStatus({ tone: 'error', text: requestError.message || 'Unable to email this receipt.' })
+    } finally {
+      setEmailSending(false)
+    }
+  }
 
   const filteredTransactions = transactions
   const visibleTransactions = transactions
@@ -89,7 +114,7 @@ export default function PaymentsReceipts() {
                   <td className='payments-receipts__fee'>{currency.format(transaction.fee)}</td>
                   <td>{transaction.transactionDate ? formatDate(transaction.transactionDate) : '—'}</td>
                   <td>
-                    <button className='payments-receipts__action payments-receipts__action--receipt' type='button' onClick={() => setDialog({ type: 'receipt', transaction })}>View Invoice</button>
+                    <button className='payments-receipts__action payments-receipts__action--receipt' type='button' onClick={() => openReceipt(transaction)}>View Invoice</button>
                   </td>
                 </tr>
               ))}
@@ -138,8 +163,20 @@ export default function PaymentsReceipts() {
               </div>
             )}
 
+            {dialog.type === 'receipt' && emailStatus && (
+              <p
+                className={`payments-receipts__email-status payments-receipts__email-status--${emailStatus.tone}`}
+                role={emailStatus.tone === 'error' ? 'alert' : 'status'}
+              >
+                {emailStatus.text}
+              </p>
+            )}
+
             <div className='payments-receipts__dialog-footer'>
               {dialog.type === 'receipt' && <>
+                <button className='payments-receipts__dialog-secondary' type='button' disabled={emailSending} onClick={emailReceipt}>
+                  {emailSending ? 'Sending…' : 'Email receipt'}
+                </button>
                 <button className='payments-receipts__dialog-secondary' type='button' onClick={() => setDialog(null)}>Close</button>
                 <button className='payments-receipts__dialog-primary' type='button' onClick={() => window.print()}>Print Invoice</button>
               </>}

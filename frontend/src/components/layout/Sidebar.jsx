@@ -134,6 +134,12 @@ const roleNavigation = {
   ],
   patient: [
     {
+      id: 'overview',
+      label: 'Overview',
+      description: 'Your results and requests at a glance.',
+      icon: dashboardIcon,
+    },
+    {
       id: 'my-results',
       label: 'My Results',
       description: 'View your test results.',

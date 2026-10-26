@@ -4,6 +4,7 @@ import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
+import { describeEmailDelivery } from '../../utils/emailDelivery.js'
 import './CashierQueue.css'
 
 const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
@@ -62,14 +63,14 @@ export default function CashierQueue() {
     try {
       const response = await api.cashier.processPayment(active.id)
       setActive(null)
-      const emailNotice = response.emailDelivery?.status === 'sent'
-        ? ' Receipt email sent.'
-        : response.emailDelivery?.status === 'skipped'
-          ? ' No patient email is on file; receipt email was skipped.'
-          : ' Payment recorded, but receipt email delivery failed.'
-      setNotice(`${response.data.requestNumber} payment recorded. Invoice ${response.data.invoice.invoiceNumber} issued.${emailNotice}`)
+      const emailNotice = describeEmailDelivery(response.emailDelivery, {
+        sent: 'Receipt email sent.',
+        skipped: 'No patient email is on file; receipt email was skipped.',
+        failed: 'Payment recorded, but the receipt email failed.',
+      })
+      setNotice(`${response.data.requestNumber} payment recorded. Invoice ${response.data.invoice.invoiceNumber} issued. ${emailNotice.text}`)
       await refresh()
-      window.setTimeout(() => setNotice(''), 3500)
+      window.setTimeout(() => setNotice(''), emailNotice.tone === 'error' ? 10_000 : 3_500)
     } catch (requestError) {
       setNotice(requestError.message || 'Unable to process payment.')
     }

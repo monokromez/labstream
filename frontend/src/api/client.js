@@ -96,6 +96,7 @@ export const api = {
     processPayment: (requestId) => request(`/api/cashier/requests/${requestId}/payment`, { method: 'POST', body: {} }),
     cancelRequest: (requestId, reason) => request(`/api/cashier/requests/${requestId}/cancel`, { method: 'PATCH', body: { reason } }),
     invoices: (filters) => request(`/api/cashier/invoices${queryString(filters)}`),
+    emailInvoiceReceipt: (invoiceId) => request(`/api/cashier/invoices/${invoiceId}/receipt-email`, { method: 'POST', body: {} }),
   },
   staff: {
     list: (filters) => request(`/api/admin/staff${queryString(filters)}`),
@@ -110,6 +111,7 @@ export const api = {
     testVolume: (filters) => request(`/api/admin/dashboard/test-volume${queryString(filters)}`),
     exportReport: (format, period = 'monthly') => download(`/api/admin/reports/export${queryString({ format, period })}`),
     auditLogs: (filters) => request(`/api/admin/audit-logs${queryString(filters)}`),
+    sendTestEmail: (to) => request('/api/admin/email-test', { method: 'POST', body: { to } }),
     catalog: (filters) => request(`/api/admin/catalog${queryString(filters)}`),
     addCategory: (category) => request('/api/admin/categories', { method: 'POST', body: category }),
     removeCategory: (categoryId, testActions) => request(`/api/admin/categories/${categoryId}`, { method: 'DELETE', body: { testActions } }),

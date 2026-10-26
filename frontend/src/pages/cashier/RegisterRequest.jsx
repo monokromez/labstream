@@ -9,6 +9,7 @@ import useTestCatalog from '../../data/useTestCatalog.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import { formatDate } from '../../utils/dateFormat.js'
+import { describeEmailDelivery } from '../../utils/emailDelivery.js'
 import { formatPatientPhoneInput, getAvailablePatientIds, getPatientCallingCode, getPatientFormErrors, PATIENT_AGE_LIMIT } from './patientValidation.js'
 import './RegisterRequest.css'
 
@@ -311,6 +312,18 @@ export default function RegisterRequest() {
     (currentPage - 1) * ROWS_PER_PAGE,
     currentPage * ROWS_PER_PAGE,
   )
+  const portalActivationEmail = portalActivation
+    ? describeEmailDelivery(portalActivation.emailDelivery, {
+      sent: 'Activation email sent to the patient.',
+      skipped: 'No patient email is on file. Give the code above to the patient in person.',
+    })
+    : null
+  const portalResetEmail = portalReset
+    ? describeEmailDelivery(portalReset.emailDelivery, {
+      sent: 'Reset instructions emailed to the patient.',
+      skipped: 'No patient email is on file. Give the reset code above to the patient in person.',
+    })
+    : null
 
   return (
     <section className='register-request' aria-label='Find a patient'>
@@ -482,8 +495,8 @@ export default function RegisterRequest() {
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
                 </dl>
-                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>This code expires in 24 hours and can only be used once. The patient chooses their own password.</p><p role={portalActivation.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalActivation.emailDelivery?.status === 'sent' ? 'Activation email sent to the patient.' : portalActivation.emailDelivery?.message}</p></div>}
-                {portalReset && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Password reset code issued</h3><p>PID: <strong>{portalReset.pid}</strong></p><p>One-time reset code: <strong>{portalReset.code}</strong></p><p>The patient can use this code once within 24 hours at the sign-in page.</p><p role={portalReset.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalReset.emailDelivery?.status === 'sent' ? 'Reset instructions emailed to the patient.' : portalReset.emailDelivery?.message}</p></div>}
+                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>This code expires in 24 hours and can only be used once. The patient chooses their own password.</p><p role={portalActivationEmail.tone === 'error' ? 'alert' : 'status'}>{portalActivationEmail.text}</p></div>}
+                {portalReset && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Password reset code issued</h3><p>PID: <strong>{portalReset.pid}</strong></p><p>One-time reset code: <strong>{portalReset.code}</strong></p><p>The patient can use this code once within 24 hours at the sign-in page.</p><p role={portalResetEmail.tone === 'error' ? 'alert' : 'status'}>{portalResetEmail.text}</p></div>}
                 </>
               )}
 

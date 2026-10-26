@@ -622,5 +622,50 @@ export function createCashierRouter({ client }) {
     }
   });
 
+  router.post("/invoices/:id/receipt-email", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(req.params.id ?? ""))) {
+        return res.status(404).json({ error: "INVOICE_NOT_FOUND", message: "This invoice was not found in this laboratory." });
+      }
+      const [invoice] = await client.unsafe(
+        `select i.id, i.invoice_number, p.amount, p.paid_at, p.method, p.voided_at,
+                r.request_number, pt.email as patient_email,
+                concat_ws(' ', pt.first_name, pt.middle_name, pt.last_name) as patient_name,
+                c.name as clinic_name
+           from public.invoices i
+           join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
+           join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
+           join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
+           join public.clinics c on c.id = i.clinic_id
+          where i.id = $1 and i.clinic_id = $2`,
+        [req.params.id, req.user.clinicId],
+      );
+      if (!invoice) return res.status(404).json({ error: "INVOICE_NOT_FOUND", message: "This invoice was not found in this laboratory." });
+      if (invoice.voided_at) return res.status(409).json({ error: "INVOICE_VOIDED", message: "A receipt cannot be emailed for a voided payment." });
+      const emailDelivery = await emailService.sendPaymentReceiptEmail({
+        to: invoice.patient_email,
+        name: invoice.patient_name,
+        requestNumber: invoice.request_number,
+        invoiceNumber: invoice.invoice_number,
+        amount: invoice.amount,
+        paidAt: invoice.paid_at,
+        paymentMethod: invoice.method,
+        clinicName: invoice.clinic_name,
+      });
+      await client.unsafe(
+        `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+         values ($1, $2, 'invoice.receipt_emailed', 'invoice', $3,
+           jsonb_build_object('status', $4::text, 'reason', $5::text))`,
+        [req.user.clinicId, req.user.sub, invoice.id, emailDelivery.status, emailDelivery.reason ?? null],
+      );
+      return res.json({
+        data: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number },
+        emailDelivery,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   return router;
 }

@@ -10,6 +10,11 @@ import * as PatientPages from '../../pages/patient/index.js'
 import { TechnologistProvider } from '../../pages/medical-technologist/TechnologistContext.jsx'
 
 export default function AppShell({ children, role = 'administrator', userId, userName = 'User', activeItem, onLogout }) {
+  const navigationItems = getRoleNavigation(role)
+  const [selectedItem, setSelectedItem] = useState(
+    activeItem ?? navigationItems[0].id,
+  )
+
   const cashierPages = {
     dashboard: <CashierPages.CashierDashboard />,
     'register-request': <CashierPages.RegisterRequest />,
@@ -39,6 +44,7 @@ export default function AppShell({ children, role = 'administrator', userId, use
   }
 
   const patientPages = {
+    overview: <PatientPages.PatientOverview onNavigate={setSelectedItem} />,
     'my-results': <PatientPages.MyResults />,
     'test-history': <PatientPages.TestHistory />,
   }
@@ -53,10 +59,6 @@ export default function AppShell({ children, role = 'administrator', userId, use
 
   const pagesForRole = pagesByRole[role] ?? {}
 
-  const navigationItems = getRoleNavigation(role)
-  const [selectedItem, setSelectedItem] = useState(
-    activeItem ?? navigationItems[0].id,
-  )
   const currentItem = navigationItems.find((item) => item.id === selectedItem)
     ?? navigationItems[0]
   const currentPage = pagesForRole[currentItem.id] ?? children ?? (

@@ -2,6 +2,7 @@ import { Router } from "express";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
+import { describeMailConfiguration, emailService } from "../email.js";
 import { isUuid, validateCategoryDetails, validateReferenceRangeDetails, validateTestDetails } from "../adminValidation.js";
 
 const REPORT_PERIODS = new Set(["weekly", "monthly", "annual"]);
@@ -741,6 +742,41 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       if (!data) return res.status(404).json({ error: "REFERENCE_RANGE_NOT_FOUND" });
       await client.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'reference_range.deactivated','reference_range',$3)`, [req.user.clinicId, req.user.sub, data.id]);
       return res.status(204).end();
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/email-test", async (req, res, next) => {
+    try {
+      const requested = String(req.body?.to ?? "").trim();
+      if (requested && (requested.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requested))) {
+        return res.status(400).json({ error: "INVALID_EMAIL", message: "Enter a valid email address." });
+      }
+      let recipient = requested;
+      let name = "Administrator";
+      if (!recipient) {
+        const [account] = await client.unsafe(
+          `select u.email, concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name) as name
+             from public.users u
+             left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
+            where u.id = $1 and u.clinic_id = $2`,
+          [req.user.sub, req.user.clinicId],
+        );
+        recipient = account?.email ?? "";
+        name = account?.name || name;
+      }
+      if (!recipient) {
+        return res.status(409).json({ error: "NO_RECIPIENT_EMAIL", message: "Enter a recipient address; your account has no email on file." });
+      }
+      const emailDelivery = await emailService.sendTestEmail({ to: recipient, name });
+      await client.unsafe(
+        `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+         values ($1, $2, 'email.test_sent', 'user', $3,
+           jsonb_build_object('status', $4::text, 'reason', $5::text))`,
+        [req.user.clinicId, req.user.sub, req.user.sub, emailDelivery.status, emailDelivery.reason ?? null],
+      );
+      return res.json({ data: { to: recipient }, emailDelivery, mail: describeMailConfiguration() });
     } catch (error) {
       return next(error);
     }

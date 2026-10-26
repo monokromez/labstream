@@ -1,5 +1,23 @@
 import nodemailer from "nodemailer";
 
+// SMTP ports that Render (and some other PaaS hosts) block for outbound mail.
+// Render's free web services cannot connect to 25, 465, or 587.
+const BLOCKED_SMTP_PORTS = new Set([25, 465, 587]);
+const DEFAULT_FALLBACK_PORT = 2525;
+
+const DELIVERY_MESSAGES = {
+  NO_RECIPIENT: "No recipient email address is on file.",
+  MAIL_NOT_CONFIGURED: "Email is not configured on the server. Ask the laboratory administrator to set MAIL_HOST, MAIL_PORT, and MAIL_FROM_ADDRESS.",
+  MAIL_PORT_BLOCKED: "The hosting provider blocked the connection to the mail server. Ask the administrator to set MAIL_PORT=2525 (or MAIL_FALLBACK_PORT=2525) or to upgrade the hosting plan.",
+  MAIL_CONNECTION_FAILED: "The mail server could not be reached. Ask the laboratory administrator to check MAIL_HOST and MAIL_PORT.",
+  MAIL_AUTH_FAILED: "The mail server rejected the sign-in. Ask the laboratory administrator to check the SMTP username and password.",
+  MAIL_SENDER_REJECTED: "The mail server rejected the sender address. Ask the administrator to verify MAIL_FROM_ADDRESS with the email provider.",
+  MAIL_RATE_LIMITED: "The email provider is temporarily rate limiting messages. Wait a few minutes, then try again.",
+  MAIL_DELIVERY_FAILED: "Email delivery failed after the system action completed. Contact the laboratory administrator for help.",
+};
+
+class MailConfigurationError extends Error {}
+
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
   "&": "&amp;",
   "<": "&lt;",
@@ -20,27 +38,57 @@ const emailFrame = (name, content) => `<!doctype html>
   </body>
 </html>`;
 
-function createTransport(env, createTransporter) {
+function readMailSettings(env) {
   const missing = ["MAIL_HOST", "MAIL_PORT", "MAIL_FROM_ADDRESS"].filter((key) => !env[key]);
-  if (missing.length) throw new Error(`Missing mail settings: ${missing.join(", ")}`);
-  const port = Number(env.MAIL_PORT);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("MAIL_PORT must be a valid TCP port.");
-
-  const scheme = String(env.MAIL_SCHEME ?? "smtp").toLowerCase();
+  if (missing.length) throw new MailConfigurationError(`Missing mail settings: ${missing.join(", ")}`);
+  const configuredPort = Number(env.MAIL_PORT);
+  if (!Number.isInteger(configuredPort) || configuredPort < 1 || configuredPort > 65535) {
+    throw new MailConfigurationError("MAIL_PORT must be a valid TCP port.");
+  }
   return {
     from: { name: env.MAIL_FROM_NAME || "Labstream", address: env.MAIL_FROM_ADDRESS },
-    transporter: createTransporter({
-      host: env.MAIL_HOST,
-      port,
-      secure: scheme === "smtps" || scheme === "ssl" || port === 465,
-      auth: env.MAIL_USERNAME || env.MAIL_PASSWORD
-        ? { user: env.MAIL_USERNAME, pass: env.MAIL_PASSWORD }
-        : undefined,
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 20_000,
-    }),
+    configuredPort,
   };
+}
+
+export function describeMailConfiguration(env = process.env) {
+  let settings;
+  try {
+    settings = readMailSettings(env);
+  } catch (error) {
+    return {
+      configured: false,
+      missing: ["MAIL_HOST", "MAIL_PORT", "MAIL_FROM_ADDRESS"].filter((key) => !env[key]),
+      port: Number(env.MAIL_PORT) || null,
+      blockedPort: false,
+      message: error.message,
+    };
+  }
+  const fallbackPort = Number(env.MAIL_FALLBACK_PORT ?? DEFAULT_FALLBACK_PORT);
+  return {
+    configured: true,
+    missing: [],
+    host: env.MAIL_HOST,
+    port: settings.configuredPort,
+    blockedPort: BLOCKED_SMTP_PORTS.has(settings.configuredPort),
+    fallbackPort: Number.isInteger(fallbackPort) && fallbackPort > 0 ? fallbackPort : null,
+    onRender: String(env.RENDER ?? "").toLowerCase() === "true",
+    message: "Mail settings are present.",
+  };
+}
+
+/** Map a transport failure onto a stable, non-sensitive reason code. */
+export function classifyDeliveryFailure(error) {
+  const code = String(error?.code ?? "");
+  const responseCode = Number(error?.responseCode);
+  const message = String(error?.message ?? "");
+  if (code === "EAUTH" || [530, 534, 535, 536].includes(responseCode)) return "MAIL_AUTH_FAILED";
+  if ([550, 553, 554].includes(responseCode)) return "MAIL_SENDER_REJECTED";
+  if ([421, 450, 451, 452].includes(responseCode) || /rate.?limit|too many/i.test(message)) return "MAIL_RATE_LIMITED";
+  if (["ETIMEDOUT", "ECONNREFUSED", "ESOCKET", "EHOSTUNREACH", "ENETUNREACH", "EAI_AGAIN", "ECONNRESET"].includes(code)) {
+    return "MAIL_CONNECTION_FAILED";
+  }
+  return "MAIL_DELIVERY_FAILED";
 }
 
 export function createEmailService({
@@ -50,14 +98,75 @@ export function createEmailService({
 } = {}) {
   let mailConfiguration;
 
+  function connect(port) {
+    const scheme = String(env.MAIL_SCHEME ?? "smtp").toLowerCase();
+    return {
+      from: { name: env.MAIL_FROM_NAME || "Labstream", address: env.MAIL_FROM_ADDRESS },
+      port,
+      transporter: createTransporter({
+        host: env.MAIL_HOST,
+        port,
+        secure: scheme === "smtps" || scheme === "ssl" || port === 465,
+        auth: env.MAIL_USERNAME || env.MAIL_PASSWORD
+          ? { user: env.MAIL_USERNAME, pass: env.MAIL_PASSWORD }
+          : undefined,
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
+      }),
+    };
+  }
+
+  function primaryConfiguration() {
+    if (!mailConfiguration) {
+      const { configuredPort } = readMailSettings(env);
+      mailConfiguration = connect(configuredPort);
+    }
+    return mailConfiguration;
+  }
+
+  function fallbackPort(port) {
+    if (!BLOCKED_SMTP_PORTS.has(port)) return null;
+    const configured = Number(env.MAIL_FALLBACK_PORT ?? DEFAULT_FALLBACK_PORT);
+    if (!Number.isInteger(configured) || configured < 1 || configured > 65535 || configured === port) return null;
+    return configured;
+  }
+
+  async function sendWithFallback(message) {
+    const primary = primaryConfiguration();
+    try {
+      await primary.transporter.sendMail(message);
+      return;
+    } catch (error) {
+      const reason = classifyDeliveryFailure(error);
+      const retryPort = reason === "MAIL_CONNECTION_FAILED" ? fallbackPort(primary.port) : null;
+      if (!retryPort) throw Object.assign(error, { deliveryReason: reason });
+
+      // Hosts such as Render block SMTP on 25/465/587. Retry once on the
+      // provider's alternate submission port before reporting a failure.
+      logger.warn?.(`Mail server on port ${primary.port} was unreachable; retrying on port ${retryPort}.`);
+      const fallback = connect(retryPort);
+      try {
+        await fallback.transporter.sendMail(message);
+        mailConfiguration = fallback;
+        logger.warn?.(`Mail relay switched to fallback port ${retryPort}. Set MAIL_PORT=${retryPort} to skip this retry.`);
+        return;
+      } catch (fallbackError) {
+        const fallbackReason = classifyDeliveryFailure(fallbackError);
+        throw Object.assign(fallbackError, {
+          deliveryReason: fallbackReason === "MAIL_CONNECTION_FAILED" ? "MAIL_PORT_BLOCKED" : fallbackReason,
+        });
+      }
+    }
+  }
+
   async function deliver(event, message) {
     if (!message.to) {
-      return { status: "skipped", message: "No recipient email address is on file." };
+      return { status: "skipped", reason: "NO_RECIPIENT", message: DELIVERY_MESSAGES.NO_RECIPIENT };
     }
     try {
-      mailConfiguration ??= createTransport(env, createTransporter);
-      await mailConfiguration.transporter.sendMail({
-        from: mailConfiguration.from,
+      await sendWithFallback({
+        from: mailConfiguration?.from ?? readMailSettings(env).from,
         to: message.to,
         subject: message.subject,
         text: message.text,
@@ -65,10 +174,20 @@ export function createEmailService({
       });
       return { status: "sent", message: "Email sent." };
     } catch (error) {
-      logger.error("Email delivery failed.", { event, error: error.message });
+      const reason = error.deliveryReason
+        ?? (error instanceof MailConfigurationError ? "MAIL_NOT_CONFIGURED" : classifyDeliveryFailure(error));
+      logger.error("Email delivery failed.", {
+        event,
+        reason,
+        port: mailConfiguration?.port,
+        code: error.code,
+        responseCode: error.responseCode,
+        error: error.message,
+      });
       return {
         status: "failed",
-        message: "Email delivery failed after the system action completed. Contact the laboratory administrator for help.",
+        reason,
+        message: DELIVERY_MESSAGES[reason] ?? DELIVERY_MESSAGES.MAIL_DELIVERY_FAILED,
       };
     }
   }
@@ -99,6 +218,17 @@ export function createEmailService({
         html: emailFrame(name, `<p>A cashier issued a password reset for your Labstream patient account.</p>
           <p><strong>PID:</strong> ${safePid}<br><strong>Reset code:</strong> ${safeCode}</p>
           <p>This code expires in 24 hours and can only be used once. If you did not request this, contact the laboratory.</p>`),
+      });
+    },
+
+    sendTestEmail({ to, name }) {
+      return deliver("admin_email_test", {
+        to,
+        subject: "Labstream test email",
+        text: "This is a Labstream test email. If you received it, the mail relay is configured correctly and activation, payment receipt, and result-release emails should be delivered.",
+        html: emailFrame(name || "Administrator", `<p>This is a Labstream test email.</p>
+          <p>If you received it, the mail relay is configured correctly and activation, payment receipt, and result-release emails should be delivered.</p>
+          <p>If this message does not arrive, check the junk folder before changing the SMTP settings.</p>`),
       });
     },
 

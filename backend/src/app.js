@@ -10,12 +10,15 @@ import { createTechnologistRouter } from "./routes/technologist.js";
 import { createPathologistRouter } from "./routes/pathologist.js";
 import { createPatientRouter } from "./routes/patient.js";
 import { createAdministratorRouter } from "./routes/administrator.js";
+import { describeMailConfiguration } from "./email.js";
 import { toApiShape } from "./apiShape.js";
+import { createAuthAttemptLimiter } from "./auth/authAttemptLimiter.js";
 
 export function createApp({ database = null, publishCatalogChanged = null, publishClinicChanged = null } = {}) {
   const app = express();
   const allowedOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 
+  app.set("trust proxy", process.env.NODE_ENV === "production" ? 1 : false);
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(cors({ origin: allowedOrigin, credentials: true, exposedHeaders: ["Content-Disposition"] }));
@@ -39,32 +42,25 @@ export function createApp({ database = null, publishCatalogChanged = null, publi
   }));
 
   app.get("/health", async (_req, res) => {
-    if (!database) return res.status(503).json({ status: "degraded", database: "not_connected" });
+    const mail = describeMailConfiguration();
+    const mailStatus = {
+      configured: mail.configured,
+      port: mail.port ?? null,
+      blockedPort: mail.blockedPort ?? false,
+    };
+    if (!database) return res.status(503).json({ status: "degraded", database: "not_connected", mail: mailStatus });
     try {
       await database.client.unsafe("select 1 as connected");
-      return res.json({ status: "ok", database: "connected" });
+      return res.json({ status: "ok", database: "connected", mail: mailStatus });
     } catch {
-      return res.status(503).json({ status: "degraded", database: "unavailable" });
+      return res.status(503).json({ status: "degraded", database: "unavailable", mail: mailStatus });
     }
   });
 
   if (database) {
-    const authAttemptLimiter = rateLimit({
-      windowMs: 15 * 60 * 1000,
-      // Keep production protection strict, while allowing realistic local
-      // activation and sign-in retries during development.
-      limit: process.env.NODE_ENV === "production" ? 10 : 60,
-      standardHeaders: "draft-8",
-      legacyHeaders: false,
-      skip: (req) => req.method !== "POST",
-      handler: (_req, res) => res.status(429).json({
-        error: "AUTH_RATE_LIMITED",
-        message: "Too many sign-in or activation attempts. Wait a few minutes, then try again.",
-      }),
-    });
-    app.use("/api/auth/login", authAttemptLimiter);
-    app.use("/api/auth/activate", authAttemptLimiter);
-    app.use("/api/auth/password-reset", authAttemptLimiter);
+    app.use("/api/auth/login", createAuthAttemptLimiter());
+    app.use("/api/auth/activate", createAuthAttemptLimiter());
+    app.use("/api/auth/password-reset", createAuthAttemptLimiter());
     // Notify other signed-in users in the same laboratory after a successful write.
     // req.user is populated by the route's auth middleware before the response finishes.
     app.use("/api", (req, res, next) => {
