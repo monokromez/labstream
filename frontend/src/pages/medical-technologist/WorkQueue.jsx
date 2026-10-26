@@ -82,6 +82,7 @@ export default function WorkQueue() {
           <SearchInput
             className="medtech-toolbar__search"
             label="Search work queue"
+            visibleLabel="Search"
             placeholder="Request ID, patient name, or test"
             value={query}
             onChange={(event) => { setQuery(event.target.value); setCurrentPage(1) }}

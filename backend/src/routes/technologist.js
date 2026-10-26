@@ -214,7 +214,7 @@ export function createTechnologistRouter({ client }) {
       const result = await client.begin(async (tx) => {
         const [context] = await tx.unsafe(
           `select r.id as request_id, r.status as request_status, r.assigned_technologist_id,
-                  ri.id as item_id, ri.test_id, ri.status as item_status, p.date_of_birth, p.sex,
+                  ri.id as item_id, ri.test_id, ri.status as item_status, p.date_of_birth, p.sex
              from public.test_requests r
              join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
              join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id

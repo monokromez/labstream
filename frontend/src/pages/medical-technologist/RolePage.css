@@ -67,7 +67,7 @@
 .medtech-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
-  align-items: end;
+  align-items: start;
   gap: 0.8rem;
   margin-bottom: 1rem;
 }
@@ -85,6 +85,10 @@
   color: var(--text-lightbg);
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.medtech-select-field > span {
+  line-height: 1.2;
 }
 
 .medtech-select-field select,
@@ -140,55 +144,49 @@
   min-width: 0;
   overflow: auto;
   contain: layout paint;
-  border-inline: 1px solid var(--sidebar-background);
-  border-block: 0;
-  border-radius: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
   scrollbar-color: var(--primary) var(--background);
   scrollbar-width: thin;
   background: #fff;
 }
 
-.medtech-table-wrap--nested,
-.medtech-table-wrap--result {
-  border-inline: 1px solid var(--sidebar-background);
-  border-block: 0;
-  border-radius: 0;
-}
-
 .medtech-table {
   width: 100%;
-  border-block: 1px solid var(--sidebar-background);
-  border-inline: 0;
-  border-collapse: separate;
+  border-collapse: collapse;
   border-spacing: 0;
-  border-radius: 0;
   color: var(--text-lightbg);
   font-size: 0.8rem;
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
 
+.medtech-table th,
+.medtech-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
 .medtech-table th {
-  padding: 0.75rem 0.8rem;
   background: var(--sidebar-background);
   color: var(--text-darkbg);
   font-size: 0.72rem;
   font-weight: 700;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .medtech-table td {
-  padding: 0.7rem 0.8rem;
-  border-top: 1px solid var(--border);
-  vertical-align: middle;
+  color: var(--text-muted-lightbg);
+  font-size: 0.85rem;
 }
 
-.medtech-table tbody tr:first-child td {
-  border-top: 0;
-}
+.medtech-table tbody tr:last-child td { border-bottom: 0; }
 
 .medtech-table tbody tr:hover {
-  background: color-mix(in srgb, var(--background) 68%, var(--surface));
+  background: #f7fffd;
 }
 
 .medtech-table--queue {
@@ -441,6 +439,17 @@
   background: var(--surface);
   color: var(--text-lightbg);
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.medtech-icon-button:hover {
+  border-color: var(--hover);
+  background: var(--hover);
+  color: var(--surface);
+}
+
+.medtech-icon-button:active {
+  transform: translateY(1px);
 }
 
 .medtech-icon-button svg {
@@ -497,6 +506,13 @@
   color: var(--text-lightbg);
   font-size: 0.78rem;
   line-height: 1.5;
+}
+
+.medtech-form__notice--quiet {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted-lightbg);
 }
 
 .medtech-form__error {

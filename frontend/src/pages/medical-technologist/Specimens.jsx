@@ -123,6 +123,7 @@ export default function Specimens() {
           <SearchInput
             className="medtech-toolbar__search"
             label="Search specimens"
+            visibleLabel="Search"
             placeholder="Specimen label, request ID, or patient"
             value={specimenSearch}
             onChange={(event) => { setSpecimenSearch(event.target.value); setCurrentPage(1) }}
@@ -230,7 +231,7 @@ export default function Specimens() {
         <TechnologistDialog title="Accept specimen?" onClose={closeDialog}>
           <div className="medtech-dialog__body">
             <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
-            <p className="medtech-form__notice">Accepting confirms this specimen passed the quality check and can proceed to result entry.</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">Accepting confirms this specimen passed the quality check and can proceed to result entry.</p>
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
               <button className="medtech-button medtech-button--positive" type="button" onClick={() => { acceptSpecimen(activeSpecimen.label); closeDialog() }}>Confirm acceptance</button>

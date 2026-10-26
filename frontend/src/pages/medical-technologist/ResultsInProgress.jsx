@@ -542,7 +542,7 @@ export default function ResultsInProgress() {
         <TechnologistDialog title="Submit to pathologist?" onClose={() => setConfirmSubmit(false)}>
           <div className="medtech-dialog__body">
             <p className="medtech-dialog__context">{selectedResult.specimenLabel} · {selectedResult.request.patient}</p>
-            <p className="medtech-form__notice">After you submit, you cannot edit this result unless the pathologist returns it with feedback.</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">After you submit, you cannot edit this result unless the pathologist returns it with feedback.</p>
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={() => setConfirmSubmit(false)}>Cancel</button>
               <button className="medtech-button" type="button" onClick={confirmSubmission}>Submit</button>
