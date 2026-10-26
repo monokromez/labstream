@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
@@ -14,6 +14,7 @@ import { getStaffFormErrors } from './staffValidation.js'
 import './StaffAccounts.css'
 
 const posts = ['Cashier', 'Medical Technologist', 'Pathologist']
+const PAGE_SIZE = 10
 const emptyForm = { firstName: '', middleName: '', surname: '', dob: '', country: '', city: '', countryCode: '', houseNo: '', street: '', contact: '', email: '', post: 'Cashier' }
 
 function calculateAge(value) {
@@ -30,7 +31,16 @@ function displayName(person) {
 }
 
 export default function StaffAccounts() {
-  const { result: staffResult, error: loadError, refresh } = useApiResource(() => api.staff.list({ page: 1, pageSize: 100 }), [])
+  const [search, setSearch] = useState('')
+  const [postFilter, setPostFilter] = useState('All posts')
+  const [statusFilter, setStatusFilter] = useState('All statuses')
+  const [page, setPage] = useState(1)
+  const roleFilter = postFilter === 'All posts' ? '' : postFilter.toLowerCase().replaceAll(' ', '_')
+  const status = statusFilter === 'All statuses' ? '' : String(statusFilter === 'Active')
+  const { result: staffResult, error: loadError, refresh } = useApiResource(
+    () => api.staff.list({ page, pageSize: PAGE_SIZE, q: search, role: roleFilter, status }),
+    [page, search, roleFilter, status],
+  )
   const staff = (staffResult?.data ?? []).map((person) => ({
     ...person,
     surname: person.lastName,
@@ -38,15 +48,9 @@ export default function StaffAccounts() {
     status: person.isActive ? 'Active' : 'Inactive',
     lastSignIn: person.lastSignInAt,
   }))
-  const [search, setSearch] = useState('')
-  const [postFilter, setPostFilter] = useState('All posts')
-  const [statusFilter, setStatusFilter] = useState('All statuses')
   const [dialog, setDialog] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [touched, setTouched] = useState({})
-  const [page, setPage] = useState(1)
-  const pageSize = 10
-
   const staffErrors = getStaffFormErrors({
     firstName: form.firstName,
     middleName: form.middleName,
@@ -87,12 +91,7 @@ export default function StaffAccounts() {
     return Object.values(errors).every((message) => !message)
   }
 
-  const visibleStaff = useMemo(() => staff.filter((person) => {
-    const matchesSearch = `${displayName(person)} ${person.email}`.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch && (postFilter === 'All posts' || person.post === postFilter)
-      && (statusFilter === 'All statuses' || person.status === statusFilter)
-  }), [postFilter, search, staff, statusFilter])
-  const pageRows = visibleStaff.slice((page - 1) * pageSize, page * pageSize)
+  const pageRows = staff
 
   function openAdd() { setForm(emptyForm); setTouched({}); setDialog({ type: 'add' }) }
   async function commitAdd() {
@@ -149,7 +148,7 @@ export default function StaffAccounts() {
         </div>
       </div>
       <section className="admin-list-card" aria-labelledby="staff-table-title">
-      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div><span>{visibleStaff.length} {visibleStaff.length === 1 ? 'staff member' : 'staff members'}</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
+      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div><span>{staffResult?.pagination?.total ?? 0} staff members</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Name</th><th>Post</th><th>Last sign in</th><th>Account status</th><th><span className="visually-hidden">Account action</span></th></tr></thead>
         <tbody>
@@ -159,10 +158,10 @@ export default function StaffAccounts() {
             <td><span className={`admin-badge ${person.status === 'Active' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{person.status}</span></td>
             <td><button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>{person.pendingActivation && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</td>
           </tr>)}
-          {visibleStaff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
+          {staff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
       </table></div></section>
-      <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleStaff.length} onPageChange={setPage} />
+      <TablePagination currentPage={staffResult?.pagination?.page ?? page} pageSize={PAGE_SIZE} totalItems={staffResult?.pagination?.total ?? 0} onPageChange={setPage} />
 
       {dialog?.type === 'add' && <AdminDialog title="Add staff member" description="Enter the staff member’s details and assign an eligible post." onClose={() => setDialog(null)} size="large">
         <form id="staff-add-form" className="admin-dialog__form admin-dialog__form--staff" onSubmit={(event) => {

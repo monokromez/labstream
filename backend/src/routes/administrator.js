@@ -2,6 +2,20 @@ import { Router } from "express";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
+import { isUuid, validateCategoryDetails, validateReferenceRangeDetails, validateTestDetails } from "../adminValidation.js";
+
+const REPORT_PERIODS = new Set(["weekly", "monthly", "annual"]);
+const STAFF_ROLES = new Set(["administrator", "cashier", "medical_technologist", "pathologist", "patient"]);
+
+function reportStartExpression(period) {
+  return period === "weekly" ? "date_trunc('day', now()) - interval '6 days'"
+    : period === "annual" ? "date_trunc('year', now())"
+      : "date_trunc('month', now())";
+}
+
+function reportPeriodWord(period) {
+  return period === "weekly" ? "week" : period === "annual" ? "year" : "month";
+}
 
 export function createAdministratorRouter({ client, publishCatalogChanged }) {
   const router = Router();
@@ -11,35 +25,49 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
     try {
       const format = String(req.query.format ?? "").toLowerCase();
       if (!["xlsx", "pdf"].includes(format)) return res.status(400).json({ error: "INVALID_REPORT_FORMAT", message: "Choose xlsx or pdf." });
+      const period = String(req.query.period ?? "monthly").toLowerCase();
+      if (!REPORT_PERIODS.has(period)) return res.status(400).json({ error: "INVALID_PERIOD", message: "Choose weekly, monthly, or annual." });
+      const startExpression = reportStartExpression(period);
+      const [range] = await client.unsafe(`select ${startExpression} as starts_at`);
       const [summary] = await client.unsafe(
-        `select count(*) filter (where requested_at >= date_trunc('month', now()))::integer as requests,
-                count(*) filter (where status = 'awaiting_payment' and requested_at >= date_trunc('month', now()))::integer as awaiting_payment,
-                count(*) filter (where status in ('paid','specimen_collection','processing') and requested_at >= date_trunc('month', now()))::integer as in_progress,
-                count(*) filter (where status = 'for_validation' and requested_at >= date_trunc('month', now()))::integer as for_validation,
-                count(*) filter (where status = 'released' and released_at >= date_trunc('month', now()))::integer as released_requests
-           from public.test_requests where clinic_id = $1`, [req.user.clinicId]);
+        `select count(*) filter (where requested_at >= $2)::integer as requests,
+                count(*) filter (where status = 'awaiting_payment' and requested_at >= $2)::integer as awaiting_payment,
+                count(*) filter (where status in ('paid','specimen_collection','processing') and requested_at >= $2)::integer as in_progress,
+                count(*) filter (where status = 'for_validation' and requested_at >= $2)::integer as for_validation,
+                count(*) filter (where status = 'released' and released_at >= $2)::integer as released_requests
+           from public.test_requests where clinic_id = $1`, [req.user.clinicId, range.starts_at]);
       const [financial] = await client.unsafe(
         `select coalesce(sum(amount), 0)::numeric as revenue from public.payments
-          where clinic_id = $1 and voided_at is null and paid_at >= date_trunc('month', now())`, [req.user.clinicId]);
+          where clinic_id = $1 and voided_at is null and paid_at >= $2`, [req.user.clinicId, range.starts_at]);
       const categories = await client.unsafe(
-        `select c.name as category, count(ri.id) filter (where r.id is not null)::integer as tests
-           from public.test_categories c
-           left join public.test_category_memberships m on m.category_id = c.id and m.clinic_id = c.clinic_id
-           left join public.request_items ri on ri.test_id = m.test_id and ri.clinic_id = m.clinic_id and ri.status = 'released'
-           left join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id and r.released_at >= date_trunc('month', now())
-          where c.clinic_id = $1 and c.is_active = true group by c.id order by c.name`, [req.user.clinicId]);
+        `with report_categories as (
+           select name as category from public.test_categories where clinic_id = $1 and is_active = true
+           union
+           select distinct ri.category_name_snapshot from public.request_items ri
+             join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id
+            where r.clinic_id = $1 and r.status = 'released' and r.released_at >= $2
+         ), released_volume as (
+           select ri.category_name_snapshot as category, count(*)::integer as tests
+             from public.request_items ri join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id
+            where r.clinic_id = $1 and r.status = 'released' and r.released_at >= $2
+            group by ri.category_name_snapshot
+         )
+         select c.category, coalesce(v.tests, 0)::integer as tests
+           from report_categories c left join released_volume v using (category) order by c.category`,
+        [req.user.clinicId, range.starts_at]);
+      const periodLabel = period[0].toUpperCase() + period.slice(1);
       const rows = [
         ["Metric", "Value"],
-        ["Requests this month", summary.requests], ["Awaiting payment", summary.awaiting_payment],
+        [`Requests this ${reportPeriodWord(period)}`, summary.requests], ["Awaiting payment", summary.awaiting_payment],
         ["In progress", summary.in_progress], ["Awaiting validation", summary.for_validation],
-        ["Released requests", summary.released_requests], ["Revenue this month (PHP)", Number(financial.revenue)],
-        [], ["Category", "Released tests this month"], ...categories.map((row) => [row.category, row.tests]),
+        ["Released requests", summary.released_requests], [`Revenue this ${reportPeriodWord(period)} (PHP)`, Number(financial.revenue)],
+        [], ["Category", `Released tests this ${reportPeriodWord(period)}`], ...categories.map((row) => [row.category, row.tests]),
       ];
       await client.unsafe(
         `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, details)
-         values ($1, $2, 'report.exported', 'report', jsonb_build_object('format', $3::text))`,
-        [req.user.clinicId, req.user.sub, format]);
-      const filename = `labstream-operations-report-${new Date().toISOString().slice(0, 10)}`;
+         values ($1, $2, 'report.exported', 'report', jsonb_build_object('format', $3::text, 'period', $4::text))`,
+        [req.user.clinicId, req.user.sub, format, period]);
+      const filename = `labstream-operations-report-${period}-${new Date().toISOString().slice(0, 10)}`;
       if (format === "xlsx") {
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet("Operations report");
@@ -56,7 +84,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       const pdf = new PDFDocument({ margin: 52, size: "A4" });
       pdf.pipe(res);
       pdf.fontSize(18).fillColor("#14564f").text("Labstream Operations Report");
-      pdf.moveDown(0.3).fontSize(10).fillColor("#526d70").text(`Month to date · Generated ${new Date().toLocaleString("en-PH")}`);
+      pdf.moveDown(0.3).fontSize(10).fillColor("#526d70").text(`${periodLabel} · Generated ${new Date().toLocaleString("en-PH")}`);
       pdf.moveDown(1);
       rows.forEach(([label, value]) => {
         if (!label && value == null) { pdf.moveDown(0.6); return; }
@@ -70,6 +98,9 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.get("/dashboard/summary", async (req, res, next) => {
     try {
+      const period = String(req.query.period ?? "monthly").toLowerCase();
+      if (!REPORT_PERIODS.has(period)) return res.status(400).json({ error: "INVALID_PERIOD", message: "Choose weekly, monthly, or annual." });
+      const [range] = await client.unsafe(`select ${reportStartExpression(period)} as starts_at`);
       const [requestCounts] = await client.unsafe(
         `select count(*)::integer as total_requests,
                 count(*) filter (where status = 'awaiting_payment')::integer as awaiting_payment,
@@ -77,30 +108,30 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
                 count(*) filter (where status = 'for_validation')::integer as for_validation,
                 count(*) filter (where status = 'correction')::integer as correction,
                 count(*) filter (where status = 'released')::integer as released
-           from public.test_requests where clinic_id = $1 and requested_at >= date_trunc('month', now())`,
-        [req.user.clinicId],
+           from public.test_requests where clinic_id = $1 and requested_at >= $2`,
+        [req.user.clinicId, range.starts_at],
       );
       const [testCounts] = await client.unsafe(
         `select count(*)::integer as released_tests
            from public.request_items ri join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id
-          where r.clinic_id = $1 and r.status = 'released' and r.released_at >= date_trunc('month', now())`,
-        [req.user.clinicId],
+          where r.clinic_id = $1 and r.status = 'released' and r.released_at >= $2`,
+        [req.user.clinicId, range.starts_at],
       );
       const [financials] = await client.unsafe(
         `select coalesce(sum(p.amount), 0)::numeric as total_revenue
            from public.payments p
-          where p.clinic_id = $1 and p.voided_at is null and p.paid_at >= date_trunc('month', now())`,
-        [req.user.clinicId],
+          where p.clinic_id = $1 and p.voided_at is null and p.paid_at >= $2`,
+        [req.user.clinicId, range.starts_at],
       );
       const [turnaround] = await client.unsafe(
         `select coalesce(round(avg(extract(epoch from (r.released_at - r.paid_at)) / 60)), 0)::integer as avg_tat_minutes
            from public.test_requests r
-          where r.clinic_id = $1 and r.status = 'released' and r.released_at >= date_trunc('month', now()) and r.paid_at is not null`,
-        [req.user.clinicId],
+          where r.clinic_id = $1 and r.status = 'released' and r.released_at >= $2 and r.paid_at is not null`,
+        [req.user.clinicId, range.starts_at],
       );
       return res.json({
         data: {
-          period: "month_to_date",
+          period,
           requests: requestCounts,
           releasedTests: testCounts.released_tests,
           revenue: Number(financials.total_revenue || 0),
@@ -117,8 +148,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       const period = String(req.query.period ?? "weekly");
       if (!["weekly", "monthly", "annual"].includes(period)) return res.status(400).json({ error: "INVALID_PERIOD" });
       const bucketExpr = period === "annual" ? "date_trunc('month', r.released_at)" : "date_trunc('day', r.released_at)";
-      const startExpr = period === "weekly" ? "date_trunc('day', now()) - interval '6 days'"
-        : period === "monthly" ? "date_trunc('month', now())" : "date_trunc('year', now())";
+      const startExpr = reportStartExpression(period);
       const step = period === "annual" ? "1 month" : "1 day";
       const bucketStart = period === "annual" ? "date_trunc('month', now())" : "date_trunc('day', now())";
       const endStep = period === "annual" ? "1 month" : "1 day";
@@ -131,25 +161,28 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
         [range.starts_at, range.ends_at, step],
       );
       const categories = await client.unsafe(
-        `select id, name from public.test_categories where clinic_id = $1 and is_active = true order by name`,
-        [req.user.clinicId],
-      );
-      const totals = await client.unsafe(
-        `select ${bucketExpr} as bucket, c.id as category_id, count(ri.id)::integer as total
-           from public.test_requests r
-           join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
-           join public.test_catalog t on t.id = ri.test_id and t.clinic_id = ri.clinic_id
-           join public.test_categories c on c.id = t.category_id and c.clinic_id = t.clinic_id
+        `select name from public.test_categories where clinic_id = $1 and is_active = true
+         union
+         select distinct ri.category_name_snapshot as name
+           from public.request_items ri join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id
           where r.clinic_id = $1 and r.status = 'released' and r.released_at >= $2 and r.released_at < $3
-          group by bucket, c.id`,
+         order by name`,
         [req.user.clinicId, range.starts_at, range.exclusive_ends_at],
       );
-      const countByKey = new Map(totals.map((row) => [`${new Date(row.bucket).toISOString().slice(0, 10)}:${row.category_id}`, row.total]));
+      const totals = await client.unsafe(
+        `select ${bucketExpr} as bucket, ri.category_name_snapshot as category_name, count(ri.id)::integer as total
+           from public.test_requests r
+           join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
+          where r.clinic_id = $1 and r.status = 'released' and r.released_at >= $2 and r.released_at < $3
+          group by bucket, ri.category_name_snapshot`,
+        [req.user.clinicId, range.starts_at, range.exclusive_ends_at],
+      );
+      const countByKey = new Map(totals.map((row) => [`${new Date(row.bucket).toISOString().slice(0, 10)}:${row.category_name}`, row.total]));
       const chartBuckets = buckets.map(({ bucket }) => ({ value: new Date(bucket).toISOString().slice(0, 10), label: period === "annual" ? new Date(bucket).toLocaleString("en", { month: "short" }) : new Date(bucket).toLocaleString("en", { weekday: "short" }) }));
       const series = categories.map((category) => ({
-        id: category.id,
+        id: category.name,
         label: category.name,
-        values: chartBuckets.map((bucket) => countByKey.get(`${bucket.value}:${category.id}`) ?? 0),
+        values: chartBuckets.map((bucket) => countByKey.get(`${bucket.value}:${category.name}`) ?? 0),
       }));
       return res.json({ data: { period, total: series.reduce((sum, item) => sum + item.values.reduce((a, b) => a + b, 0), 0), buckets: chartBuckets, series } });
     } catch (error) {
@@ -159,27 +192,47 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.get("/audit-logs", async (req, res, next) => {
     try {
-      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const parsedPage = Number.parseInt(req.query.page, 10);
+      const requestedPage = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
-      const offset = (page - 1) * pageSize;
       const role = String(req.query.role ?? "");
       const action = String(req.query.action ?? "");
+      const query = String(req.query.q ?? "").trim();
+      if (!STAFF_ROLES.has(role) && role !== "system" && role !== "") return res.status(400).json({ error: "INVALID_ROLE_FILTER" });
+      if (action.length > 120 || query.length > 100) return res.status(400).json({ error: "INVALID_AUDIT_FILTER", message: "Audit filters are too long." });
       const [count] = await client.unsafe(
         `select count(*)::integer as total from public.audit_logs a
           left join public.users u on u.id = a.actor_user_id and u.clinic_id = a.clinic_id
-         where a.clinic_id = $1 and ($2 = '' or u.role::text = $2) and ($3 = '' or a.action = $3)`,
-        [req.user.clinicId, role, action],
+         where a.clinic_id = $1 and ($2 = '' or ($2 = 'system' and a.actor_user_id is null) or u.role::text = $2)
+           and ($3 = '' or a.action = $3)
+           and ($4 = '' or coalesce(u.username, 'System') ilike '%' || $4 || '%'
+             or a.action ilike '%' || $4 || '%' or a.entity_type ilike '%' || $4 || '%'
+             or coalesce(a.entity_id::text, '') ilike '%' || $4 || '%'
+             or coalesce(a.details::text, '') ilike '%' || $4 || '%')`,
+        [req.user.clinicId, role, action, query],
       );
+      const totalPages = Math.ceil(count.total / pageSize);
+      const page = Math.min(requestedPage, Math.max(1, totalPages));
+      const offset = (page - 1) * pageSize;
       const data = await client.unsafe(
         `select a.id, a.action, a.entity_type, a.entity_id, a.details, a.created_at,
                 u.role, coalesce(u.username, 'System') as actor
            from public.audit_logs a
            left join public.users u on u.id = a.actor_user_id and u.clinic_id = a.clinic_id
-          where a.clinic_id = $1 and ($2 = '' or u.role::text = $2) and ($3 = '' or a.action = $3)
+          where a.clinic_id = $1 and ($2 = '' or ($2 = 'system' and a.actor_user_id is null) or u.role::text = $2)
+            and ($3 = '' or a.action = $3)
+            and ($6 = '' or coalesce(u.username, 'System') ilike '%' || $6 || '%'
+              or a.action ilike '%' || $6 || '%' or a.entity_type ilike '%' || $6 || '%'
+              or coalesce(a.entity_id::text, '') ilike '%' || $6 || '%'
+              or coalesce(a.details::text, '') ilike '%' || $6 || '%')
           order by a.created_at desc limit $4 offset $5`,
-        [req.user.clinicId, role, action, pageSize, offset],
+        [req.user.clinicId, role, action, pageSize, offset, query],
       );
-      return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
+      const actions = await client.unsafe(
+        `select distinct action from public.audit_logs where clinic_id = $1 order by action`,
+        [req.user.clinicId],
+      );
+      return res.json({ data, actions: actions.map(({ action: actionName }) => actionName), pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
       return next(error);
     }
@@ -187,6 +240,13 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.get("/catalog", async (req, res, next) => {
     try {
+      const parsedPage = Number.parseInt(req.query.page, 10);
+      const requestedPage = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+      const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
+      const query = String(req.query.q ?? "").trim();
+      const categoryId = String(req.query.categoryId ?? "");
+      if (query.length > 100) return res.status(400).json({ error: "INVALID_SEARCH", message: "Catalog search cannot exceed 100 characters." });
+      if (categoryId && !isUuid(categoryId)) return res.status(400).json({ error: "INVALID_CATEGORY_FILTER" });
       const categories = await client.unsafe(
         `select c.id, c.name, c.description, c.is_active,
                 count(m.test_id)::integer as test_count
@@ -194,6 +254,16 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
           where c.clinic_id = $1 group by c.id order by c.name`,
         [req.user.clinicId],
       );
+      const [count] = await client.unsafe(
+        `select count(*)::integer as total from public.test_catalog t
+          where t.clinic_id = $1 and ($2 = '' or t.name ilike '%' || $2 || '%')
+            and ($3::uuid is null or exists (select 1 from public.test_category_memberships fm
+              where fm.test_id = t.id and fm.clinic_id = t.clinic_id and fm.category_id = $3))`,
+        [req.user.clinicId, query, categoryId || null],
+      );
+      const totalPages = Math.ceil(count.total / pageSize);
+      const page = Math.min(requestedPage, Math.max(1, totalPages));
+      const offset = (page - 1) * pageSize;
       const tests = await client.unsafe(
         `select t.id, t.code, t.name, t.description, t.category_id, c.name as category_name,
                 coalesce((select jsonb_agg(jsonb_build_object('id', mc.id, 'name', mc.name) order by mc.name)
@@ -206,10 +276,10 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
           where t.clinic_id = $1 and ($2 = '' or t.name ilike '%' || $2 || '%')
             and ($3::uuid is null or exists (select 1 from public.test_category_memberships fm
               where fm.test_id = t.id and fm.clinic_id = t.clinic_id and fm.category_id = $3))
-          order by t.name`,
-        [req.user.clinicId, String(req.query.q ?? "").trim(), req.query.categoryId || null],
+          order by t.name limit $4 offset $5`,
+        [req.user.clinicId, query, categoryId || null, pageSize, offset],
       );
-      return res.json({ data: { categories, tests } });
+      return res.json({ data: { categories, tests }, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
       return next(error);
     }
@@ -217,8 +287,9 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.post("/categories", async (req, res, next) => {
     try {
+      const validationError = validateCategoryDetails(req.body);
+      if (validationError) return res.status(400).json({ error: "INVALID_CATEGORY_DETAILS", message: validationError });
       const name = String(req.body?.name ?? "").trim();
-      if (!name) return res.status(400).json({ error: "CATEGORY_NAME_REQUIRED" });
       const [data] = await client.unsafe(
         `insert into public.test_categories (clinic_id, name, description)
          values ($1, $2, $3) returning id, name, description, is_active`,
@@ -240,6 +311,8 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
   router.post("/tests", async (req, res, next) => {
     try {
       const body = req.body ?? {};
+      const validationError = validateTestDetails(body);
+      if (validationError) return res.status(400).json({ error: "INVALID_TEST_DETAILS", message: validationError });
       const name = String(body.name ?? "").trim();
       const categoryIds = [...new Set((Array.isArray(body.categoryIds) ? body.categoryIds : [body.categoryId]).map((id) => String(id ?? "").trim()).filter(Boolean))];
       const categoryId = categoryIds[0];
@@ -312,6 +385,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.get("/tests/:id/configuration", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_TEST_ID" });
       const [test] = await client.unsafe(
         `select id, code, name, description, category_id, price, turnaround_minutes, is_available
            from public.test_catalog where id = $1 and clinic_id = $2`,
@@ -336,7 +410,10 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.patch("/tests/:id", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_TEST_ID" });
       const body = req.body ?? {};
+      const validationError = validateTestDetails(body, { partial: true });
+      if (validationError) return res.status(400).json({ error: "INVALID_TEST_DETAILS", message: validationError });
       const result = await client.begin(async (tx) => {
         const [current] = await tx.unsafe(`select id, category_id, is_available from public.test_catalog where id = $1 and clinic_id = $2 for update`, [req.params.id, req.user.clinicId]);
         if (!current) throw Object.assign(new Error("Test was not found."), { code: "TEST_NOT_FOUND" });
@@ -477,7 +554,16 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.delete("/categories/:id", async (req, res, next) => {
     try {
+      if (req.body?.testActions != null && !Array.isArray(req.body.testActions)) {
+        return res.status(400).json({ error: "INVALID_CATEGORY_ACTIONS" });
+      }
       const actions = Array.isArray(req.body?.testActions) ? req.body.testActions : [];
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_CATEGORY_ID" });
+      if (actions.some((action) => !action || !isUuid(action.testId)
+        || !["relocate", "remove"].includes(action.action)
+        || (action.action === "relocate" && !isUuid(action.categoryId)))) {
+        return res.status(400).json({ error: "INVALID_CATEGORY_ACTIONS" });
+      }
       const result = await client.begin(async (tx) => {
         const [category] = await tx.unsafe(`select id from public.test_categories where id = $1 and clinic_id = $2 for update`, [req.params.id, req.user.clinicId]);
         if (!category) throw Object.assign(new Error("Category was not found."), { code: "CATEGORY_NOT_FOUND" });
@@ -525,6 +611,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.delete("/tests/:id", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_TEST_ID" });
       const [data] = await client.unsafe(
         `update public.test_catalog set is_available = false, updated_at = now()
           where id = $1 and clinic_id = $2 and is_available = true returning id, name`,
@@ -545,29 +632,38 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.get("/reference-ranges", async (req, res, next) => {
     try {
-      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const parsedPage = Number.parseInt(req.query.page, 10);
+      const requestedPage = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
-      const offset = (page - 1) * pageSize;
       const query = String(req.query.q ?? "").trim();
       const sex = String(req.query.sex ?? "");
+      if (query.length > 100) return res.status(400).json({ error: "INVALID_SEARCH", message: "Reference-range search cannot exceed 100 characters." });
+      if (!["", "female", "male", "all"].includes(sex)) return res.status(400).json({ error: "INVALID_SEX_FILTER" });
+      const sexFilter = sex === "all" ? null : sex;
+      const allSexesOnly = sex === "all";
       const [count] = await client.unsafe(
         `select count(*)::integer as total from public.reference_ranges rr
           join public.test_analytes a on a.id = rr.analyte_id and a.clinic_id = rr.clinic_id
           join public.test_catalog t on t.id = a.test_id and t.clinic_id = a.clinic_id
-         where rr.clinic_id = $1 and rr.is_active = true and ($2 = '' or t.name ilike '%' || $2 || '%') and ($3 = '' or rr.sex = $3)`,
-        [req.user.clinicId, query, sex],
+         where rr.clinic_id = $1 and rr.is_active = true and ($2 = '' or t.name ilike '%' || $2 || '%')
+           and ($4 = '' or ($4 = 'all' and rr.sex is null) or rr.sex = $3)`,
+        [req.user.clinicId, query, sexFilter, allSexesOnly ? "all" : sex],
       );
+      const totalPages = Math.ceil(count.total / pageSize);
+      const page = Math.min(requestedPage, Math.max(1, totalPages));
+      const offset = (page - 1) * pageSize;
       const data = await client.unsafe(
         `select rr.id, t.id as test_id, t.name as test_name, a.id as analyte_id, a.label as analyte,
                 rr.sex, rr.min_age_days, rr.max_age_days, rr.lower_limit, rr.upper_limit, rr.unit, rr.guidance
            from public.reference_ranges rr
            join public.test_analytes a on a.id = rr.analyte_id and a.clinic_id = rr.clinic_id
            join public.test_catalog t on t.id = a.test_id and t.clinic_id = a.clinic_id
-          where rr.clinic_id = $1 and rr.is_active = true and ($2 = '' or t.name ilike '%' || $2 || '%') and ($3 = '' or rr.sex = $3)
+          where rr.clinic_id = $1 and rr.is_active = true and ($2 = '' or t.name ilike '%' || $2 || '%')
+            and ($6 = '' or ($6 = 'all' and rr.sex is null) or rr.sex = $3)
           order by t.name, a.sort_order, rr.sex limit $4 offset $5`,
-        [req.user.clinicId, query, sex, pageSize, offset],
+        [req.user.clinicId, query, sexFilter, pageSize, offset, allSexesOnly ? "all" : sex],
       );
-      return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
+      return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
       return next(error);
     }
@@ -576,7 +672,8 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
   router.post("/reference-ranges", async (req, res, next) => {
     try {
       const body = req.body ?? {};
-      if (!body.analyteId || (!body.sex && body.sex !== null)) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE" });
+      const validationError = validateReferenceRangeDetails(body);
+      if (validationError) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE", message: validationError });
       const [analyte] = await client.unsafe(`select id from public.test_analytes where id = $1 and clinic_id = $2`, [body.analyteId, req.user.clinicId]);
       if (!analyte) return res.status(404).json({ error: "ANALYTE_NOT_FOUND" });
       const [data] = await client.unsafe(
@@ -597,15 +694,33 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.patch("/reference-ranges/:id", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE_ID" });
       const body = req.body ?? {};
+      const validationError = validateReferenceRangeDetails(body, { partial: true });
+      if (validationError) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE", message: validationError });
+      if (Object.hasOwn(body, "analyteId")) {
+        const [analyte] = await client.unsafe(
+          `select id from public.test_analytes where id = $1 and clinic_id = $2`,
+          [body.analyteId, req.user.clinicId],
+        );
+        if (!analyte) return res.status(404).json({ error: "ANALYTE_NOT_FOUND" });
+      }
       const [data] = await client.unsafe(
-        `update public.reference_ranges set sex = coalesce($1,sex), min_age_days = coalesce($2,min_age_days),
-                max_age_days = coalesce($3,max_age_days), lower_limit = coalesce($4,lower_limit),
-                upper_limit = coalesce($5,upper_limit), unit = coalesce($6,unit), guidance = coalesce($7,guidance), updated_at = now()
-          where id = $8 and clinic_id = $9 and is_active = true
+        `update public.reference_ranges set sex = case when $1::boolean then $2 else sex end,
+                min_age_days = case when $3::boolean then $4 else min_age_days end,
+                max_age_days = case when $5::boolean then $6 else max_age_days end,
+                lower_limit = case when $7::boolean then $8 else lower_limit end,
+                upper_limit = case when $9::boolean then $10 else upper_limit end,
+                unit = case when $11::boolean then $12 else unit end,
+                guidance = case when $13::boolean then $14 else guidance end,
+                analyte_id = case when $15::boolean then $16 else analyte_id end, updated_at = now()
+          where id = $17 and clinic_id = $18 and is_active = true
           returning id, analyte_id, sex, min_age_days, max_age_days, lower_limit, upper_limit, unit, guidance`,
-        [body.sex ?? null, body.minAgeDays ?? null, body.maxAgeDays ?? null, body.lowerLimit ?? null,
-          body.upperLimit ?? null, body.unit ?? null, body.guidance ?? null, req.params.id, req.user.clinicId],
+        [Object.hasOwn(body, "sex"), body.sex ?? null, Object.hasOwn(body, "minAgeDays"), body.minAgeDays ?? null,
+          Object.hasOwn(body, "maxAgeDays"), body.maxAgeDays ?? null, Object.hasOwn(body, "lowerLimit"), body.lowerLimit ?? null,
+          Object.hasOwn(body, "upperLimit"), body.upperLimit ?? null, Object.hasOwn(body, "unit"), body.unit ?? null,
+          Object.hasOwn(body, "guidance"), body.guidance ?? null, Object.hasOwn(body, "analyteId"), body.analyteId ?? null,
+          req.params.id, req.user.clinicId],
       );
       if (!data) return res.status(404).json({ error: "REFERENCE_RANGE_NOT_FOUND" });
       await client.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'reference_range.updated','reference_range',$3)`, [req.user.clinicId, req.user.sub, data.id]);
@@ -618,6 +733,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
 
   router.delete("/reference-ranges/:id", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE_ID" });
       const [data] = await client.unsafe(`update public.reference_ranges set is_active = false, updated_at = now() where id = $1 and clinic_id = $2 and is_active = true returning id`, [req.params.id, req.user.clinicId]);
       if (!data) return res.status(404).json({ error: "REFERENCE_RANGE_NOT_FOUND" });
       await client.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'reference_range.deactivated','reference_range',$3)`, [req.user.clinicId, req.user.sub, data.id]);

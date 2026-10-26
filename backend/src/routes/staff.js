@@ -2,13 +2,10 @@ import { Router } from "express";
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { emailService } from "../email.js";
+import { isUuid, validateStaffDetails } from "../adminValidation.js";
 
 const STAFF_ROLES = new Set(["cashier", "medical_technologist", "pathologist"]);
 const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "for_validation", "correction"];
-const PUBLIC_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
-  "yahoo.com", "yahoo.com.ph", "icloud.com", "me.com",
-]);
 
 export function createStaffRouter({ client }) {
   const router = Router();
@@ -16,19 +13,30 @@ export function createStaffRouter({ client }) {
 
   router.get("/", async (req, res, next) => {
     try {
-      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const parsedPage = Number.parseInt(req.query.page, 10);
+      const requestedPage = Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
-      const offset = (page - 1) * pageSize;
       const role = String(req.query.role ?? "");
       const status = String(req.query.status ?? "");
+      const query = String(req.query.q ?? "").trim();
+      if (query.length > 100) return res.status(400).json({ error: "INVALID_SEARCH", message: "Staff search cannot exceed 100 characters." });
+      if (role && !STAFF_ROLES.has(role)) return res.status(400).json({ error: "INVALID_STAFF_ROLE", message: "Choose a supported staff role." });
+      if (status && !["true", "false"].includes(status)) return res.status(400).json({ error: "INVALID_STATUS_FILTER", message: "Choose Active or Inactive." });
       const [count] = await client.unsafe(
         `select count(*)::integer as total
            from public.users u
+           join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
           where u.clinic_id = $1 and u.role <> 'patient'
             and ($2 = '' or u.role::text = $2)
-            and ($3 = '' or u.is_active::text = $3)`,
-        [req.user.clinicId, role, status],
+            and ($3 = '' or u.is_active::text = $3)
+            and ($4 = '' or u.username ilike '%' || $4 || '%' or u.email ilike '%' || $4 || '%'
+              or p.first_name ilike '%' || $4 || '%' or p.middle_name ilike '%' || $4 || '%'
+              or p.last_name ilike '%' || $4 || '%')`,
+        [req.user.clinicId, role, status, query],
       );
+      const totalPages = Math.ceil(count.total / pageSize);
+      const page = Math.min(requestedPage, Math.max(1, totalPages));
+      const offset = (page - 1) * pageSize;
       const staff = await client.unsafe(
         `select u.id, u.username, u.email, u.role, u.is_active, u.last_sign_in_at, (u.password_hash is null) as pending_activation,
                 p.first_name, p.middle_name, p.last_name, p.date_of_birth,
@@ -38,11 +46,14 @@ export function createStaffRouter({ client }) {
           where u.clinic_id = $1 and u.role <> 'patient'
             and ($2 = '' or u.role::text = $2)
             and ($3 = '' or u.is_active::text = $3)
+            and ($6 = '' or u.username ilike '%' || $6 || '%' or u.email ilike '%' || $6 || '%'
+              or p.first_name ilike '%' || $6 || '%' or p.middle_name ilike '%' || $6 || '%'
+              or p.last_name ilike '%' || $6 || '%')
           order by p.last_name, p.first_name
           limit $4 offset $5`,
-        [req.user.clinicId, role, status, pageSize, offset],
+        [req.user.clinicId, role, status, pageSize, offset, query],
       );
-      return res.json({ data: staff, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
+      return res.json({ data: staff, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
       return next(error);
     }
@@ -51,6 +62,14 @@ export function createStaffRouter({ client }) {
   router.post("/", async (req, res, next) => {
     try {
       const body = req.body ?? {};
+      const validationErrors = validateStaffDetails(body);
+      if (Object.keys(validationErrors).length) {
+        return res.status(400).json({
+          error: "INVALID_STAFF_DETAILS",
+          message: "Correct the staff details and try again.",
+          fields: validationErrors,
+        });
+      }
       const role = String(body.role ?? "");
       const firstName = String(body.firstName ?? "").trim();
       const middleName = String(body.middleName ?? "").trim() || null;
@@ -58,14 +77,6 @@ export function createStaffRouter({ client }) {
       const email = String(body.email ?? "").trim().toLowerCase();
       const phone = String(body.phone ?? "").trim();
       const dateOfBirth = String(body.dateOfBirth ?? "").trim();
-      if (!STAFF_ROLES.has(role)) return res.status(400).json({ error: "INVALID_STAFF_ROLE", message: "Choose a non-administrator staff role." });
-      if (!firstName || !lastName || !email || !phone || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) {
-        return res.status(400).json({ error: "INVALID_STAFF_DETAILS", message: "Provide first name, surname, date of birth, contact number, and email." });
-      }
-      const emailDomain = email.slice(email.lastIndexOf("@") + 1);
-      if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !PUBLIC_EMAIL_DOMAINS.has(emailDomain)) {
-        return res.status(400).json({ error: "INVALID_STAFF_EMAIL", message: "Use a valid personal email address from a supported public email provider." });
-      }
       const activation = createOneTimeCode();
       const result = await client.begin(async (tx) => {
         const [user] = await tx.unsafe(
@@ -114,6 +125,7 @@ export function createStaffRouter({ client }) {
 
   router.post("/:id/activation", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
       const activation = createOneTimeCode();
       const staff = await client.begin(async (tx) => {
         const [target] = await tx.unsafe(
@@ -144,6 +156,7 @@ export function createStaffRouter({ client }) {
 
   router.patch("/:id/status", async (req, res, next) => {
     try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
       const userId = req.params.id;
       const isActive = req.body?.isActive;
       if (typeof isActive !== "boolean") return res.status(400).json({ error: "INVALID_STATUS" });

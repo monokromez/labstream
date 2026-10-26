@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
@@ -6,8 +7,10 @@ import useTablePagination from '../../components/data/useTablePagination.js'
 import './Reports.css'
 
 export default function Reports() {
-  const { result: summaryResult, error: summaryError } = useApiResource(() => api.administrator.dashboard(), [])
-  const { result: volumeResult, error: volumeError } = useApiResource(() => api.administrator.testVolume({ period: 'monthly' }), [])
+  const [period, setPeriod] = useState('monthly')
+  const periodDescription = `this ${period === 'annual' ? 'year' : period === 'weekly' ? 'week' : 'month'}`
+  const { result: summaryResult, error: summaryError } = useApiResource(() => api.administrator.dashboard({ period }), [period])
+  const { result: volumeResult, error: volumeError } = useApiResource(() => api.administrator.testVolume({ period }), [period])
   const report = summaryResult?.data
   const requestCounts = report?.requests ?? {}
   const series = volumeResult?.data?.series ?? []
@@ -22,9 +25,9 @@ export default function Reports() {
   const revenueFormatted = currency.format(Number(report?.revenue ?? 0))
 
   const reportMetrics = [
-    ['Total revenue this month', revenueFormatted],
+    [`Total revenue ${periodDescription}`, revenueFormatted],
     ['Average turnaround time (TAT)', tatFormatted],
-    ['Requests this month', String(requestCounts.totalRequests ?? 0)],
+    [`Requests ${periodDescription}`, String(requestCounts.totalRequests ?? 0)],
     ['Awaiting payment', String(requestCounts.awaitingPayment ?? 0)],
     ['In progress', String(requestCounts.inProgress ?? 0)],
     ['Awaiting validation', String(requestCounts.forValidation ?? 0)],
@@ -35,7 +38,7 @@ export default function Reports() {
   const { currentPage, pageSize, setCurrentPage, visibleItems: pageRows } = useTablePagination(performanceRows)
 
   async function exportReport(format) {
-    try { await api.administrator.exportReport(format) }
+    try { await api.administrator.exportReport(format, period) }
     catch (error) { window.alert(error.message || 'Unable to export report.') }
   }
 
@@ -45,6 +48,7 @@ export default function Reports() {
       <div className="admin-page__title-row">
         <p>Review laboratory activity, revenue, turnaround times, and test volumes.</p>
         <div className="admin-toolbar">
+          <label className="admin-toolbar__field">Reporting period<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label>
           <button className="admin-button admin-button--positive" type="button" onClick={() => exportReport('xlsx')}>
             Export Spreadsheet
           </button>
@@ -55,9 +59,9 @@ export default function Reports() {
       </div>
 
       <div className="admin-dashboard__summary">
-        <SummaryCard title="Revenue" value={revenueFormatted} helperText="Collected this month" />
+        <SummaryCard title="Revenue" value={revenueFormatted} helperText={`Collected ${periodDescription}`} />
         <SummaryCard title="Avg. turnaround time" value={tatFormatted} helperText="Payment to release" />
-        <SummaryCard title="Tests processed" value={String(volumeResult?.data?.total ?? 0)} helperText="Released this month" />
+        <SummaryCard title="Tests processed" value={String(volumeResult?.data?.total ?? 0)} helperText={`Released ${periodDescription}`} />
         <SummaryCard title="Pending results" value={String(requestCounts.forValidation ?? 0)} helperText="Awaiting validation" />
       </div>
 
@@ -65,7 +69,7 @@ export default function Reports() {
         <div className="admin-panel__heading">
           <div>
             <h2>Category Volume</h2>
-            <p>Distribution of processed tests this month</p>
+            <p>Distribution of processed tests {periodDescription}</p>
           </div>
           <span className="admin-badge">{volumeResult?.data?.total ?? 0} tests</span>
         </div>

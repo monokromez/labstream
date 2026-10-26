@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
@@ -12,7 +12,11 @@ const chartColors = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#0891b2', '#be
 export default function AdminDashboard() {
   const [chartType, setChartType] = useState('Bar')
   const [period, setPeriod] = useState('Weekly')
-  const { result: summaryResult, error: summaryError } = useApiResource(() => api.administrator.dashboard(), [])
+  const periodWord = period === 'Annual' ? 'year' : period === 'Weekly' ? 'week' : 'month'
+  const { result: summaryResult, error: summaryError } = useApiResource(
+    () => api.administrator.dashboard({ period: period.toLowerCase() }),
+    [period],
+  )
   const { result: volumeResult, error: volumeError } = useApiResource(() => api.administrator.testVolume({ period: period.toLowerCase() }), [period])
   const { result: activityResult } = useApiResource(() => api.administrator.auditLogs({ page: 1, pageSize: 10 }), [])
   const report = summaryResult?.data
@@ -29,10 +33,10 @@ export default function AdminDashboard() {
   const revenueFormatted = currency.format(Number(report?.revenue ?? 0))
 
   const summary = [
-    { label: 'TOTAL REVENUE', value: revenueFormatted, helperText: 'Collected this month' },
-    { label: 'TOTAL REQUESTS', value: String(requestCounts.totalRequests ?? 0), helperText: 'Requested this month' },
+    { label: 'TOTAL REVENUE', value: revenueFormatted, helperText: `Collected this ${periodWord}` },
+    { label: 'TOTAL REQUESTS', value: String(requestCounts.totalRequests ?? 0), helperText: `Requested this ${periodWord}` },
     { label: 'AVG. TURNAROUND', value: tatFormatted, helperText: 'Payment to release' },
-    { label: 'RELEASED TESTS', value: String(report?.releasedTests ?? 0), helperText: 'Completed this month' },
+    { label: 'RELEASED TESTS', value: String(report?.releasedTests ?? 0), helperText: `Completed this ${periodWord}` },
   ]
   const workflow = [
     { label: 'Queued', value: Number(requestCounts.awaitingPayment ?? 0), tone: 'muted' },
