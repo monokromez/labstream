@@ -9,7 +9,7 @@ with activation_secret as (
 clinic_row as (
   insert into public.clinics (code, name)
   values ('LABSTREAM-DEMO', 'Labstream Diagnostic Laboratory')
-  returning id, code
+  returning id, code, name
 ),
 admin_row as (
   insert into public.users (clinic_id, role, email, is_active, must_change_password)
