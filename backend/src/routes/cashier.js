@@ -4,8 +4,8 @@ import { isSupportedCountry, parsePhoneNumberFromString } from "libphonenumber-j
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
 import { emailService } from "../email.js";
+import { ACTIVE_REQUEST_STATUSES } from "../requestStatus.js";
 
-const ACTIVE_REQUEST_STATUSES = ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction"];
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
 const patientNamePattern = /^[\p{L}\p{M}]+(?:[ '\u2019.-][\p{L}\p{M}]+)*$/u;
 const patientIdNumberPattern = /^[\p{L}\p{N}][\p{L}\p{N} /-]*$/u;
@@ -278,10 +278,12 @@ export function createCashierRouter({ client }) {
         );
         if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });
         const [existing] = await tx.unsafe(
-          `select id from public.test_requests where clinic_id = $1 and patient_id = $2 and status = 'awaiting_payment' limit 1`,
-          [req.user.clinicId, patientId],
+          `select id from public.test_requests
+            where clinic_id = $1 and patient_id = $2 and status = any($3::public.request_status[])
+            limit 1`,
+          [req.user.clinicId, patientId, ACTIVE_REQUEST_STATUSES],
         );
-        if (existing) throw Object.assign(new Error("This patient already has a request awaiting payment."), { code: "REQUEST_AWAITING_PAYMENT" });
+        if (existing) throw Object.assign(new Error("This patient already has an active request. Complete or cancel it before creating another."), { code: "REQUEST_ACTIVE" });
         const tests = await tx.unsafe(
           `select t.id, t.code, t.name, t.price, c.name as category_name,
                   exists(select 1 from public.test_specimen_requirements sr
@@ -327,7 +329,7 @@ export function createCashierRouter({ client }) {
       });
       return res.status(201).json({ data: request });
     } catch (error) {
-      const known = ["PATIENT_NOT_FOUND", "REQUEST_AWAITING_PAYMENT", "TEST_UNAVAILABLE", "SPECIMEN_SETUP_MISSING"];
+      const known = ["PATIENT_NOT_FOUND", "REQUEST_ACTIVE", "TEST_UNAVAILABLE", "SPECIMEN_SETUP_MISSING"];
       if (known.includes(error.code)) return res.status(error.code === "PATIENT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message, details: error.details });
       return next(error);
     }

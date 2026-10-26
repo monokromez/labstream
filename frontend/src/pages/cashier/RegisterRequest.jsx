@@ -98,7 +98,7 @@ export default function RegisterRequest() {
     contact: patient.phone,
     previousVisitDate: patient.previousVisit?.slice(0, 10) ?? patient.createdAt?.slice(0, 10),
     validId: patient.validIdType?.toLowerCase() === 'other' ? 'Other' : patient.validIdType,
-    hasPendingRequest: patient.hasPendingRequest,
+    hasActiveRequest: patient.hasActiveRequest,
     hasPortalAccount: patient.hasPortalAccount,
     portalActive: patient.portalActive,
   }))
@@ -153,7 +153,7 @@ export default function RegisterRequest() {
   }, [searchQuery, sexFilter, previousVisitFilter])
 
   const openPatientModal = (type, patient = null) => {
-    if (type === 'request' && patient?.hasPendingRequest) return
+    if (type === 'request' && patient?.hasActiveRequest) return
     setActionError('')
     setSelectedPatient(patient)
     setSelectedTestIds([])
@@ -215,7 +215,7 @@ export default function RegisterRequest() {
     }
   }
 
-  const patientHasActiveRequest = (patient) => Boolean(patient?.hasPendingRequest)
+  const patientHasActiveRequest = (patient) => Boolean(patient?.hasActiveRequest)
 
   const handleRegisterPatient = (event) => {
     event.preventDefault()
@@ -400,11 +400,11 @@ export default function RegisterRequest() {
                         className='register-request__action-button register-request__action-button--request'
                         type='button'
                         disabled={patientHasActiveRequest(patient)}
-                        title={patientHasActiveRequest(patient) ? 'This patient has a pending request. Process or cancel it before creating another.' : undefined}
-                        aria-label={patientHasActiveRequest(patient) ? `Request unavailable for ${getPatientName(patient)}: an active request is pending` : `Create request for ${getPatientName(patient)}`}
+                        title={patientHasActiveRequest(patient) ? 'This patient has an active request. Complete or cancel it before creating another.' : undefined}
+                        aria-label={patientHasActiveRequest(patient) ? `Request unavailable for ${getPatientName(patient)}: an active request is in progress` : `Create request for ${getPatientName(patient)}`}
                         onClick={() => openPatientModal('request', patient)}
                       >
-                        {patientHasActiveRequest(patient) ? 'Request Pending' : 'Request'}
+                        {patientHasActiveRequest(patient) ? 'Request In Progress' : 'Request'}
                       </button>
                     </div>
                   </td>

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
+import { ACTIVE_REQUEST_STATUSES } from "../requestStatus.js";
 
 export function createApiRouter({ client }) {
   const router = Router();
@@ -83,7 +84,7 @@ export function createApiRouter({ client }) {
                   and portal.clinic_id = p.clinic_id and portal.role = 'patient' and portal.is_active = true) as portal_active,
                 exists(select 1 from public.test_requests active_request
                   where active_request.patient_id = p.id and active_request.clinic_id = p.clinic_id
-                    and active_request.status = 'awaiting_payment') as has_pending_request,
+                    and active_request.status = any($5::public.request_status[])) as has_active_request,
                 coalesce((select max(r.requested_at) from public.test_requests r
                   where r.patient_id = p.id and r.clinic_id = p.clinic_id
                     and r.status <> 'cancelled'), p.created_at) as previous_visit
@@ -96,8 +97,8 @@ export function createApiRouter({ client }) {
               or p.last_name ilike '%' || $4 || '%'
               or p.phone ilike '%' || $4 || '%')
           order by p.last_name, p.first_name
-          limit $5 offset $6`,
-        [req.user.clinicId, patientScope, req.user.sub, query, pageSize, offset],
+          limit $6 offset $7`,
+        [req.user.clinicId, patientScope, req.user.sub, query, ACTIVE_REQUEST_STATUSES, pageSize, offset],
       );
       return res.json({
         data: patients,
