@@ -233,7 +233,7 @@ export default function RegisterRequest() {
     setActionError('')
     try {
       const response = await api.cashier.issuePatientPortalActivation(selectedPatient.id)
-      setPortalActivation({ pid: selectedPatient.pid, code: response.activation.code, expiresInHours: response.activation.expiresInHours })
+      setPortalActivation({ pid: selectedPatient.pid, code: response.activation.code, emailDelivery: response.emailDelivery })
       setShowPortalConfirm(false)
     } catch (requestError) {
       setActionError(requestError.message || 'Unable to issue patient portal activation.')
@@ -466,7 +466,7 @@ export default function RegisterRequest() {
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
                 </dl>
-                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>Expires in {portalActivation.expiresInHours} hours. Share it privately; the patient chooses their own password.</p></div>}
+                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>This code does not expire and can only be used once. The patient chooses their own password.</p><p role={portalActivation.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalActivation.emailDelivery?.status === 'sent' ? 'Activation email sent to the patient.' : portalActivation.emailDelivery?.message}</p></div>}
                 </>
               )}
 
@@ -674,7 +674,7 @@ export default function RegisterRequest() {
         <div className='register-request__confirm-backdrop'>
           <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-portal-title'>
             <h2 id='confirm-portal-title'>Issue patient portal access?</h2>
-            <p>This is optional and only needed if the patient wants online portal access. Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? It is shown once, expires after 24 hours, and must be shared with the patient; no email is sent.</p>
+            <p>This is optional and only needed if the patient wants online portal access. Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? It will be emailed to the patient when an email address is on file and shown once here. The code does not expire and can only be used once.</p>
             {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
             <div className='register-request__confirm-actions'>
               <button className='register-request__modal-secondary' type='button' disabled={portalSubmitting} onClick={() => setShowPortalConfirm(false)}>Cancel</button>

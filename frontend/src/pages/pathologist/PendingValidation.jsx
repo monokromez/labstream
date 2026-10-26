@@ -67,7 +67,7 @@ export default function PendingValidation() {
     const reviewed = activeCase
     const action = confirmAction
     try {
-      await api.pathologist.review(reviewed.uuid, reviewed.tests.map((test) => ({
+      const response = await api.pathologist.review(reviewed.uuid, reviewed.tests.map((test) => ({
         requestItemId: test.requestItemId,
         decision: action === 'approve' ? 'approved' : 'returned',
         interpretation: interpretations[test.requestItemId] ?? '',
@@ -77,7 +77,14 @@ export default function PendingValidation() {
       setActiveCase(null)
       setConfirmAction('')
       setRemarks('')
-      setNotice(`${reviewed.id} for ${reviewed.patient} was ${action === 'approve' ? 'approved for release' : 'returned for correction'}.`)
+      const emailNotice = response.emailDelivery?.status === 'sent'
+        ? ' Patient notification email sent.'
+        : response.emailDelivery?.status === 'skipped'
+          ? ' No patient email is on file; notification email was skipped.'
+          : response.emailDelivery?.status === 'failed'
+            ? ' Results were released, but notification email delivery failed.'
+            : ''
+      setNotice(`${reviewed.id} for ${reviewed.patient} was ${action === 'approve' ? 'approved for release' : 'returned for correction'}.${emailNotice}`)
       await refresh()
     } catch (requestError) { setNotice(requestError.message || 'Unable to submit this review.') }
   }

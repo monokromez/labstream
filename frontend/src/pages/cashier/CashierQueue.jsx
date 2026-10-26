@@ -2,7 +2,6 @@ import { Fragment, useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
-import { formatDateTime } from '../../utils/dateFormat.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import './CashierQueue.css'
@@ -63,7 +62,12 @@ export default function CashierQueue() {
     try {
       const response = await api.cashier.processPayment(active.id)
       setActive(null)
-      setNotice(`${response.data.requestNumber} payment recorded. Invoice ${response.data.invoice.invoiceNumber} issued.`)
+      const emailNotice = response.emailDelivery?.status === 'sent'
+        ? ' Receipt email sent.'
+        : response.emailDelivery?.status === 'skipped'
+          ? ' No patient email is on file; receipt email was skipped.'
+          : ' Payment recorded, but receipt email delivery failed.'
+      setNotice(`${response.data.requestNumber} payment recorded. Invoice ${response.data.invoice.invoiceNumber} issued.${emailNotice}`)
       await refresh()
       window.setTimeout(() => setNotice(''), 3500)
     } catch (requestError) {
