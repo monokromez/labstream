@@ -195,7 +195,7 @@ export default function ResultsInProgress() {
       const complete = group.request.tests.length > 0 && group.request.tests.every((test) => {
         const specimen = specimens.find((item) => item.requestId === group.request.id && item.status === 'Accepted' && item.linkedItemIds.includes(test.requestItemId))
         const specimenResult = specimen && results.find((item) => item.specimenLabel === specimen.label)
-        return Boolean(specimenResult && test.fields.every((field) => isFieldComplete(field, specimenResult.values[field.key])))
+        return Boolean(specimenResult && test.fields.length > 0 && test.fields.every((field) => isFieldComplete(field, specimenResult.values[field.key])))
       })
       return { ...group, complete }
     })
@@ -205,6 +205,8 @@ export default function ResultsInProgress() {
   const selectedTests = selectedResult
     ? selectedResult.request.tests.filter((test) => test.specimenType === selectedResult.specimen.type)
     : []
+  const testsMissingFields = selectedResult?.request.tests.filter((test) => test.fields.length === 0) ?? []
+  const hasMissingFields = testsMissingFields.length > 0
   const values = selectedResult
     ? draftValues[selectedResult.specimenLabel] ?? selectedResult.values
     : {}
@@ -222,7 +224,7 @@ export default function ResultsInProgress() {
   const [autoSaveState, setAutoSaveState] = useState('saved')
 
   useEffect(() => {
-    if (!selectedResult || isLocked || !hasUnsavedChanges) {
+    if (!selectedResult || isLocked || hasMissingFields || !hasUnsavedChanges) {
       setAutoSaveState('saved')
       return undefined
     }
@@ -239,7 +241,7 @@ export default function ResultsInProgress() {
       }
     }, 1200)
     return () => window.clearTimeout(timer)
-  }, [selectedResult?.specimenLabel, currentValuesSignature, persistedValuesSignature, isLocked, hasUnsavedChanges, saveDraft])
+  }, [selectedResult?.specimenLabel, currentValuesSignature, persistedValuesSignature, isLocked, hasMissingFields, hasUnsavedChanges, saveDraft])
 
   useEffect(() => {
     if (!hasUnsavedChanges) return undefined
@@ -252,13 +254,17 @@ export default function ResultsInProgress() {
   }, [hasUnsavedChanges])
 
   function saveCurrentDraft() {
-    if (!selectedResult || isLocked) return
+    if (!selectedResult || isLocked || hasMissingFields) return
     saveDraft(selectedResult.specimenLabel, values).catch(() => {})
   }
 
   function requestSubmission(event) {
     event.preventDefault()
     if (!selectedResult || isLocked) return
+    if (hasMissingFields) {
+      setValidationError(`Result fields are not configured for ${testsMissingFields.map((test) => test.name).join(', ')}. Ask an administrator to configure them in Test Catalog.`)
+      return
+    }
     const requestSpecimens = specimens.filter((specimen) => specimen.requestId === selectedResult.request.id)
     const requiredTypes = [...new Set(selectedResult.request.tests.map((test) => test.specimenType))]
     const acceptedTypes = new Set(requestSpecimens.filter((specimen) => specimen.status === 'Accepted').map((specimen) => specimen.type))
@@ -430,10 +436,25 @@ export default function ResultsInProgress() {
 
             <form className="medtech-result-form" onSubmit={requestSubmission}>
               <p className={`medtech-autosave-status${autoSaveState === 'error' ? ' is-error' : ''}`} role="status" aria-live="polite">
-                {autoSaveState === 'saving' ? 'Saving draft…' : autoSaveState === 'pending' ? 'Changes not saved yet' : autoSaveState === 'error' ? 'Draft could not be saved. Check the connection and try Save Draft.' : 'Draft saved'}
+                {hasMissingFields ? 'Result fields unavailable' : autoSaveState === 'saving' ? 'Saving draft…' : autoSaveState === 'pending' ? 'Changes not saved yet' : autoSaveState === 'error' ? 'Draft could not be saved. Check the connection and try Save Draft.' : 'Draft saved'}
               </p>
+              {hasMissingFields && (
+                <p className="medtech-form__notice" role="alert">
+                  Result entry is unavailable because no result fields are configured for {testsMissingFields.map((test) => test.name).join(', ')}. Ask an administrator to configure the test in Test Catalog.
+                </p>
+              )}
               {selectedTests.map((test) => {
                 const fields = resultFields.filter((field) => field.testName === test.name)
+                if (fields.length === 0) {
+                  return (
+                    <section className="medtech-test-section" key={test.name} aria-labelledby={`test-${test.name.replaceAll(' ', '-')}`}>
+                      <div className="medtech-test-section__heading">
+                        <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>
+                      </div>
+                      <p className="medtech-empty medtech-empty--compact">No result fields are configured for this test.</p>
+                    </section>
+                  )
+                }
                 if (test.category !== 'Laboratory') {
                   return (
                     <section className="medtech-test-section" key={test.name} aria-labelledby={`test-${test.name.replaceAll(' ', '-')}`}>
@@ -523,8 +544,8 @@ export default function ResultsInProgress() {
               {validationError && <p className="medtech-form__error" role="alert">{validationError}</p>}
               {!isLocked && (
                 <div className="medtech-result-actions">
-                  <button className="medtech-button medtech-button--positive" type="button" onClick={saveCurrentDraft}>Save draft</button>
-                  <button className="medtech-button" type="submit">
+                  <button className="medtech-button medtech-button--positive" type="button" onClick={saveCurrentDraft} disabled={hasMissingFields}>Save draft</button>
+                  <button className="medtech-button" type="submit" disabled={hasMissingFields}>
                     {selectedResult.state === 'returned' ? 'Resubmit to pathologist' : 'Submit to pathologist'}
                   </button>
                 </div>
@@ -542,7 +563,7 @@ export default function ResultsInProgress() {
         <TechnologistDialog title="Submit to pathologist?" onClose={() => setConfirmSubmit(false)}>
           <div className="medtech-dialog__body">
             <p className="medtech-dialog__context">{selectedResult.specimenLabel} · {selectedResult.request.patient}</p>
-            <p className="medtech-form__notice">After you submit, you cannot edit this result unless the pathologist returns it with feedback.</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">After you submit, you cannot edit this result unless the pathologist returns it with feedback.</p>
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={() => setConfirmSubmit(false)}>Cancel</button>
               <button className="medtech-button" type="button" onClick={confirmSubmission}>Submit</button>

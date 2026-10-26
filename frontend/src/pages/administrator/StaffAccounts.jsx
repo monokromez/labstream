@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
@@ -14,6 +14,7 @@ import { getStaffFormErrors } from './staffValidation.js'
 import './StaffAccounts.css'
 
 const posts = ['Cashier', 'Medical Technologist', 'Pathologist']
+const PAGE_SIZE = 10
 const emptyForm = { firstName: '', middleName: '', surname: '', dob: '', country: '', city: '', countryCode: '', houseNo: '', street: '', contact: '', email: '', post: 'Cashier' }
 
 function calculateAge(value) {
@@ -29,8 +30,17 @@ function displayName(person) {
   return `${person.firstName}${middleInitial} ${person.surname}`.trim()
 }
 
-export default function StaffAccounts() {
-  const { result: staffResult, error: loadError, refresh } = useApiResource(() => api.staff.list({ page: 1, pageSize: 100 }), [])
+export default function StaffAccounts({ currentUserId }) {
+  const [search, setSearch] = useState('')
+  const [postFilter, setPostFilter] = useState('All posts')
+  const [statusFilter, setStatusFilter] = useState('All statuses')
+  const [page, setPage] = useState(1)
+  const roleFilter = postFilter === 'All posts' ? '' : postFilter.toLowerCase().replaceAll(' ', '_')
+  const status = statusFilter === 'All statuses' ? '' : String(statusFilter === 'Active')
+  const { result: staffResult, error: loadError, refresh } = useApiResource(
+    () => api.staff.list({ page, pageSize: PAGE_SIZE, q: search, role: roleFilter, status }),
+    [page, search, roleFilter, status],
+  )
   const staff = (staffResult?.data ?? []).map((person) => ({
     ...person,
     surname: person.lastName,
@@ -38,15 +48,9 @@ export default function StaffAccounts() {
     status: person.isActive ? 'Active' : 'Inactive',
     lastSignIn: person.lastSignInAt,
   }))
-  const [search, setSearch] = useState('')
-  const [postFilter, setPostFilter] = useState('All posts')
-  const [statusFilter, setStatusFilter] = useState('All statuses')
   const [dialog, setDialog] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [touched, setTouched] = useState({})
-  const [page, setPage] = useState(1)
-  const pageSize = 10
-
   const staffErrors = getStaffFormErrors({
     firstName: form.firstName,
     middleName: form.middleName,
@@ -87,14 +91,40 @@ export default function StaffAccounts() {
     return Object.values(errors).every((message) => !message)
   }
 
-  const visibleStaff = useMemo(() => staff.filter((person) => {
-    const matchesSearch = `${displayName(person)} ${person.email}`.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch && (postFilter === 'All posts' || person.post === postFilter)
-      && (statusFilter === 'All statuses' || person.status === statusFilter)
-  }), [postFilter, search, staff, statusFilter])
-  const pageRows = visibleStaff.slice((page - 1) * pageSize, page * pageSize)
+  const pageRows = staff
 
   function openAdd() { setForm(emptyForm); setTouched({}); setDialog({ type: 'add' }) }
+  async function openView(person) {
+    setDialog({ type: 'loading', title: `Loading ${displayName(person)}` })
+    try {
+      const result = await api.staff.get(person.id)
+      setDialog({ type: 'view', person: result.data })
+    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+  }
+  async function openEdit(person) {
+    setDialog({ type: 'loading', title: `Loading ${displayName(person)}` })
+    try {
+      const { data } = await api.staff.get(person.id)
+      const savedPhone = typeof data.phone === 'string' ? data.phone : ''
+      const phone = savedPhone ? parsePhoneNumberFromString(savedPhone) : undefined
+      setForm({
+        firstName: data.first_name ?? '',
+        middleName: data.middle_name ?? '',
+        surname: data.last_name ?? '',
+        dob: String(data.date_of_birth ?? '').slice(0, 10),
+        country: data.country ?? '',
+        city: data.city ?? '',
+        countryCode: phone?.country ?? '',
+        houseNo: data.house_number ?? '',
+        street: data.street ?? '',
+        contact: phone?.formatNational() ?? savedPhone,
+        email: data.email ?? '',
+        post: data.role.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+      })
+      setTouched({})
+      setDialog({ type: 'edit', person: data })
+    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+  }
   async function commitAdd() {
     const nextForm = form
     if (!validateStaffForm(nextForm)) {
@@ -115,11 +145,45 @@ export default function StaffAccounts() {
       const result = await api.staff.create({
         firstName: form.firstName, middleName: form.middleName || null, lastName: form.surname,
         dateOfBirth: form.dob, country: form.country, city: form.city, houseNumber: form.houseNo,
-        street: form.street, phone: phone.number, email: form.email,
+        street: form.street, phone: phone.number, countryCode: form.countryCode, email: form.email,
         role: form.post.toLowerCase().replaceAll(' ', '_'),
       })
       setDialog({ type: 'created', username: result.data.username, activationCode: result.activation.code, email: form.email, emailDelivery: result.emailDelivery })
       setForm(emptyForm)
+      await refresh()
+    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+  }
+  async function commitUpdate() {
+    if (!validateStaffForm()) {
+      setTouched({
+        firstName: true, middleName: true, surname: true, dob: true, country: true,
+        city: true, houseNo: true, street: true, contact: true, email: true, post: true,
+      })
+      setDialog((current) => ({ ...current, type: 'edit' }))
+      return
+    }
+    const phone = parsePhoneNumberFromString(form.contact, form.countryCode)
+    if (!phone?.isValid() || phone.country !== form.countryCode) {
+      setTouched((current) => ({ ...current, contact: true }))
+      setDialog((current) => ({ ...current, type: 'edit' }))
+      return
+    }
+    try {
+      const result = await api.staff.update(dialog.person.id, {
+        firstName: form.firstName,
+        middleName: form.middleName || null,
+        lastName: form.surname,
+        dateOfBirth: form.dob,
+        country: form.country,
+        city: form.city,
+        houseNumber: form.houseNo,
+        street: form.street,
+        phone: phone.number,
+        countryCode: form.countryCode,
+        email: form.email,
+        role: form.post.toLowerCase().replaceAll(' ', '_'),
+      })
+      setDialog({ type: 'updated', roleChanged: result.data.roleChanged, username: result.data.username, role: result.data.role })
       await refresh()
     } catch (error) { setDialog({ type: 'error', message: error.message }) }
   }
@@ -149,7 +213,7 @@ export default function StaffAccounts() {
         </div>
       </div>
       <section className="admin-list-card" aria-labelledby="staff-table-title">
-      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div><span>{visibleStaff.length} {visibleStaff.length === 1 ? 'staff member' : 'staff members'}</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
+      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div><span>{staffResult?.pagination?.total ?? 0} staff members</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Name</th><th>Post</th><th>Last sign in</th><th>Account status</th><th><span className="visually-hidden">Account action</span></th></tr></thead>
         <tbody>
@@ -157,20 +221,20 @@ export default function StaffAccounts() {
             <td className="admin-table__primary">{displayName(person)}<span className="admin-table__secondary">{person.email}</span></td>
             <td>{person.post}</td><td>{formatDateTime(person.lastSignIn)}</td>
             <td><span className={`admin-badge ${person.status === 'Active' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{person.status}</span></td>
-            <td><button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>{person.pendingActivation && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</td>
+            <td><div className="staff-accounts__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openView(person)}>View</button><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openEdit(person)}>Edit</button>{person.id === currentUserId ? <span className="staff-accounts__own-account">Own account</span> : <button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>}{person.pendingActivation && person.id !== currentUserId && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</div></td>
           </tr>)}
-          {visibleStaff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
+          {staff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
       </table></div></section>
-      <TablePagination currentPage={page} pageSize={pageSize} totalItems={visibleStaff.length} onPageChange={setPage} />
+      <TablePagination currentPage={staffResult?.pagination?.page ?? page} pageSize={PAGE_SIZE} totalItems={staffResult?.pagination?.total ?? 0} onPageChange={setPage} />
 
-      {dialog?.type === 'add' && <AdminDialog title="Add staff member" description="Enter the staff member’s details and assign an eligible post." onClose={() => setDialog(null)} size="large">
-        <form id="staff-add-form" className="admin-dialog__form admin-dialog__form--staff" onSubmit={(event) => {
+      {['add', 'edit'].includes(dialog?.type) && <AdminDialog title={dialog.type === 'edit' ? `Edit ${displayName({ firstName: form.firstName, middleName: form.middleName, surname: form.surname })}` : 'Add staff member'} description={dialog.type === 'edit' ? 'Update the account’s personal and contact details.' : 'Enter the staff member’s details and assign an eligible post.'} onClose={() => setDialog(null)} size="large">
+        <form id="staff-details-form" className="admin-dialog__form admin-dialog__form--staff" onSubmit={(event) => {
           event.preventDefault()
           const nextTouched = { firstName: true, middleName: true, surname: true, dob: true, country: true, city: true, houseNo: true, street: true, contact: true, email: true, post: true }
           setTouched(nextTouched)
           if (!validateStaffForm()) return
-          setDialog({ type: 'confirm-add' })
+          setDialog({ ...(dialog.type === 'edit' ? { person: dialog.person } : {}), type: dialog.type === 'edit' ? 'confirm-edit' : 'confirm-add' })
         }}>
           <section className="admin-dialog__section" aria-labelledby="staff-personal-heading">
             <h3 className="admin-dialog__section-heading" id="staff-personal-heading">Personal Details</h3>
@@ -233,14 +297,19 @@ export default function StaffAccounts() {
           <section className="admin-dialog__section" aria-labelledby="staff-role-heading">
             <h3 className="admin-dialog__section-heading" id="staff-role-heading">Role</h3>
             <label className="admin-dialog__field" htmlFor="staff-post">Post / role
-              <select id="staff-post" aria-invalid={Boolean(visibleStaffError('post'))} value={form.post} onBlur={() => markTouched('post')} onChange={(event) => setForm({ ...form, post: event.target.value })}>{posts.map((post) => <option key={post}>{post}</option>)}</select>
+              <select id="staff-post" disabled={dialog.type === 'edit' && (dialog.person.is_active || dialog.person.pending_activation || dialog.person.role === 'administrator')} aria-invalid={Boolean(visibleStaffError('post'))} value={form.post} onBlur={() => markTouched('post')} onChange={(event) => setForm({ ...form, post: event.target.value })}>{(form.post === 'Administrator' ? ['Administrator'] : posts).map((post) => <option key={post}>{post}</option>)}</select>
+              {dialog.type === 'edit' && !dialog.person.is_active && dialog.person.role !== 'administrator' && <span className="admin-dialog__field-hint">{dialog.person.pending_activation ? 'Activate this account before changing its role.' : 'Changing this role also changes the staff username. The account must have no assigned active work.'}</span>}
               {visibleStaffError('post') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('post')}</span>}
             </label>
           </section>
         </form>
-        <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="staff-add-form">Review account</button></div>
+        <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="staff-details-form">{dialog.type === 'edit' ? 'Save changes' : 'Review account'}</button></div>
       </AdminDialog>}
       {dialog?.type === 'confirm-add' && <AdminDialog title="Confirm staff account" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Add <strong>{form.firstName} {form.surname}</strong> as <strong>{form.post}</strong>?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ type: 'add' })}>Back</button><button className="admin-button" type="button" onClick={commitAdd}>Confirm add</button></div></AdminDialog>}
+      {dialog?.type === 'confirm-edit' && <AdminDialog title="Save account changes?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Save the updated details for <strong>{form.firstName} {form.surname}</strong>?</p>{dialog.person.role !== form.post.toLowerCase().replaceAll(' ', '_') && <p>The role change will regenerate this staff member’s username. You’ll need to provide the new username to them after saving.</p>}<div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ type: 'edit', person: dialog.person })}>Back</button><button className="admin-button" type="button" onClick={commitUpdate}>Save changes</button></div></AdminDialog>}
+      {dialog?.type === 'loading' && <AdminDialog title={dialog.title} onClose={() => setDialog(null)} size="small"><p>Loading account details…</p></AdminDialog>}
+      {dialog?.type === 'view' && <AdminDialog title="Staff account details" onClose={() => setDialog(null)} size="medium"><dl className="staff-accounts__details"><div><dt>Name</dt><dd>{displayName({ firstName: dialog.person.first_name, middleName: dialog.person.middle_name, surname: dialog.person.last_name })}</dd></div><div><dt>Username</dt><dd>{dialog.person.username}</dd></div><div><dt>Role</dt><dd>{dialog.person.role.replaceAll('_', ' ')}</dd></div><div><dt>Email</dt><dd>{dialog.person.email}</dd></div><div><dt>Date of birth</dt><dd>{String(dialog.person.date_of_birth ?? '').slice(0, 10) || 'Not provided'}</dd></div><div><dt>Contact number</dt><dd>{dialog.person.phone || 'Not provided'}</dd></div><div><dt>Country</dt><dd>{dialog.person.country || 'Not provided'}</dd></div><div><dt>City</dt><dd>{dialog.person.city || 'Not provided'}</dd></div><div><dt>House number</dt><dd>{dialog.person.house_number || 'Not provided'}</dd></div><div><dt>Street</dt><dd>{dialog.person.street || 'Not provided'}</dd></div><div><dt>Account status</dt><dd>{dialog.person.is_active ? 'Active' : 'Inactive'}</dd></div><div><dt>Last sign in</dt><dd>{formatDateTime(dialog.person.last_sign_in_at)}</dd></div></dl><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button></div></AdminDialog>}
+      {dialog?.type === 'updated' && <AdminDialog title="Account updated" onClose={() => setDialog(null)} size="small"><p>Staff account details were updated successfully.</p>{dialog.roleChanged && <p role="status">Role changed to <strong>{dialog.role.replaceAll('_', ' ')}</strong>. The new username is <strong>{dialog.username}</strong>; provide it to the account owner for their next sign-in.</p>}<div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Done</button></div></AdminDialog>}
       {(dialog?.type === 'created' || dialog?.type === 'activation-reissued') && <AdminDialog title={dialog.type === 'created' ? 'Staff account created' : 'Activation code reissued'} onClose={() => setDialog(null)} size="small"><p>These one-time activation details are shown only now. The code expires in 24 hours and can only be used once.</p><p>Username: <strong>{dialog.username}</strong></p><p>Activation code: <strong>{dialog.activationCode}</strong></p><p role={dialog.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{dialog.emailDelivery?.status === 'sent' ? `Activation email sent to ${dialog.email}.` : dialog.emailDelivery?.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => { setDialog(null); setPage(1) }}>Done</button></div></AdminDialog>}
       {dialog?.type === 'error' && <AdminDialog title="Unable to complete action" onClose={() => setDialog(null)} size="small"><p role="alert">{dialog.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button></div></AdminDialog>}
       {dialog?.type === 'status' && <AdminDialog title={`${dialog.person.status === 'Active' ? 'Deactivate' : 'Activate'} account?`} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Confirm {dialog.person.status === 'Active' ? 'deactivating' : 'activating'} <strong>{displayName(dialog.person)}</strong>’s staff account?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className={`admin-button ${dialog.person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={commitStatus}>Confirm</button></div></AdminDialog>}

@@ -1,3 +1,12 @@
 @import './Administrator.css';
 
-/* Add page-specific styles below. */
+.staff-accounts__actions { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.staff-accounts__own-account { display: inline-flex; align-items: center; min-height: 2rem; padding: .35rem .55rem; border-radius: .3rem; background: #eef2f6; color: var(--text-muted-lightbg); font-size: .75rem; font-weight: 700; white-space: nowrap; }
+.staff-accounts__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem 1rem; margin: 0; }
+.staff-accounts__details > div { min-width: 0; }
+.staff-accounts__details dt { color: var(--text-muted-lightbg); font-size: .76rem; font-weight: 700; }
+.staff-accounts__details dd { margin: .2rem 0 0; color: var(--text-lightbg); overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .staff-accounts__details { grid-template-columns: minmax(0, 1fr); }
+}

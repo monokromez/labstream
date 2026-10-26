@@ -17,13 +17,15 @@ npm run dev
 - Authentication: staff username or patient PID, Argon2id password verification, one-time account activation codes, forced password change, current-user lookup, and logout. Sessions use an HttpOnly cookie. The deployment has one laboratory; users do not select a clinic at sign-in.
 - Shared reads: laboratory-scoped test catalog and patient search.
 - Cashier: patient registration and portal activation, request creation, persistent queue tickets and call state, cash or zero-fee waiver processing, invoice creation, cancellation of unpaid requests, and invoice listing.
-- Administrator: dashboard summaries and test-volume series, role-filtered audit-log reads, staff provisioning and status changes, test/category catalog management, and reference-range management.
+- Administrator: dashboard summaries and test-volume series, role-filtered audit-log reads, staff provisioning, profile viewing/editing, guarded role changes and status changes, test/category catalog management, and reference-range management.
 - Medical technologist: assigned work queue, specimen receipt/accept/reject, typed result drafts, and request result submission.
 - Pathologist: assigned pending/returned/released request lists and per-test review, interpretation, return, retest, and release workflow.
 - Patient: request-level released-result access and per-test history.
-- Realtime: authenticated Socket.IO sessions join the single laboratory room. Catalog changes emit `catalog:changed`; subscribing screens should re-fetch the catalog. Frontend helper is `subscribeToCatalogChanges` in `frontend/src/api/client.js`.
+- Realtime: authenticated Socket.IO sessions join the single laboratory room. Catalog and successful API changes emit scoped events; subscribing screens re-fetch on events and also poll every 10 seconds while visible as a fallback. Socket.IO's automatic reconnect retains the subscriptions. Frontend helpers are `subscribeToCatalogChanges` and `subscribeToClinicChanges` in `frontend/src/api/client.js`.
 
 The role pages use these APIs for sign-in, server-backed lists, and workflow mutations. The schema permits one laboratory per database and has no branch model. Laboratory setup is a controlled SQL/bootstrap operation. SMTP email is used for account activation, patient password resets, payment receipts, and result-release notices; email delivery failures are reported without rolling back completed workflow actions. Activation and reset codes expire after 24 hours and can be used once. The Test Catalog supports numeric, text, dropdown, yes/no, and repeatable table result inputs; workflow configuration cannot be changed after request history or reference ranges exist until versioned configuration is implemented. The current implementation still needs end-to-end workflow validation against a disposable database before production use.
+
+Administrator staff, catalog, reference-range, and audit-log lists use server-side pagination and filtering. Dashboard summaries, category-volume charts, and native XLSX/PDF exports share weekly, monthly, and annual reporting periods; released-test category totals use the request-item category snapshots so historical results remain grouped even after catalog changes. Patient result views/downloads and technologist/pathologist result access are audit logged. Administrator write routes validate staff, catalog, and reference-range input on the server as well as in the browser. Staff role changes are limited to activated, inactive accounts without active work assigned; the role update regenerates the username. Focused validation and staff-route tests run with `npm test` from `backend/`.
 
 The backend now constructs a Drizzle ORM instance over Postgres.js. Existing workflow-heavy statements still use parameterized SQL, but are executed with Drizzle's `execute` API; transactions use Drizzle's transaction API. `src/db/schema.js` describes the database columns and enums for Drizzle. It is not yet the source for applying migrations.
 
@@ -38,3 +40,17 @@ The schema uses laboratory-scoped foreign keys, a singleton constraint, assignme
 ## Database configuration
 
 Set `DATABASE_ENABLED=true`, `DATABASE_URL`, and a random `AUTH_TOKEN_SECRET` of at least 32 bytes in `backend/.env`. Configure `MAIL_HOST`, `MAIL_PORT`, `MAIL_SCHEME`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_FROM_ADDRESS` for the SMTP provider; `MAIL_FROM_NAME` is optional. Never place the database URL or privileged keys in frontend environment variables. The backend requires SSL and has `prepare: false` for compatibility with Supabase pooling. The current API uses multi-statement transactions; validate the chosen pooler and schema against a disposable database before production deployment.
+
+## Backup, migration, and recovery checks
+
+Before changing an existing database, identify its current schema and migration history using read-only catalog queries. Do not infer applied migrations from filenames or rerun the fresh-schema or reset scripts. The SQL Editor may not maintain the migration ledger used by a CLI deployment, so verify the actual schema objects and migration records where available.
+
+Before applying a migration:
+
+1. Use the provider-supported backup/export method for the database's current plan and connection type. Store the backup securely; it contains patient and account data.
+2. Record the backup time and verify that it can be restored to a separate disposable database. A backup that has not been restore-checked is not a verified recovery point.
+3. Apply only the migrations confirmed to be missing, in the order described above. Apply `20261026_add_structured_result_type.sql` as a separate completed transaction before `20261026_structured_results_and_expiring_tokens.sql`.
+4. Run schema checks and representative read-only application checks after migration. Keep the pre-migration backup until the upgraded system has been validated.
+5. For recovery, restore the backup to a separate database first, verify the restored schema and representative records, then coordinate any production endpoint switch with the database owner. Never use `reset.sql` or `clear_operational_data_keep_accounts.sql` as a recovery mechanism.
+
+Do not apply migrations to a shared or production database without the database owner's approval and a verified backup. If the provider plan does not include managed backups, arrange and restore-test an encrypted export before proceeding.

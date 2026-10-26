@@ -54,7 +54,7 @@ test("sends activation, receipt, and released-result emails with escaped content
   assert.equal(transportOptions.secure, false);
   assert.match(messages[0].html, /&lt;Staff&gt;/);
   assert.match(messages[0].html, /&lt;code&gt;/);
-  assert.match(messages[0].text, /does not expire and can only be used once/);
+  assert.match(messages[0].text, /expires in 24 hours and can only be used once/);
   assert.match(messages[1].text, /₱125\.50/);
   assert.match(messages[2].text, /results are not included in email/);
   assert.doesNotMatch(messages[2].text, /test name|result value/i);

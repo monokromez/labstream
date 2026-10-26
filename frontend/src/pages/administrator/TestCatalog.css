@@ -29,7 +29,8 @@
 .test-catalog__section-desc { margin: .2rem 0 0; font-size: .78rem; color: var(--text-muted-lightbg); }
 .test-catalog__analyte-list { display: grid; gap: .65rem; }
 .test-catalog__analyte-card { padding: .75rem; border: 1px solid var(--border); border-radius: .45rem; background: #fafdfc; display: flex; flex-direction: column; gap: .5rem; }
-.test-catalog__analyte-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .6rem; align-items: end; }
+.test-catalog__analyte-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; align-items: stretch; }
+.test-catalog__analyte-grid > .admin-dialog__field { grid-template-rows: minmax(2.2em, auto) 2.65rem 1em; }
 .test-catalog__remove-btn { align-self: flex-end; }
 
 /* Configuration View Dialog */
@@ -55,4 +56,9 @@
   .test-catalog__table-actions { justify-content: space-between; }
   .test-catalog__category-tests label { align-items: stretch; flex-direction: column; }
   .test-catalog__category-tests select { min-width: 0; width: 100%; }
+  .test-catalog__analyte-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 561px) and (max-width: 900px) {
+  .test-catalog__analyte-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

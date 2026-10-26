@@ -1,8 +1,9 @@
 import './SearchInput.css'
 
-export default function SearchInput({ label, placeholder, value, onChange, className = '' }) {
+export default function SearchInput({ label, placeholder, value, onChange, className = '', visibleLabel }) {
   return (
     <div className={`app-search-field ${className}`.trim()}>
+      {visibleLabel && <span className="app-search-field__label">{visibleLabel}</span>}
       <label className="app-search">
         <svg aria-hidden='true' viewBox='0 0 24 24' fill='none'>
           <circle cx='10.8' cy='10.8' r='6.3' stroke='currentColor' strokeWidth='1.8' />

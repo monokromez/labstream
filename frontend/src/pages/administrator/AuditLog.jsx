@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { api } from '../../api/client.js'
@@ -7,30 +7,30 @@ import { formatDateTime } from '../../utils/dateFormat.js'
 import './AuditLog.css'
 
 const PAGE_SIZE = 10
+const ROLE_OPTIONS = ['administrator', 'cashier', 'medical_technologist', 'pathologist', 'patient', 'system']
+
+function formatRole(role) {
+  return (role ?? 'system').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
 
 export default function AuditLog() {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('All activity')
-  const [roleFilter, setRoleFilter] = useState('All roles')
+  const [roleFilter, setRoleFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const { result, loading, error } = useApiResource(() => api.administrator.auditLogs({ page: 1, pageSize: 100, role: roleFilter === 'All roles' ? '' : roleFilter.toLowerCase().replaceAll(' ', '_') }), [roleFilter])
-  const auditEvents = useMemo(() => (result?.data ?? []).map((event) => ({
+  const action = actionFilter === 'All activity' ? '' : actionFilter
+  const { result, loading, error } = useApiResource(
+    () => api.administrator.auditLogs({ page: currentPage, pageSize: PAGE_SIZE, q: search, action, role: roleFilter }),
+    [currentPage, search, action, roleFilter],
+  )
+  const auditEvents = (result?.data ?? []).map((event) => ({
     id: event.id,
     timestamp: formatDateTime(event.createdAt),
     user: event.actor,
-    role: (event.role ?? 'system').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    role: formatRole(event.role),
     action: event.action,
     record: `${event.entityType}${event.entityId ? ` · ${event.entityId}` : ''}`,
-  })), [result?.data])
-
-  const visibleEvents = useMemo(() => auditEvents.filter((event) => {
-    const matchesSearch = `${event.user} ${event.role} ${event.action} ${event.record}`.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch
-      && (actionFilter === 'All activity' || event.action === actionFilter)
-      && (roleFilter === 'All roles' || event.role === roleFilter)
-  }), [actionFilter, auditEvents, roleFilter, search])
-
-  const pagedEvents = visibleEvents.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  }))
 
   return (
     <section className="admin-page" aria-label="Audit log">
@@ -60,7 +60,7 @@ export default function AuditLog() {
             }}
           >
             <option>All activity</option>
-            {[...new Set(auditEvents.map((event) => event.action))].map((action) => <option key={action}>{action}</option>)}
+            {(result?.actions ?? []).map((eventAction) => <option key={eventAction}>{eventAction}</option>)}
           </select>
         </label>
         <label className="admin-toolbar__field">
@@ -72,14 +72,14 @@ export default function AuditLog() {
               setCurrentPage(1)
             }}
           >
-            <option>All roles</option>
-            {[...new Set(auditEvents.map((event) => event.role))].sort().map((role) => <option key={role}>{role}</option>)}
+            <option value="">All roles</option>
+            {ROLE_OPTIONS.map((role) => <option key={role} value={role}>{formatRole(role)}</option>)}
           </select>
         </label>
       </div>
 
       <section className="admin-list-card" aria-labelledby="audit-log-table-title">
-        <header className="admin-list-card__heading"><div><h2 id="audit-log-table-title">AUDIT LOG</h2><p>Review staff actions and the records they changed.</p></div><div><span>{visibleEvents.length} {visibleEvents.length === 1 ? 'event' : 'events'}</span></div></header>
+        <header className="admin-list-card__heading"><div><h2 id="audit-log-table-title">AUDIT LOG</h2><p>Review staff actions and the records they changed.</p></div><div><span>{result?.pagination?.total ?? 0} events</span></div></header>
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead>
@@ -92,7 +92,7 @@ export default function AuditLog() {
             </tr>
           </thead>
           <tbody>
-            {pagedEvents.map((event) => (
+            {auditEvents.map((event) => (
               <tr key={event.id}>
                 <td>{event.timestamp}</td>
                 <td className="admin-table__primary">{event.user}</td>
@@ -101,16 +101,16 @@ export default function AuditLog() {
                 <td>{event.record}</td>
               </tr>
             ))}
-            {pagedEvents.length === 0 && (
+            {auditEvents.length === 0 && (
               <tr><td className="admin-empty" colSpan="5">{loading ? 'Loading activity…' : 'No audit events match these filters.'}</td></tr>
             )}
           </tbody>
         </table>
       </div></section>
       <TablePagination
-        currentPage={currentPage}
+        currentPage={result?.pagination?.page ?? currentPage}
         pageSize={PAGE_SIZE}
-        totalItems={result?.pagination?.total ?? visibleEvents.length}
+        totalItems={result?.pagination?.total ?? 0}
         onPageChange={setCurrentPage}
       />
     </section>

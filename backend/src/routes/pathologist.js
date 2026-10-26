@@ -67,6 +67,12 @@ export function createPathologistRouter({ client }) {
           order by ri.created_at`,
         [request.id, req.user.clinicId],
       );
+      await client.unsafe(
+        `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+         values ($1, $2, 'results.accessed', 'test_request', $3,
+           jsonb_build_object('requestNumber', $4::text, 'accessMethod', 'pathologist-review', 'requestStatus', $5::text))`,
+        [req.user.clinicId, req.user.sub, request.id, request.request_number, request.status],
+      );
     }
     return { data: requests, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } };
   }

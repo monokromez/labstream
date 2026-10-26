@@ -99,14 +99,16 @@ export const api = {
   },
   staff: {
     list: (filters) => request(`/api/admin/staff${queryString(filters)}`),
+    get: (staffId) => request(`/api/admin/staff/${staffId}`),
     create: (staff) => request('/api/admin/staff', { method: 'POST', body: staff }),
+    update: (staffId, staff) => request(`/api/admin/staff/${staffId}`, { method: 'PATCH', body: staff }),
     reissueActivation: (staffId) => request(`/api/admin/staff/${staffId}/activation`, { method: 'POST', body: {} }),
     setActive: (staffId, isActive) => request(`/api/admin/staff/${staffId}/status`, { method: 'PATCH', body: { isActive } }),
   },
   administrator: {
-    dashboard: () => request('/api/admin/dashboard/summary'),
+    dashboard: (filters) => request(`/api/admin/dashboard/summary${queryString(filters)}`),
     testVolume: (filters) => request(`/api/admin/dashboard/test-volume${queryString(filters)}`),
-    exportReport: (format) => download(`/api/admin/reports/export${queryString({ format })}`),
+    exportReport: (format, period = 'monthly') => download(`/api/admin/reports/export${queryString({ format, period })}`),
     auditLogs: (filters) => request(`/api/admin/audit-logs${queryString(filters)}`),
     catalog: (filters) => request(`/api/admin/catalog${queryString(filters)}`),
     addCategory: (category) => request('/api/admin/categories', { method: 'POST', body: category }),
