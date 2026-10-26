@@ -2,7 +2,7 @@ import { Router } from "express";
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { emailService } from "../email.js";
-import { isUuid, validateStaffDetails } from "../adminValidation.js";
+import { isUuid, validateStaffDetails, validateStaffRoleChange } from "../adminValidation.js";
 
 const STAFF_ROLES = new Set(["cashier", "medical_technologist", "pathologist"]);
 const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "for_validation", "correction"];
@@ -55,6 +55,121 @@ export function createStaffRouter({ client }) {
       );
       return res.json({ data: staff, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.get("/:id", async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
+      const [staff] = await client.unsafe(
+        `select u.id, u.username, u.email, u.role, u.is_active, u.last_sign_in_at,
+                (u.password_hash is null) as pending_activation,
+                p.first_name, p.middle_name, p.last_name, p.date_of_birth, p.phone,
+                p.country, p.city, p.house_number, p.street
+           from public.users u
+           join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
+          where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient'`,
+        [req.params.id, req.user.clinicId],
+      );
+      if (!staff) return res.status(404).json({ error: "STAFF_NOT_FOUND", message: "Staff account was not found." });
+      return res.json({ data: staff });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.patch("/:id", async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
+      const body = req.body ?? {};
+      const updated = await client.begin(async (tx) => {
+        const [target] = await tx.unsafe(
+          `select id, username, role, is_active, password_hash from public.users
+            where id = $1 and clinic_id = $2 and role <> 'patient'
+            for update`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!target) throw Object.assign(new Error("Staff account was not found."), { code: "STAFF_NOT_FOUND" });
+        const validationErrors = validateStaffDetails(body, { allowAdministrator: target.role === "administrator" });
+        const roleChanged = body.role !== target.role;
+        if (roleChanged && !STAFF_ROLES.has(target.role)) validationErrors.role = "Administrator account roles cannot be changed here.";
+        if (Object.keys(validationErrors).length) {
+          throw Object.assign(new Error("Correct the staff details and try again."), {
+            code: "INVALID_STAFF_DETAILS",
+            fields: validationErrors,
+          });
+        }
+        if (roleChanged) {
+          const rolePolicyError = validateStaffRoleChange({
+            currentRole: target.role,
+            nextRole: body.role,
+            isActive: target.is_active,
+            isPendingActivation: !target.password_hash,
+            hasActiveWork: false,
+          });
+          if (rolePolicyError) throw Object.assign(new Error(rolePolicyError.message), { code: rolePolicyError.code });
+          const [assignedWork] = await tx.unsafe(
+            `select exists(
+               select 1 from public.test_requests
+                where clinic_id = $1 and status = any($2::public.request_status[])
+                  and (($3 = 'medical_technologist' and assigned_technologist_id = $4)
+                    or ($3 = 'pathologist' and assigned_pathologist_id = $4))
+             ) as has_active_work`,
+            [req.user.clinicId, ACTIVE_REQUEST_STATUSES, target.role, target.id],
+          );
+          const assignmentPolicyError = validateStaffRoleChange({
+             currentRole: target.role,
+             nextRole: body.role,
+             isActive: target.is_active,
+             isPendingActivation: !target.password_hash,
+             hasActiveWork: assignedWork.has_active_work,
+          });
+          if (assignmentPolicyError) throw Object.assign(new Error(assignmentPolicyError.message), { code: assignmentPolicyError.code });
+        }
+
+        const firstName = body.firstName.trim();
+        const middleName = body.middleName?.trim() || null;
+        const lastName = body.lastName.trim();
+        const email = body.email.trim().toLowerCase();
+        const phone = body.phone.trim();
+        const [updatedUser] = await tx.unsafe(
+          `update public.users set email = $1, role = $2::public.user_role, updated_at = now()
+            where id = $3 and clinic_id = $4
+            returning id, username, role`,
+          [email, body.role, target.id, req.user.clinicId],
+        );
+        const [profile] = await tx.unsafe(
+          `update public.staff_profiles
+              set first_name = $1, middle_name = $2, last_name = $3, date_of_birth = $4::date,
+                  phone = $5, email = $6, country = $7, city = $8, house_number = $9, street = $10,
+                  updated_at = now()
+            where user_id = $11 and clinic_id = $12
+            returning user_id`,
+          [firstName, middleName, lastName, body.dateOfBirth, phone, email, body.country.trim(),
+            body.city.trim(), body.houseNumber.trim(), body.street.trim(), target.id, req.user.clinicId],
+        );
+        if (!profile) throw Object.assign(new Error("Staff profile was not found."), { code: "STAFF_NOT_FOUND" });
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, $3, 'user', $4, jsonb_build_object('fields', $5::jsonb, 'previousRole', $6::text, 'role', $7::text, 'previousUsername', $8::text, 'username', $9::text))`,
+          [req.user.clinicId, req.user.sub, roleChanged ? "staff.role_changed" : "staff.updated", target.id, JSON.stringify([
+            "firstName", "middleName", "lastName", "dateOfBirth", "phone", "email",
+            "country", "city", "houseNumber", "street", ...(roleChanged ? ["role"] : []),
+          ]), target.role, updatedUser.role, target.username, updatedUser.username],
+        );
+        return { id: target.id, role: updatedUser.role, username: updatedUser.username, roleChanged };
+      });
+      return res.json({ data: updated });
+    } catch (error) {
+      if (error.code === "INVALID_STAFF_DETAILS") {
+        return res.status(400).json({ error: error.code, message: error.message, fields: error.fields });
+      }
+      if (error.code === "STAFF_NOT_FOUND") return res.status(404).json({ error: error.code, message: error.message });
+      if (["STAFF_ROLE_CHANGE_REQUIRES_INACTIVE", "STAFF_ACTIVATION_PENDING", "STAFF_ROLE_CHANGE_HAS_ACTIVE_WORK"].includes(error.code)) {
+        return res.status(409).json({ error: error.code, message: error.message });
+      }
+      if (error.code === "23505") return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "This email is already assigned to an account in the clinic." });
       return next(error);
     }
   });

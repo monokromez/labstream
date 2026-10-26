@@ -78,5 +78,5 @@ export default function App() {
     <Login onAuthenticated={handleAuthenticated} mustChangePassword={mustChangePassword} sessionUser={user} />
   </>
 
-  return <AppShell role={user.role} userName={user.displayName ?? user.username ?? 'User'} onLogout={handleLogout} />
+  return <AppShell role={user.role} userId={user.id} userName={user.displayName ?? user.username ?? 'User'} onLogout={handleLogout} />
 }

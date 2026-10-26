@@ -200,6 +200,13 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       const query = String(req.query.q ?? "").trim();
       if (!STAFF_ROLES.has(role) && role !== "system" && role !== "") return res.status(400).json({ error: "INVALID_ROLE_FILTER" });
       if (action.length > 120 || query.length > 100) return res.status(400).json({ error: "INVALID_AUDIT_FILTER", message: "Audit filters are too long." });
+      const actions = await client.unsafe(
+        `select distinct action from public.audit_logs where clinic_id = $1 order by action`,
+        [req.user.clinicId],
+      );
+      if (action && !actions.some(({ action: actionName }) => actionName === action)) {
+        return res.status(400).json({ error: "INVALID_ACTION_FILTER", message: "Choose an available audit event." });
+      }
       const [count] = await client.unsafe(
         `select count(*)::integer as total from public.audit_logs a
           left join public.users u on u.id = a.actor_user_id and u.clinic_id = a.clinic_id
@@ -227,10 +234,6 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
               or coalesce(a.details::text, '') ilike '%' || $6 || '%')
           order by a.created_at desc limit $4 offset $5`,
         [req.user.clinicId, role, action, pageSize, offset, query],
-      );
-      const actions = await client.unsafe(
-        `select distinct action from public.audit_logs where clinic_id = $1 order by action`,
-        [req.user.clinicId],
       );
       return res.json({ data, actions: actions.map(({ action: actionName }) => actionName), pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {

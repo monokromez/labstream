@@ -65,6 +65,15 @@ export function createTechnologistRouter({ client }) {
           return { ...test, latestResult: latest ?? null };
         }));
       }
+      const accessedRequests = new Map(data.map((specimen) => [specimen.request_id, specimen.request_number]));
+      for (const [requestId, requestNumber] of accessedRequests) {
+        await client.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'results.accessed', 'test_request', $3,
+             jsonb_build_object('requestNumber', $4::text, 'accessMethod', 'technologist-specimens'))`,
+          [req.user.clinicId, req.user.sub, requestId, requestNumber],
+        );
+      }
       return res.json({ data });
     } catch (error) {
       return next(error);

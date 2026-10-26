@@ -1,4 +1,4 @@
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
+import { isSupportedCountry, parsePhoneNumberFromString } from "libphonenumber-js/min";
 
 const NAME_PATTERN = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -31,10 +31,12 @@ function isValidDate(value) {
   return value <= today && value >= earliest.toISOString().slice(0, 10);
 }
 
-export function validateStaffDetails(body) {
+export function validateStaffDetails(body, { allowAdministrator = false } = {}) {
   const errors = {};
   if (!body || typeof body !== "object" || Array.isArray(body)) return { body: "Provide staff details." };
-  if (!STAFF_ROLES.has(body.role)) errors.role = "Choose a supported staff role.";
+  if (!STAFF_ROLES.has(body.role) && !(allowAdministrator && body.role === "administrator")) {
+    errors.role = "Choose a supported staff role.";
+  }
 
   for (const [field, required] of [["firstName", true], ["middleName", false], ["lastName", true]]) {
     const value = body[field];
@@ -47,8 +49,12 @@ export function validateStaffDetails(body) {
   }
 
   if (!isValidDate(body.dateOfBirth)) errors.dateOfBirth = "Enter a valid date of birth within the last 120 years.";
-  if (typeof body.phone !== "string" || body.phone.length > 32 || !parsePhoneNumberFromString(body.phone)?.isValid()) {
-    errors.phone = "Enter a valid phone number.";
+  const countryCode = typeof body.countryCode === "string" ? body.countryCode.toUpperCase() : "";
+  const phone = typeof body.phone === "string" && body.phone.length <= 32
+    ? parsePhoneNumberFromString(body.phone)
+    : undefined;
+  if (!isSupportedCountry(countryCode) || !phone?.isValid() || phone.country !== countryCode) {
+    errors.phone = "Enter a valid phone number for the selected country.";
   }
 
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -61,6 +67,23 @@ export function validateStaffDetails(body) {
   if (!isText(body.houseNumber, { required: true, max: 30 })) errors.houseNumber = "House number is required and cannot exceed 30 characters.";
   if (!isText(body.street, { required: true, max: 100 }) || body.street.trim().length < 2) errors.street = "Street must be between 2 and 100 characters.";
   return errors;
+}
+
+export function validateStaffRoleChange({ currentRole, nextRole, isActive, isPendingActivation, hasActiveWork }) {
+  if (currentRole === nextRole) return null;
+  if (!STAFF_ROLES.has(currentRole) || !STAFF_ROLES.has(nextRole)) {
+    return { code: "STAFF_ROLE_CHANGE_UNSUPPORTED", message: "Administrator account roles cannot be changed here." };
+  }
+  if (isActive) {
+    return { code: "STAFF_ROLE_CHANGE_REQUIRES_INACTIVE", message: "Deactivate the account before changing its role." };
+  }
+  if (isPendingActivation) {
+    return { code: "STAFF_ACTIVATION_PENDING", message: "This account must be activated before its role can be changed." };
+  }
+  if (hasActiveWork) {
+    return { code: "STAFF_ROLE_CHANGE_HAS_ACTIVE_WORK", message: "Reassign the account’s active work before changing its role." };
+  }
+  return null;
 }
 
 export function validateCategoryDetails(body) {

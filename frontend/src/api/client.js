@@ -99,7 +99,9 @@ export const api = {
   },
   staff: {
     list: (filters) => request(`/api/admin/staff${queryString(filters)}`),
+    get: (staffId) => request(`/api/admin/staff/${staffId}`),
     create: (staff) => request('/api/admin/staff', { method: 'POST', body: staff }),
+    update: (staffId, staff) => request(`/api/admin/staff/${staffId}`, { method: 'PATCH', body: staff }),
     reissueActivation: (staffId) => request(`/api/admin/staff/${staffId}/activation`, { method: 'POST', body: {} }),
     setActive: (staffId, isActive) => request(`/api/admin/staff/${staffId}/status`, { method: 'PATCH', body: { isActive } }),
   },

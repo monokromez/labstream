@@ -4,6 +4,7 @@ import {
   validateCategoryDetails,
   validateReferenceRangeDetails,
   validateStaffDetails,
+  validateStaffRoleChange,
   validateTestDetails,
 } from "../src/adminValidation.js";
 
@@ -17,6 +18,7 @@ test("accepts complete staff details with valid contact and address fields", () 
     lastName: "Rivera",
     dateOfBirth: "1990-05-20",
     phone: "+14155552671",
+    countryCode: "US",
     email: "alex.rivera@gmail.com",
     country: "United States",
     city: "San Francisco",
@@ -34,6 +36,7 @@ test("rejects invalid staff role, identity, contact, and address values", () => 
     lastName: "Rivera1",
     dateOfBirth: "2023-02-29",
     phone: "not a phone",
+    countryCode: "US",
     email: "alex@example.org",
     country: "",
     city: "X",
@@ -44,6 +47,42 @@ test("rejects invalid staff role, identity, contact, and address values", () => 
   for (const field of ["role", "firstName", "lastName", "dateOfBirth", "phone", "email", "country", "city", "houseNumber", "street"]) {
     assert.ok(errors[field], `expected ${field} to be invalid`);
   }
+});
+
+test("allows administrator role validation only for an existing administrator profile update", () => {
+  const details = {
+    role: "administrator",
+    firstName: "Alex",
+    lastName: "Rivera",
+    dateOfBirth: "1990-05-20",
+    phone: "+14155552671",
+    countryCode: "US",
+    email: "alex.rivera@gmail.com",
+    country: "United States",
+    city: "San Francisco",
+    houseNumber: "12",
+    street: "Market Street",
+  };
+
+  assert.ok(validateStaffDetails(details).role);
+  assert.deepEqual(validateStaffDetails(details, { allowAdministrator: true }), {});
+  assert.ok(validateStaffDetails({ ...details, countryCode: "PH" }).phone);
+});
+
+test("role changes require an activated, inactive staff account with no active assignments", () => {
+  const base = {
+    currentRole: "cashier",
+    nextRole: "pathologist",
+    isActive: false,
+    isPendingActivation: false,
+    hasActiveWork: false,
+  };
+
+  assert.equal(validateStaffRoleChange(base), null);
+  assert.equal(validateStaffRoleChange({ ...base, isActive: true }).code, "STAFF_ROLE_CHANGE_REQUIRES_INACTIVE");
+  assert.equal(validateStaffRoleChange({ ...base, isPendingActivation: true }).code, "STAFF_ACTIVATION_PENDING");
+  assert.equal(validateStaffRoleChange({ ...base, hasActiveWork: true }).code, "STAFF_ROLE_CHANGE_HAS_ACTIVE_WORK");
+  assert.equal(validateStaffRoleChange({ ...base, currentRole: "administrator" }).code, "STAFF_ROLE_CHANGE_UNSUPPORTED");
 });
 
 test("validates category lengths and descriptions", () => {

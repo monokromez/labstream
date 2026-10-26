@@ -45,6 +45,7 @@ export default function AdminDashboard() {
     { label: 'Released', value: Number(requestCounts.released ?? 0), tone: 'success' },
   ]
   const recentActivity = (activityResult?.data ?? []).map((event) => ({
+    id: event.id,
     time: formatDateTime(event.createdAt), user: event.actor,
     role: (event.role ?? 'system').replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
     action: event.action, record: `${event.entityType}${event.entityId ? ` · ${event.entityId}` : ''}`,
@@ -196,7 +197,7 @@ export default function AdminDashboard() {
             </thead>
             <tbody>
               {pageActivity.map((item) => (
-                <tr key={`${item.time}-${item.record}`}>
+                <tr key={item.id}>
                   <td>{item.time}</td>
                   <td className="admin-table__primary">{item.user}</td>
                   <td>{item.role}</td>
