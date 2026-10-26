@@ -21,6 +21,10 @@
 .test-catalog__turnaround-inputs label:focus-within { outline: 3px solid #99f6e4; outline-offset: 2px; }
 .test-catalog__turnaround-inputs input { width: 100%; min-width: 0; min-height: 0; padding: .55rem 0; border: 0; outline: 0; background: transparent; color: var(--text-lightbg); font: inherit; font-size: .9rem; }
 .admin-dialog__field-hint { color: var(--text-muted-lightbg); font-size: .76rem; font-weight: 400; line-height: 1.4; }
+.admin-page[aria-label='Test catalog'] .admin-toolbar { align-items: flex-start; }
+.admin-page[aria-label='Test catalog'] .app-search-field { gap: .4rem; }
+.admin-page[aria-label='Test catalog'] .app-search-field__label { margin-bottom: 0; }
+.admin-page[aria-label='Test catalog'] .app-search { min-height: 2.65rem; }
 
 /* Analytes / Parameters Section */
 .test-catalog__analytes-section { display: grid; gap: .75rem; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--border); }
@@ -30,7 +34,7 @@
 .test-catalog__analyte-list { display: grid; gap: .65rem; }
 .test-catalog__analyte-card { padding: .75rem; border: 1px solid var(--border); border-radius: .45rem; background: #fafdfc; display: flex; flex-direction: column; gap: .5rem; }
 .test-catalog__analyte-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6rem; align-items: stretch; }
-.test-catalog__analyte-grid > .admin-dialog__field { grid-template-rows: minmax(2.2em, auto) 2.65rem 1em; }
+.test-catalog__analyte-grid > .admin-dialog__field { grid-template-rows: 2.5rem 2.65rem 1rem; align-content: start; }
 .test-catalog__remove-btn { align-self: flex-end; }
 
 /* Configuration View Dialog */

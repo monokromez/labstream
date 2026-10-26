@@ -3,7 +3,7 @@ import SearchInput from '../../components/data/SearchInput.jsx'
 import AdminDialog from '../../components/data/AdminDialog.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
-import { CurrencyInput, LimitedInput } from '../../components/forms/LimitedInput.jsx'
+import { CurrencyInput, DecimalInput, LimitedInput } from '../../components/forms/LimitedInput.jsx'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
 import './TestCatalog.css'
@@ -145,6 +145,15 @@ export default function TestCatalog() {
   async function saveTest() {
     try {
       const categoryIds = form.categoryIds
+      const price = String(form.price)
+      if (!form.name.trim() || form.name.length > 160) {
+        setSaveNotice('Test name is required and must be no longer than 160 characters.')
+        return
+      }
+      if (!/^\d{1,8}(?:\.\d{1,2})?$/.test(price) || Number(price) > 99_999_999.99) {
+        setSaveNotice('Price must contain numbers only, with up to 8 digits and 2 decimal places.')
+        return
+      }
       const hours = form.turnaroundHours === '' ? 0 : Number(form.turnaroundHours)
       const minutes = form.turnaroundMinutePart === '' ? 0 : Number(form.turnaroundMinutePart)
       const hasTurnaround = form.turnaroundHours !== '' || form.turnaroundMinutePart !== ''
@@ -164,8 +173,26 @@ export default function TestCatalog() {
           isRequired: item.isRequired !== false,
         }
       })
+      if (form.analytes.some((item) => item.analyteOptions.split(',').some((option) => option.trim().length > 120))) {
+        setSaveNotice('Each dropdown option or table column must be no longer than 120 characters.')
+        return
+      }
+      if (form.analytes.some((item) => ['select', 'structured'].includes(item.valueType)
+        && item.analyteOptions.trim()
+        && item.analyteOptions.split(',').some((option) => !option.trim()))) {
+        setSaveNotice('Remove empty entries from the comma-separated options or table columns.')
+        return
+      }
       if (!analytesPayload.length || analytesPayload.some((a) => !a.label)) {
         setSaveNotice('Provide a label for each test parameter.')
+        return
+      }
+      if (form.analytes.some((item) => item.label.length > 160)) {
+        setSaveNotice('Each test parameter label must be no longer than 160 characters.')
+        return
+      }
+      if (analytesPayload.some((item) => new Set(item.options.map((option) => option.toLowerCase())).size !== item.options.length)) {
+        setSaveNotice('Dropdown options and table columns must be unique.')
         return
       }
       if (!categoryIds.length) {
@@ -180,6 +207,10 @@ export default function TestCatalog() {
         setSaveNotice('Structured result fields need at least two unique column labels.')
         return
       }
+      if (analytesPayload.some((a) => a.valueType === 'structured' && a.options.length > 20)) {
+        setSaveNotice('Repeatable tables can have no more than 20 columns.')
+        return
+      }
       const specimenPayload = form.specimens.map((item) => ({
         ...item,
         specimenType: item.specimenType.trim(),
@@ -189,6 +220,16 @@ export default function TestCatalog() {
       }))
       if (!specimenPayload.length || specimenPayload.some((item) => !item.specimenType)) {
         setSaveNotice('Choose a type for each required specimen.')
+        return
+      }
+      if (form.specimens.some((item) => item.collectionInstructions.length > 500 || item.quantityUnit.length > 40)) {
+        setSaveNotice('Collection instructions must be no longer than 500 characters and quantity units no longer than 40 characters.')
+        return
+      }
+      if (form.specimens.some((item) => item.minimumQuantity !== ''
+        && (!/^\d{1,8}(?:\.\d{1,2})?$/.test(item.minimumQuantity)
+          || Number(item.minimumQuantity) < 0.01 || Number(item.minimumQuantity) > 99_999_999.99))) {
+        setSaveNotice('Minimum quantity must be a number from 0.01 to 99,999,999.99, with up to 2 decimal places.')
         return
       }
       if (dialog.editingId) {
@@ -213,8 +254,8 @@ export default function TestCatalog() {
 
   async function saveCategory() {
     const name = categoryName.trim()
-    if (!name) {
-      setSaveNotice('Enter a category name.')
+    if (name.length < 2 || name.length > 120) {
+      setSaveNotice('Category name must be between 2 and 120 characters.')
       return
     }
     if (catalog.categories.some((category) => category.toLowerCase() === name.toLowerCase())) {
@@ -312,7 +353,7 @@ export default function TestCatalog() {
       {loadError && <p role="alert">{loadError}</p>}
       <div className="admin-page__controls-row">
         <div className="admin-toolbar" role="search">
-          <SearchInput className="admin-toolbar__search" label="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
+          <SearchInput className="admin-toolbar__search" label="Search test catalog" visibleLabel="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
           <label className="admin-toolbar__field">Filter by category<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option value="All categories">All categories</option>{categoryRecords.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         </div>
       </div>
@@ -346,7 +387,7 @@ export default function TestCatalog() {
           <label className="admin-dialog__field">Availability<select value={form.availability} onChange={(event) => setForm({ ...form, availability: event.target.value })}><option>Available</option><option>Unavailable</option></select></label>
           <section className="test-catalog__analytes-section admin-dialog__span">
             <div className="test-catalog__section-header"><div><h3 className="test-catalog__section-title">Required Specimens ({form.specimens.length})</h3><p className="test-catalog__section-desc">Choose each specimen type needed for this test.</p></div><button type="button" className="admin-button admin-button--small admin-button--positive" onClick={addSpecimen}>+ Add Specimen</button></div>
-            <div className="test-catalog__analyte-list">{form.specimens.map((specimen, index) => <div key={index} className="test-catalog__analyte-card"><div className="test-catalog__analyte-grid"><label className="admin-dialog__field">Specimen {index + 1}<select required value={specimen.specimenType} onChange={(event) => updateSpecimen(index, 'specimenType', event.target.value)}>{specimenTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label className="admin-dialog__field">Collection instructions<LimitedInput value={specimen.collectionInstructions} maxLength={500} onChange={(event) => updateSpecimen(index, 'collectionInstructions', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Minimum quantity<input type="number" min="0.01" step="0.01" value={specimen.minimumQuantity} onChange={(event) => updateSpecimen(index, 'minimumQuantity', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Quantity unit<LimitedInput value={specimen.quantityUnit} maxLength={30} onChange={(event) => updateSpecimen(index, 'quantityUnit', event.target.value)} placeholder="e.g. mL" /></label></div>{form.specimens.length > 1 && <button type="button" className="admin-button admin-button--small admin-button--negative test-catalog__remove-btn" onClick={() => removeSpecimen(index)}>Remove</button>}</div>)}</div>
+            <div className="test-catalog__analyte-list">{form.specimens.map((specimen, index) => <div key={index} className="test-catalog__analyte-card"><div className="test-catalog__analyte-grid"><label className="admin-dialog__field">Specimen {index + 1}<select required value={specimen.specimenType} onChange={(event) => updateSpecimen(index, 'specimenType', event.target.value)}>{specimenTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label className="admin-dialog__field">Collection instructions<LimitedInput value={specimen.collectionInstructions} maxLength={500} onChange={(event) => updateSpecimen(index, 'collectionInstructions', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Minimum quantity<DecimalInput value={specimen.minimumQuantity} onValueChange={(value) => updateSpecimen(index, 'minimumQuantity', value)} placeholder="Optional" /></label><label className="admin-dialog__field">Quantity unit<LimitedInput value={specimen.quantityUnit} maxLength={40} onChange={(event) => updateSpecimen(index, 'quantityUnit', event.target.value)} placeholder="e.g. mL" /></label></div>{form.specimens.length > 1 && <button type="button" className="admin-button admin-button--small admin-button--negative test-catalog__remove-btn" onClick={() => removeSpecimen(index)}>Remove</button>}</div>)}</div>
           </section>
 
             <section className="test-catalog__analytes-section admin-dialog__span">
@@ -368,7 +409,7 @@ export default function TestCatalog() {
                         <LimitedInput
                           required
                           value={analyte.label}
-                          maxLength={120}
+                          maxLength={160}
                           placeholder={index === 0 ? 'e.g. Hemoglobin' : 'e.g. Hematocrit'}
                           onChange={(e) => updateAnalyte(index, 'label', e.target.value)}
                         />
@@ -395,7 +436,7 @@ export default function TestCatalog() {
                       {analyte.valueType === 'numeric' && analyte.unit === 'Other' && (
                         <label className="admin-dialog__field">
                           Custom unit
-                          <LimitedInput required value={analyte.customAnalyteUnit} maxLength={30} onChange={(e) => updateAnalyte(index, 'customAnalyteUnit', e.target.value)} placeholder="Specify unit" />
+                          <LimitedInput required value={analyte.customAnalyteUnit} maxLength={40} onChange={(e) => updateAnalyte(index, 'customAnalyteUnit', e.target.value)} placeholder="Specify unit" />
                         </label>
                       )}
                       {(analyte.valueType === 'select' || analyte.valueType === 'structured') && (
