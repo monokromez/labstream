@@ -1,72 +1,9 @@
 import { Router } from "express";
-import ExcelJS from "exceljs";
-import PDFDocument from "pdfkit";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 
 export function createAdministratorRouter({ client, publishCatalogChanged }) {
   const router = Router();
   router.use(createRequireAuth(client), requirePasswordSetupComplete, requireSameOrigin, allowRoles("administrator"));
-
-  router.get("/reports/export", async (req, res, next) => {
-    try {
-      const format = String(req.query.format ?? "").toLowerCase();
-      if (!["xlsx", "pdf"].includes(format)) return res.status(400).json({ error: "INVALID_REPORT_FORMAT", message: "Choose xlsx or pdf." });
-      const [summary] = await client.unsafe(
-        `select count(*) filter (where requested_at >= date_trunc('month', now()))::integer as requests,
-                count(*) filter (where status = 'awaiting_payment' and requested_at >= date_trunc('month', now()))::integer as awaiting_payment,
-                count(*) filter (where status in ('paid','specimen_collection','processing') and requested_at >= date_trunc('month', now()))::integer as in_progress,
-                count(*) filter (where status = 'for_validation' and requested_at >= date_trunc('month', now()))::integer as for_validation,
-                count(*) filter (where status = 'released' and released_at >= date_trunc('month', now()))::integer as released_requests
-           from public.test_requests where clinic_id = $1`, [req.user.clinicId]);
-      const [financial] = await client.unsafe(
-        `select coalesce(sum(amount), 0)::numeric as revenue from public.payments
-          where clinic_id = $1 and voided_at is null and paid_at >= date_trunc('month', now())`, [req.user.clinicId]);
-      const categories = await client.unsafe(
-        `select c.name as category, count(ri.id) filter (where r.id is not null)::integer as tests
-           from public.test_categories c
-           left join public.test_category_memberships m on m.category_id = c.id and m.clinic_id = c.clinic_id
-           left join public.request_items ri on ri.test_id = m.test_id and ri.clinic_id = m.clinic_id and ri.status = 'released'
-           left join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id and r.released_at >= date_trunc('month', now())
-          where c.clinic_id = $1 and c.is_active = true group by c.id order by c.name`, [req.user.clinicId]);
-      const rows = [
-        ["Metric", "Value"],
-        ["Requests this month", summary.requests], ["Awaiting payment", summary.awaiting_payment],
-        ["In progress", summary.in_progress], ["Awaiting validation", summary.for_validation],
-        ["Released requests", summary.released_requests], ["Revenue this month (PHP)", Number(financial.revenue)],
-        [], ["Category", "Released tests this month"], ...categories.map((row) => [row.category, row.tests]),
-      ];
-      await client.unsafe(
-        `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, details)
-         values ($1, $2, 'report.exported', 'report', jsonb_build_object('format', $3::text))`,
-        [req.user.clinicId, req.user.sub, format]);
-      const filename = `labstream-operations-report-${new Date().toISOString().slice(0, 10)}`;
-      if (format === "xlsx") {
-        const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet("Operations report");
-        rows.forEach((row) => sheet.addRow(row));
-        sheet.columns = [{ width: 34 }, { width: 26 }];
-        sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-        sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF14564F" } };
-        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
-        await workbook.xlsx.write(res); return res.end();
-      }
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
-      const pdf = new PDFDocument({ margin: 52, size: "A4" });
-      pdf.pipe(res);
-      pdf.fontSize(18).fillColor("#14564f").text("Labstream Operations Report");
-      pdf.moveDown(0.3).fontSize(10).fillColor("#526d70").text(`Month to date · Generated ${new Date().toLocaleString("en-PH")}`);
-      pdf.moveDown(1);
-      rows.forEach(([label, value]) => {
-        if (!label && value == null) { pdf.moveDown(0.6); return; }
-        pdf.fontSize(label === "Metric" || label === "Category" ? 11 : 10)
-          .fillColor(label === "Metric" || label === "Category" ? "#14564f" : "#183f43")
-          .text(`${label ?? ""}${value == null ? "" : `: ${value}`}`, { continued: false });
-      });
-      pdf.end();
-    } catch (error) { return next(error); }
-  });
 
   router.get("/dashboard/summary", async (req, res, next) => {
     try {
@@ -282,11 +219,8 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
           const label = String(analyte.label ?? "").trim();
           const valueType = String(analyte.valueType ?? "");
           const options = Array.isArray(analyte.options) ? analyte.options : [];
-          if (!label || !["numeric", "text", "select", "boolean", "structured"].includes(valueType) || ((valueType === "select" || valueType === "structured") && !options.length)) {
+          if (!label || !["numeric", "text", "select", "boolean"].includes(valueType) || (valueType === "select" && !options.length)) {
             throw Object.assign(new Error("Each analyte needs a label, supported value type, and select options when applicable."), { code: "INVALID_ANALYTE_CONFIGURATION" });
-          }
-          if (valueType === "structured" && (options.length < 2 || options.some((column) => !String(column).trim()) || new Set(options.map((column) => String(column).trim().toLowerCase())).size !== options.length)) {
-            throw Object.assign(new Error("Structured results need at least two unique column labels."), { code: "INVALID_ANALYTE_CONFIGURATION" });
           }
           await tx.unsafe(
             `insert into public.test_analytes (clinic_id, test_id, key, label, value_type, options, unit, sort_order, is_required)
@@ -411,14 +345,11 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
               throw Object.assign(new Error("Workflow parameters cannot be replaced after this test has request history or reference ranges. Historical result links must remain intact."), { code: "TEST_CONFIGURATION_IN_USE" });
             }
           }
-          if (analytes.some((item) => !String(item.label ?? "").trim() || !["numeric", "text", "select", "boolean", "structured"].includes(item.valueType))) {
+          if (analytes.some((item) => !String(item.label ?? "").trim() || !["numeric", "text", "select", "boolean"].includes(item.valueType))) {
             throw Object.assign(new Error("Each result parameter needs a label and supported input type."), { code: "INVALID_TEST_CONFIGURATION" });
           }
           if (analytes.some((item) => item.valueType === "select" && (!Array.isArray(item.options) || !item.options.length))) {
             throw Object.assign(new Error("Dropdown parameters need at least one option."), { code: "INVALID_TEST_CONFIGURATION" });
-          }
-          if (analytes.some((item) => item.valueType === "structured" && (!Array.isArray(item.options) || item.options.length < 2 || item.options.some((column) => !String(column).trim()) || new Set(item.options.map((column) => String(column).trim().toLowerCase())).size !== item.options.length))) {
-            throw Object.assign(new Error("Structured results need at least two unique column labels."), { code: "INVALID_TEST_CONFIGURATION" });
           }
           if (specimens.some((item) => !String(item.specimenType ?? "").trim())) {
             throw Object.assign(new Error("Each specimen requirement needs a specimen type."), { code: "INVALID_TEST_CONFIGURATION" });

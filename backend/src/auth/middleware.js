@@ -1,4 +1,4 @@
-import { createAccessToken, verifyAccessToken } from "./accessToken.js";
+import { verifyAccessToken } from "./accessToken.js";
 
 export const SESSION_COOKIE = "labstream_session";
 
@@ -48,31 +48,6 @@ export function createRequireAuth(client) {
       return next(error);
     }
   };
-}
-
-export async function renewUserSession(client, req, res) {
-  const [account] = await client.unsafe(
-    `select id, clinic_id, role, is_active, must_change_password
-       from public.users where id = $1 and clinic_id = $2`,
-    [req.user.sub, req.user.clinicId],
-  );
-  if (!account?.is_active || account.role !== req.user.role) return false;
-  const token = createAccessToken({
-    id: account.id,
-    clinic_id: account.clinic_id,
-    role: account.role,
-    must_change_password: account.must_change_password,
-    auth_at: req.user.authAt,
-  }, process.env.AUTH_TOKEN_SECRET);
-  res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    path: "/api",
-    maxAge: 30 * 60 * 1000,
-  });
-  res.set("Cache-Control", "no-store");
-  return account;
 }
 
 export function requireSameOrigin(req, res, next) {

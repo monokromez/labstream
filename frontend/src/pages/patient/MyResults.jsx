@@ -6,17 +6,13 @@ import AdminDialog from '../../components/data/AdminDialog.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import './MyResults.css'
-import { resultValueForDisplay } from '../../utils/resultValue.js'
-import StructuredValueTable from '../../components/data/StructuredValueTable.jsx'
 
 export default function MyResults() {
   const [selected, setSelected] = useState(null)
-  const [downloadError, setDownloadError] = useState('')
   const [page, setPage] = useState(1)
   const { result, loading, error } = useApiResource(() => api.patient.results({ page, pageSize: 10 }), [page])
   const requests = (result?.data ?? []).map((request) => ({
     ...request,
-    backendId: request.id,
     id: request.requestNumber,
     requested: formatDateTime(request.requestedAt),
     released: formatDate(request.releasedAt),
@@ -26,8 +22,7 @@ export default function MyResults() {
       interpretation: test.pathologistInterpretation,
       results: (test.values ?? []).map((value) => ({
         name: value.label,
-        value: Array.isArray(value.structuredValue) ? null : resultValueForDisplay(value),
-        structuredValue: value.structuredValue,
+        value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—',
         isNumeric: value.numericValue != null,
         unit: value.unit,
         reference: value.lowerLimit != null || value.upperLimit != null
@@ -37,12 +32,6 @@ export default function MyResults() {
       })),
     })),
   }))
-  async function downloadSelectedResult() {
-    if (!selected) return
-    setDownloadError('')
-    try { await api.patient.downloadResultPdf(selected.backendId) }
-    catch (requestError) { setDownloadError(requestError.message || 'Unable to download this result.') }
-  }
   const releasedCount = Number(result?.summary?.releasedTests ?? requests.filter((request) => request.status === 'Released').reduce((sum, request) => sum + request.testCount, 0))
   const unreleasedCount = Number(result?.summary?.unreleasedTests ?? requests.filter((request) => request.status !== 'Released').reduce((sum, request) => sum + request.testCount, 0))
   const rows = requests
@@ -72,11 +61,10 @@ export default function MyResults() {
           className="patient-records__report-dialog"
           footer={<>
             <button className="admin-button admin-button--secondary" type="button" onClick={() => setSelected(null)}>Close</button>
-            <button className="admin-button admin-button--positive" type="button" onClick={downloadSelectedResult}>Download PDF</button>
+            <button className="admin-button admin-button--positive" type="button" onClick={() => window.print()}>Print / Save as PDF</button>
           </>}
         >
           <div className="patient-records__printable-report">
-            {downloadError && <p role="alert">{downloadError}</p>}
             <div className="patient-records__report-header">
               <div>
                 <h3 className="patient-records__clinic-title">{result?.clinic?.name || 'Diagnostic Laboratory'}</h3>
@@ -100,7 +88,7 @@ export default function MyResults() {
                   {test.results.map((row) => (
                     <div key={row.name}>
                       <span>{row.name}</span>
-                      {Array.isArray(row.structuredValue) ? <StructuredValueTable rows={row.structuredValue} /> : <strong>{row.value}{row.unit && row.isNumeric ? ` ${row.unit}` : ''}</strong>}
+                      <strong>{row.value}{row.unit && row.isNumeric ? ` ${row.unit}` : ''}</strong>
                       <small className={row.abnormal ? 'patient-records__abnormal' : ''}>{row.abnormal ? 'Outside reference range' : `Reference: ${row.reference}`}</small>
                     </div>
                   ))}

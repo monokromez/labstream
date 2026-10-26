@@ -6,6 +6,7 @@ const router = Router();
 const views = new Set(["pending", "returned", "released"]);
 const MAX_PAGE_SIZE = 50;
 
+<<<<<<< HEAD
 router.use(requireAuth, requireRole("pathologist"));
 
 function parsePositiveInteger(value, fallback, maximum) {
@@ -92,6 +93,71 @@ router.get("/worklist", async (req, res) => {
   const view = typeof req.query.view === "string" ? req.query.view : "pending";
   if (!views.has(view)) {
     return res.status(400).json({ error: "View must be pending, returned, or released." });
+=======
+  async function requestList(req, statuses) {
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
+    const offset = (page - 1) * pageSize;
+    const query = String(req.query.q ?? "").trim();
+    const testId = String(req.query.testId ?? "");
+    const priority = String(req.query.priority ?? "");
+    const [count] = await client.unsafe(
+      `select count(distinct r.id)::integer as total
+         from public.test_requests r join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+         join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
+        where r.clinic_id = $1 and r.assigned_pathologist_id = $2 and r.status = any($3::public.request_status[])
+          and ($4 = '' or r.request_number ilike '%' || $4 || '%' or p.pid ilike '%' || $4 || '%'
+            or p.first_name ilike '%' || $4 || '%' or p.last_name ilike '%' || $4 || '%')
+          and ($5 = '' or ri.test_id::text = $5)
+          and ($6 = '' or r.priority = $6)`,
+      [req.user.clinicId, req.user.sub, statuses, query, testId, priority],
+    );
+    const requests = await client.unsafe(
+      `select distinct r.id, r.request_number, r.status, r.priority, r.requested_at, r.paid_at, r.released_at,
+              p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
+              coalesce(u.username, '—') as technologist
+         from public.test_requests r join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+         join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
+         left join public.users u on u.id = r.assigned_technologist_id and u.clinic_id = r.clinic_id
+        where r.clinic_id = $1 and r.assigned_pathologist_id = $2 and r.status = any($3::public.request_status[])
+          and ($4 = '' or r.request_number ilike '%' || $4 || '%' or p.pid ilike '%' || $4 || '%'
+            or p.first_name ilike '%' || $4 || '%' or p.last_name ilike '%' || $4 || '%')
+          and ($5 = '' or ri.test_id::text = $5)
+          and ($6 = '' or r.priority = $6)
+        order by r.priority desc, r.requested_at limit $7 offset $8`,
+      [req.user.clinicId, req.user.sub, statuses, query, testId, priority, pageSize, offset],
+    );
+    for (const request of requests) {
+      request.tests = await client.unsafe(
+        `select ri.id as request_item_id, ri.test_name_snapshot as test_name, ri.category_name_snapshot,
+                ri.status as item_status, rs.id as submission_id, rs.revision_number, rs.status as result_status,
+                rs.pathologist_interpretation, rs.updated_at as result_updated_at,
+                (select rr.remarks from public.result_reviews rr
+                  where rr.result_submission_id = rs.id and rr.clinic_id = rs.clinic_id
+                  order by rr.reviewed_at desc limit 1) as review_remarks,
+                coalesce((select jsonb_agg(jsonb_build_object(
+                  'id', rv.id, 'analyteId', a.id, 'label', a.label, 'valueType', a.value_type,
+                  'numericValue', rv.numeric_value, 'textValue', rv.text_value, 'selectValue', rv.select_value,
+                  'booleanValue', rv.boolean_value, 'unit', rv.unit_snapshot,
+                  'lowerLimit', rv.lower_limit_snapshot, 'upperLimit', rv.upper_limit_snapshot,
+                  'isAbnormal', rv.is_abnormal) order by a.sort_order)
+                  from public.result_values rv join public.test_analytes a on a.id = rv.analyte_id and a.clinic_id = rv.clinic_id
+                 where rv.result_submission_id = rs.id), '[]'::jsonb) as values,
+                coalesce((select jsonb_agg(jsonb_build_object('type', s.specimen_type, 'status', s.status, 'attempt', s.attempt_number))
+                  from public.result_submission_specimens rss join public.specimens s
+                    on s.id = rss.specimen_id and s.request_id = rss.request_id and s.clinic_id = rss.clinic_id
+                 where rss.result_submission_id = rs.id), '[]'::jsonb) as specimens
+           from public.request_items ri
+           join lateral (select rs.* from public.result_submissions rs
+                          where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
+                          order by rs.revision_number desc limit 1) rs on true
+          where ri.request_id = $1 and ri.clinic_id = $2
+          order by ri.created_at`,
+        [request.id, req.user.clinicId],
+      );
+    }
+    return { data: requests, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } };
+>>>>>>> parent of c6490db (feat: add structured results and workflow improvements)
   }
 
   const page = parsePositiveInteger(req.query.page, 1, 1_000_000);

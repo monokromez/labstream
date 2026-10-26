@@ -55,7 +55,7 @@ export function createTechnologistRouter({ client }) {
                     coalesce((select jsonb_agg(jsonb_build_object(
                       'analyteId', rv.analyte_id, 'numericValue', rv.numeric_value,
                       'textValue', rv.text_value, 'selectValue', rv.select_value,
-                      'booleanValue', rv.boolean_value, 'structuredValue', rv.structured_value
+                      'booleanValue', rv.boolean_value
                     )) from public.result_values rv where rv.result_submission_id = rs.id and rv.clinic_id = rs.clinic_id), '[]'::jsonb) as values
                from public.result_submissions rs
               where rs.request_item_id = $1 and rs.clinic_id = $2
@@ -269,20 +269,11 @@ export function createTechnologistRouter({ client }) {
         for (const value of values) {
           const analyte = byId.get(value.analyteId);
           if (!analyte) throw Object.assign(new Error("A submitted analyte does not belong to this test."), { code: "INVALID_ANALYTE" });
-          const actual = [value.numericValue != null, value.textValue != null, value.selectValue != null, value.booleanValue != null, value.structuredValue != null].filter(Boolean).length;
-          const expected = { numeric: "numericValue", text: "textValue", select: "selectValue", boolean: "booleanValue", structured: "structuredValue" }[analyte.value_type];
+          const actual = [value.numericValue != null, value.textValue != null, value.selectValue != null, value.booleanValue != null].filter(Boolean).length;
+          const expected = { numeric: "numericValue", text: "textValue", select: "selectValue", boolean: "booleanValue" }[analyte.value_type];
           if (actual > 1 || (actual === 1 && value[expected] == null)) throw Object.assign(new Error(`Value type does not match analyte ${value.analyteId}.`), { code: "INVALID_ANALYTE_VALUE" });
           if (analyte.value_type === "numeric" && value.numericValue != null && !Number.isFinite(Number(value.numericValue))) throw Object.assign(new Error("Numeric results must be finite numbers."), { code: "INVALID_ANALYTE_VALUE" });
           if (analyte.value_type === "select" && value.selectValue != null && !analyte.options.includes(value.selectValue)) throw Object.assign(new Error("Select a configured result option."), { code: "INVALID_SELECT_VALUE" });
-          if (analyte.value_type === "structured" && value.structuredValue != null) {
-            if (!Array.isArray(value.structuredValue) || value.structuredValue.length > 100) throw Object.assign(new Error("Structured results must be a table with no more than 100 rows."), { code: "INVALID_ANALYTE_VALUE" });
-            for (const row of value.structuredValue) {
-              if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).some((key) => !analyte.options.includes(key))
-                || Object.values(row).some((cell) => typeof cell !== "string" || cell.length > 500)) {
-                throw Object.assign(new Error("Structured result rows must match the configured columns."), { code: "INVALID_ANALYTE_VALUE" });
-              }
-            }
-          }
         }
         const [latest] = await tx.unsafe(
           `select id, revision_number, status from public.result_submissions
@@ -316,31 +307,22 @@ export function createTechnologistRouter({ client }) {
         }
         for (const value of values) {
           const analyte = byId.get(value.analyteId);
-          const supplied = [value.numericValue, value.textValue, value.selectValue, value.booleanValue, value.structuredValue].some((entry) => entry != null && entry !== "");
-          if (!supplied) continue;
           const numericValue = value.numericValue == null ? null : Number(value.numericValue);
           const abnormal = numericValue != null && ((analyte.lower_limit != null && numericValue < Number(analyte.lower_limit)) || (analyte.upper_limit != null && numericValue > Number(analyte.upper_limit)));
           await tx.unsafe(
             `insert into public.result_values
-              (clinic_id, result_submission_id, analyte_id, numeric_value, text_value, select_value, boolean_value, structured_value,
+              (clinic_id, result_submission_id, analyte_id, numeric_value, text_value, select_value, boolean_value,
                unit_snapshot, lower_limit_snapshot, upper_limit_snapshot, is_abnormal)
-             values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)`,
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
             [req.user.clinicId, submission.id, value.analyteId,
               analyte.value_type === "numeric" ? numericValue : null,
               analyte.value_type === "text" ? value.textValue ?? null : null,
               analyte.value_type === "select" ? value.selectValue ?? null : null,
               analyte.value_type === "boolean" ? value.booleanValue ?? null : null,
-              analyte.value_type === "structured" ? JSON.stringify(value.structuredValue) : null,
               analyte.result_unit, analyte.lower_limit, analyte.upper_limit, abnormal],
           );
         }
         await tx.unsafe(`update public.request_items set status = 'drafted', updated_at = now() where id = $1 and clinic_id = $2`, [context.item_id, req.user.clinicId]);
-        await tx.unsafe(
-          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'results.draft_saved', 'result_submission', $3,
-             jsonb_build_object('requestItemId', $4::uuid, 'revision', $5::integer, 'valueCount', $6::integer))`,
-          [req.user.clinicId, req.user.sub, submission.id, context.item_id, submission.revision_number, values.filter((value) => [value.numericValue, value.textValue, value.selectValue, value.booleanValue, value.structuredValue].some((entry) => entry != null && entry !== "")).length],
-        );
         return { id: submission.id, revision: submission.revision_number, status: "draft" };
       });
       return res.json({ data: result });
@@ -381,13 +363,7 @@ export function createTechnologistRouter({ client }) {
         if (drafts.length !== target.total) throw Object.assign(new Error("Complete every test in this request before submitting the results."), { code: "REQUEST_RESULTS_INCOMPLETE" });
         const completeness = await tx.unsafe(
           `select ri.id, count(a.id)::integer as required_count,
-                  count(rv.id)::integer as entered_count,
-                  count(rv.id) filter (where a.value_type = 'structured' and (
-                    rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
-                    or exists (select 1 from jsonb_array_elements(rv.structured_value) as rows(value)
-                      where exists (select 1 from jsonb_array_elements_text(a.options) as columns(label)
-                        where btrim(coalesce(rows.value ->> columns.label, '')) = ''))
-                  ))::integer as incomplete_structured_count
+                  count(rv.id)::integer as entered_count
              from public.request_items ri
              join public.test_analytes a on a.test_id = ri.test_id and a.clinic_id = ri.clinic_id and a.is_required = true
              left join lateral (select id from public.result_submissions rs
@@ -395,13 +371,7 @@ export function createTechnologistRouter({ client }) {
                                  order by revision_number desc limit 1) latest on true
              left join public.result_values rv on rv.result_submission_id = latest.id and rv.analyte_id = a.id and rv.clinic_id = ri.clinic_id
             where ri.request_id = $1 and ri.clinic_id = $2 and ri.status = 'drafted'
-            group by ri.id having count(a.id) = 0 or count(a.id) <> count(rv.id)
-              or count(rv.id) filter (where a.value_type = 'structured' and (
-                rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
-                or exists (select 1 from jsonb_array_elements(rv.structured_value) as rows(value)
-                  where exists (select 1 from jsonb_array_elements_text(a.options) as columns(label)
-                    where btrim(coalesce(rows.value ->> columns.label, '')) = ''))
-              )) > 0`,
+            group by ri.id having count(a.id) = 0 or count(a.id) <> count(rv.id)`,
           [request.id, req.user.clinicId],
         );
         if (completeness.length) throw Object.assign(new Error("Complete every required result field for the drafted tests before submitting."), { code: "RESULTS_INCOMPLETE", details: completeness.map((row) => row.id) });

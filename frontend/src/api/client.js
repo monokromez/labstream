@@ -32,30 +32,9 @@ async function request(path, { method = 'GET', body, signal } = {}) {
     }
   }
   if (!response.ok) {
-    if (response.status === 401 && !['/api/auth/login', '/api/auth/activate', '/api/auth/password-reset', '/api/auth/logout'].includes(path)) {
-      window.dispatchEvent(new CustomEvent('labstream:auth-expired'))
-    }
     throw new ApiError({ status: response.status, ...payload })
   }
   return payload
-}
-
-async function download(path) {
-  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include' })
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}))
-    if (response.status === 401) window.dispatchEvent(new CustomEvent('labstream:auth-expired'))
-    throw new ApiError({ status: response.status, ...payload })
-  }
-  const blob = await response.blob()
-  const disposition = response.headers.get('Content-Disposition') || ''
-  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'labstream-report'
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function queryString(values = {}) {
@@ -71,9 +50,7 @@ export const api = {
   auth: {
     login: (credentials) => request('/api/auth/login', { method: 'POST', body: credentials }),
     activate: (activation) => request('/api/auth/activate', { method: 'POST', body: activation }),
-    resetPassword: (reset) => request('/api/auth/password-reset', { method: 'POST', body: reset }),
     me: () => request('/api/auth/me'),
-    activity: () => request('/api/auth/activity', { method: 'POST', body: {} }),
     changePassword: (passwords) => request('/api/auth/change-password', { method: 'POST', body: passwords }),
     logout: () => request('/api/auth/logout', { method: 'POST', body: {} }),
   },
@@ -87,7 +64,6 @@ export const api = {
     dashboard: () => request('/api/cashier/dashboard'),
     registerPatient: (patient) => request('/api/cashier/patients', { method: 'POST', body: patient }),
     issuePatientPortalActivation: (patientId) => request(`/api/cashier/patients/${patientId}/portal-activation`, { method: 'POST', body: {} }),
-    issuePatientPasswordReset: (patientId, identityVerified) => request(`/api/cashier/patients/${patientId}/password-reset`, { method: 'POST', body: { identityVerified } }),
     createRequest: (testRequest) => request('/api/cashier/requests', { method: 'POST', body: testRequest }),
     queue: (filters) => request(`/api/cashier/queue${queryString(filters)}`),
     callQueueItem: (requestId) => request(`/api/cashier/queue/${requestId}/call`, { method: 'POST', body: {} }),
@@ -100,13 +76,11 @@ export const api = {
   staff: {
     list: (filters) => request(`/api/admin/staff${queryString(filters)}`),
     create: (staff) => request('/api/admin/staff', { method: 'POST', body: staff }),
-    reissueActivation: (staffId) => request(`/api/admin/staff/${staffId}/activation`, { method: 'POST', body: {} }),
     setActive: (staffId, isActive) => request(`/api/admin/staff/${staffId}/status`, { method: 'PATCH', body: { isActive } }),
   },
   administrator: {
     dashboard: () => request('/api/admin/dashboard/summary'),
     testVolume: (filters) => request(`/api/admin/dashboard/test-volume${queryString(filters)}`),
-    exportReport: (format) => download(`/api/admin/reports/export${queryString({ format })}`),
     auditLogs: (filters) => request(`/api/admin/audit-logs${queryString(filters)}`),
     catalog: (filters) => request(`/api/admin/catalog${queryString(filters)}`),
     addCategory: (category) => request('/api/admin/categories', { method: 'POST', body: category }),
@@ -137,7 +111,6 @@ export const api = {
   },
   patient: {
     results: (filters) => request(`/api/patient/results${queryString(filters)}`),
-    downloadResultPdf: (requestId) => download(`/api/patient/results/${encodeURIComponent(requestId)}/pdf`),
     testHistory: (filters) => request(`/api/patient/test-history${queryString(filters)}`),
   },
 }

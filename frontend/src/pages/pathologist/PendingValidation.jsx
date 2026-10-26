@@ -9,7 +9,6 @@ import {
   usePathologistWorklist,
 } from './usePathologistData.js'
 import './PendingValidation.css'
-import { resultValueForDisplay } from '../../utils/resultValue.js'
 
 const PAGE_SIZE = 10
 
@@ -21,10 +20,21 @@ export default function PendingValidation() {
   const [recollectionItems, setRecollectionItems] = useState([])
   const [notice, setNotice] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+<<<<<<< HEAD
   const [refreshKey, setRefreshKey] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
   const { items, total, loading, error } = usePathologistWorklist('pending', query, currentPage, refreshKey)
   const selectedCase = items.find((item) => item.id === selectedId) ?? items[0]
+=======
+  const pageSize = 10
+  const { result, error, refresh } = useApiResource(() => api.pathologist.pending({ page: 1, pageSize: 100 }), [])
+  const cases = (result?.data ?? []).map((request) => {
+    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ parameter: value.label, value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—', unit: value.unit, referenceRange: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '—' })) }))
+    return { ...request, uuid: request.id, id: request.requestNumber, patient: request.patientName, priority: request.priority.replace(/\b\w/g, (char) => char.toUpperCase()), submitted: formatDateTime(request.requestedAt), test: tests.map((test) => test.testName).join(', '), tests, results: tests.flatMap((test) => test.results.map((row) => ({ ...row, name: `${test.testName} · ${row.parameter}`, range: row.referenceRange }))) }
+  })
+  const { catalog } = useTestCatalog({ availableOnly: true })
+  const testOptions = [...new Set(catalog.tests.map((test) => test.name))].sort()
+>>>>>>> parent of c6490db (feat: add structured results and workflow improvements)
 
   async function completeReview(decision) {
     if (!selectedCase || isSaving) return

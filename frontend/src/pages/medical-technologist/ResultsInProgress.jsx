@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
@@ -44,24 +44,6 @@ function abnormalFlag(value, range) {
   return ''
 }
 
-function isFieldComplete(field, value) {
-  if (field.valueType === 'structured') return Array.isArray(value) && value.length > 0 && value.every((row) => field.options.every((column) => String(row[column] ?? '').trim()))
-  return String(value ?? '').trim().length > 0
-}
-
-function StructuredResultInput({ field, specimenLabel, value, disabled, invalid, onChange }) {
-  const rows = Array.isArray(value) ? value : []
-  const updateCell = (rowIndex, column, cell) => onChange(rows.map((row, index) => index === rowIndex ? { ...row, [column]: cell } : row))
-  return (
-    <div className="medtech-structured-result" aria-invalid={invalid}>
-      <div className="medtech-structured-result__table-wrap"><table><thead><tr>{field.options.map((column) => <th key={column}>{column}</th>)}<th>Action</th></tr></thead>
-        <tbody>{rows.map((row, rowIndex) => <tr key={`${field.key}-${rowIndex}`}>{field.options.map((column) => <td key={column}><label className="visually-hidden" htmlFor={`result-${specimenLabel}-${field.key}-${rowIndex}-${column}`}>{field.label}, {column}, row {rowIndex + 1}</label><input id={`result-${specimenLabel}-${field.key}-${rowIndex}-${column}`} value={row[column] ?? ''} maxLength={500} disabled={disabled} onChange={(event) => updateCell(rowIndex, column, event.target.value)} /></td>)}<td><button type="button" className="admin-button admin-button--small admin-button--negative" disabled={disabled} onClick={() => onChange(rows.filter((_, index) => index !== rowIndex))}>Remove</button></td></tr>)}</tbody>
-      </table></div>
-      <button type="button" className="admin-button admin-button--small" disabled={disabled || rows.length >= 100} onClick={() => onChange([...rows, Object.fromEntries(field.options.map((column) => [column, '']))])}>+ Add row</button>
-    </div>
-  )
-}
-
 function ResultEntryTable({ fields, specimenLabel, values, isLocked, showFieldErrors, onValueChange }) {
   const { currentPage, pageSize, setCurrentPage, visibleItems } = useTablePagination(fields)
 
@@ -80,23 +62,15 @@ function ResultEntryTable({ fields, specimenLabel, values, isLocked, showFieldEr
           </thead>
           <tbody>
             {visibleItems.map((field) => {
-              const fieldValue = field.valueType === 'structured' ? '' : String(values[field.key] ?? '')
-              const missing = !isFieldComplete(field, values[field.key])
+              const fieldValue = String(values[field.key] ?? '')
+              const missing = !fieldValue.trim()
               const flag = abnormalFlag(fieldValue, field.range)
               return (
                 <tr key={field.key}>
                   <td className="medtech-table__primary">{field.label}</td>
                   <td>
                     <label className="visually-hidden" htmlFor={`result-${specimenLabel}-${field.key}`}>{field.label} result</label>
-                    {field.valueType === 'structured' ? (
-                      <StructuredResultInput field={field} specimenLabel={specimenLabel} value={values[field.key]} disabled={isLocked} invalid={showFieldErrors && missing} onChange={(value) => onValueChange(field.key, value)} />
-                    ) : field.valueType === 'boolean' ? (
-                      <select id={`result-${specimenLabel}-${field.key}`} className="medtech-result-input" value={fieldValue} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => onValueChange(field.key, event.target.value)}>
-                        <option value="">Select…</option>
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
-                      </select>
-                    ) : field.valueType === 'select' ? (
+                    {field.valueType === 'select' ? (
                       <select id={`result-${specimenLabel}-${field.key}`} className="medtech-result-input" value={fieldValue} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => onValueChange(field.key, event.target.value)}>
                         <option value="">Select…</option>
                         {field.options.map((option) => <option key={option}>{option}</option>)}
@@ -195,7 +169,7 @@ export default function ResultsInProgress() {
       const complete = group.request.tests.length > 0 && group.request.tests.every((test) => {
         const specimen = specimens.find((item) => item.requestId === group.request.id && item.status === 'Accepted' && item.linkedItemIds.includes(test.requestItemId))
         const specimenResult = specimen && results.find((item) => item.specimenLabel === specimen.label)
-        return Boolean(specimenResult && test.fields.every((field) => isFieldComplete(field, specimenResult.values[field.key])))
+        return Boolean(specimenResult && test.fields.every((field) => String(specimenResult.values[field.key] ?? '').trim()))
       })
       return { ...group, complete }
     })
@@ -216,44 +190,10 @@ export default function ResultsInProgress() {
   })))
   const numericChartRows = getNumericChartRows(resultFields, values)
   const isLocked = selectedResult?.state === 'validation'
-  const currentValuesSignature = JSON.stringify(values)
-  const persistedValuesSignature = JSON.stringify(selectedResult?.values ?? {})
-  const hasUnsavedChanges = Boolean(selectedResult && !isLocked && currentValuesSignature !== persistedValuesSignature)
-  const [autoSaveState, setAutoSaveState] = useState('saved')
-
-  useEffect(() => {
-    if (!selectedResult || isLocked || !hasUnsavedChanges) {
-      setAutoSaveState('saved')
-      return undefined
-    }
-    const specimenLabel = selectedResult.specimenLabel
-    const valueSnapshot = values
-    setAutoSaveState('pending')
-    const timer = window.setTimeout(async () => {
-      setAutoSaveState('saving')
-      try {
-        await saveDraft(specimenLabel, valueSnapshot, { quiet: true })
-        setAutoSaveState('saved')
-      } catch {
-        setAutoSaveState('error')
-      }
-    }, 1200)
-    return () => window.clearTimeout(timer)
-  }, [selectedResult?.specimenLabel, currentValuesSignature, persistedValuesSignature, isLocked, hasUnsavedChanges, saveDraft])
-
-  useEffect(() => {
-    if (!hasUnsavedChanges) return undefined
-    const warnBeforeLeaving = (event) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', warnBeforeLeaving)
-    return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
-  }, [hasUnsavedChanges])
 
   function saveCurrentDraft() {
     if (!selectedResult || isLocked) return
-    saveDraft(selectedResult.specimenLabel, values).catch(() => {})
+    saveDraft(selectedResult.specimenLabel, values)
   }
 
   function requestSubmission(event) {
@@ -282,7 +222,7 @@ export default function ResultsInProgress() {
       valuesBySpecimen[specimen.label] = specimenValues
       const tests = selectedResult.request.tests.filter((test) => test.specimenType === specimen.type)
       tests.flatMap((test) => test.fields).forEach((field) => {
-        if (!isFieldComplete(field, specimenValues[field.key])) missingResults.push(`${specimen.type}: ${field.label}`)
+        if (!String(specimenValues[field.key] ?? '').trim()) missingResults.push(`${specimen.type}: ${field.label}`)
       })
     })
     if (missingResults.length > 0) {
@@ -429,9 +369,6 @@ export default function ResultsInProgress() {
             )}
 
             <form className="medtech-result-form" onSubmit={requestSubmission}>
-              <p className={`medtech-autosave-status${autoSaveState === 'error' ? ' is-error' : ''}`} role="status" aria-live="polite">
-                {autoSaveState === 'saving' ? 'Saving draft…' : autoSaveState === 'pending' ? 'Changes not saved yet' : autoSaveState === 'error' ? 'Draft could not be saved. Check the connection and try Save Draft.' : 'Draft saved'}
-              </p>
               {selectedTests.map((test) => {
                 const fields = resultFields.filter((field) => field.testName === test.name)
                 if (test.category !== 'Laboratory') {
@@ -442,21 +379,11 @@ export default function ResultsInProgress() {
                       </div>
                       <div className="medtech-text-results">
                         {fields.map((field) => {
-                          const missing = !isFieldComplete(field, values[field.key])
+                          const missing = !String(values[field.key] ?? '').trim()
                           return (
-                            field.valueType === 'structured' ? (
-                              <div className="medtech-form__field" key={field.key}>
-                                <span>{field.label}</span>
-                                <StructuredResultInput field={field} specimenLabel={selectedResult.specimenLabel} value={values[field.key]} disabled={isLocked} invalid={showFieldErrors && missing} onChange={(value) => changeFieldValue(field.key, value)} />
-                              </div>
-                            ) : (
-                              <label className="medtech-form__field" htmlFor={`result-${selectedResult.specimenLabel}-${field.key}`} key={field.key}>
+                            <label className="medtech-form__field" htmlFor={`result-${selectedResult.specimenLabel}-${field.key}`} key={field.key}>
                               <span>{field.label}</span>
-                              {field.valueType === 'boolean' ? (
-                                <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
-                                  <option value="">Select yes or no</option><option value="true">Yes</option><option value="false">No</option>
-                                </select>
-                              ) : field.valueType === 'select' ? (
+                              {field.valueType === 'select' ? (
                                 <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
                                   <option value="">Select {field.label.toLowerCase()}</option>
                                   {field.options.map((option) => <option key={option}>{option}</option>)}
@@ -475,7 +402,6 @@ export default function ResultsInProgress() {
                                 />
                               )}
                             </label>
-                            )
                           )
                         })}
                       </div>

@@ -9,7 +9,7 @@ create type public.user_role as enum ('administrator', 'cashier', 'medical_techn
 create type public.request_status as enum ('awaiting_payment', 'paid', 'specimen_collection', 'processing', 'for_validation', 'correction', 'released', 'cancelled');
 create type public.request_item_status as enum ('awaiting_specimen', 'specimen_received', 'processing', 'drafted', 'submitted', 'returned', 'for_recollection', 'approved', 'released', 'cancelled');
 create type public.specimen_status as enum ('expected', 'received', 'accepted', 'rejected', 'for_recollection', 'consumed');
-create type public.result_value_type as enum ('numeric', 'text', 'select', 'boolean', 'structured');
+create type public.result_value_type as enum ('numeric', 'text', 'select', 'boolean');
 create type public.result_status as enum ('draft', 'submitted', 'returned', 'approved');
 create type public.review_decision as enum ('approved', 'returned');
 create type public.payment_method as enum ('cash', 'waiver');
@@ -69,10 +69,10 @@ create table public.account_tokens (
   user_id uuid not null,
   token_hash varchar(64) not null unique,
   purpose varchar(24) not null check (purpose in ('activation', 'password_reset')),
-  expires_at timestamptz not null, consumed_at timestamptz,
+  expires_at timestamptz, consumed_at timestamptz,
   created_at timestamptz not null default now(),
   constraint account_tokens_expiry_by_purpose_check
-    check (expires_at is not null),
+    check ((purpose = 'activation' and expires_at is null) or (purpose = 'password_reset' and expires_at is not null)),
   foreign key (user_id, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
 create index account_tokens_user_idx on public.account_tokens(user_id, purpose, expires_at);
@@ -358,7 +358,7 @@ create table public.result_values (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
   result_submission_id uuid not null, analyte_id uuid not null,
-  numeric_value numeric(14,4), text_value text, select_value text, boolean_value boolean, structured_value jsonb,
+  numeric_value numeric(14,4), text_value text, select_value text, boolean_value boolean,
   unit_snapshot varchar(40),
   lower_limit_snapshot numeric(14,4), upper_limit_snapshot numeric(14,4),
   is_abnormal boolean not null default false,
@@ -366,8 +366,7 @@ create table public.result_values (
   unique (result_submission_id, analyte_id),
   foreign key (result_submission_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
   foreign key (analyte_id, clinic_id) references public.test_analytes(id, clinic_id) on delete restrict,
-  check (num_nonnulls(numeric_value, text_value, select_value, boolean_value, structured_value) = 1),
-  check (structured_value is null or case when jsonb_typeof(structured_value) = 'array' then jsonb_array_length(structured_value) > 0 else false end),
+  check (num_nonnulls(numeric_value, text_value, select_value, boolean_value) = 1),
   check (lower_limit_snapshot is null or upper_limit_snapshot is null or lower_limit_snapshot <= upper_limit_snapshot)
 );
 
@@ -390,19 +389,11 @@ begin
   if (expected_type = 'numeric' and num_nonnulls(new.numeric_value) <> 1)
      or (expected_type = 'text' and num_nonnulls(new.text_value) <> 1)
      or (expected_type = 'select' and num_nonnulls(new.select_value) <> 1)
-     or (expected_type = 'boolean' and num_nonnulls(new.boolean_value) <> 1)
-     or (expected_type = 'structured' and (num_nonnulls(new.structured_value) <> 1 or jsonb_typeof(new.structured_value) <> 'array')) then
+     or (expected_type = 'boolean' and num_nonnulls(new.boolean_value) <> 1) then
     raise exception 'Result value does not match the analyte value type';
   end if;
   if expected_type = 'select' and not (expected_options ? new.select_value) then
     raise exception 'Selected result is not one of the analyte options';
-  end if;
-  if expected_type = 'structured' and exists (
-    select 1 from jsonb_array_elements(new.structured_value) as rows(value)
-    where jsonb_typeof(rows.value) <> 'object'
-       or exists (select 1 from jsonb_object_keys(rows.value) as keys(column_name) where not (expected_options ? keys.column_name))
-  ) then
-    raise exception 'Structured result rows must use configured columns';
   end if;
   return new;
 end $$;

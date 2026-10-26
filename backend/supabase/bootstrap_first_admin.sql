@@ -25,7 +25,7 @@ profile_row as (
 ),
 token_row as (
   insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-  select a.clinic_id, a.id, encode(digest(s.code, 'sha256'), 'hex'), 'activation', now() + interval '24 hours'
+  select a.clinic_id, a.id, encode(digest(s.code, 'sha256'), 'hex'), 'activation', null
     from admin_row a cross join activation_secret s
   returning user_id
 )

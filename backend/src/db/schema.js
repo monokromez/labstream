@@ -12,7 +12,7 @@ export const userRole = pgEnum("user_role", ["administrator", "cashier", "medica
 export const requestStatus = pgEnum("request_status", ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction", "released", "cancelled"]);
 export const requestItemStatus = pgEnum("request_item_status", ["awaiting_specimen", "specimen_received", "processing", "drafted", "submitted", "returned", "for_recollection", "approved", "released", "cancelled"]);
 export const specimenStatus = pgEnum("specimen_status", ["expected", "received", "accepted", "rejected", "for_recollection", "consumed"]);
-export const resultValueType = pgEnum("result_value_type", ["numeric", "text", "select", "boolean", "structured"]);
+export const resultValueType = pgEnum("result_value_type", ["numeric", "text", "select", "boolean"]);
 export const resultStatus = pgEnum("result_status", ["draft", "submitted", "returned", "approved"]);
 export const reviewDecision = pgEnum("review_decision", ["approved", "returned"]);
 export const paymentMethod = pgEnum("payment_method", ["cash", "waiver"]);
@@ -40,7 +40,7 @@ export const staffProfiles = pgTable("staff_profiles", {
 });
 export const accountTokens = pgTable("account_tokens", {
   id: id(), clinicId: uuid("clinic_id").notNull(), userId: uuid("user_id").notNull(), tokenHash: varchar("token_hash", { length: 64 }).notNull(),
-  purpose: varchar("purpose", { length: 24 }).notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  purpose: varchar("purpose", { length: 24 }).notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }),
   consumedAt: timestamp("consumed_at", { withTimezone: true }), createdAt: createdAt(),
 });
 export const patients = pgTable("patients", {
@@ -132,7 +132,7 @@ export const resultSubmissionSpecimens = pgTable("result_submission_specimens", 
 });
 export const resultValues = pgTable("result_values", {
   id: id(), clinicId: uuid("clinic_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), analyteId: uuid("analyte_id").notNull(),
-  numericValue: numeric("numeric_value", { precision: 14, scale: 4 }), textValue: text("text_value"), selectValue: text("select_value"), booleanValue: boolean("boolean_value"), structuredValue: jsonb("structured_value"),
+  numericValue: numeric("numeric_value", { precision: 14, scale: 4 }), textValue: text("text_value"), selectValue: text("select_value"), booleanValue: boolean("boolean_value"),
   unitSnapshot: varchar("unit_snapshot", { length: 40 }), lowerLimitSnapshot: numeric("lower_limit_snapshot", { precision: 14, scale: 4 }),
   upperLimitSnapshot: numeric("upper_limit_snapshot", { precision: 14, scale: 4 }), isAbnormal: boolean("is_abnormal").notNull().default(false),
   createdAt: createdAt(), updatedAt: updatedAt(),

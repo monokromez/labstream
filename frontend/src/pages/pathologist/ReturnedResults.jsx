@@ -3,15 +3,36 @@ import TablePagination from '../../components/data/TablePagination.jsx'
 import PathologistSummary from './PathologistSummary.jsx'
 import { formatPathologistDate, usePathologistWorklist } from './usePathologistData.js'
 import './ReturnedResults.css'
+<<<<<<< HEAD
 
 const PAGE_SIZE = 10
+=======
+>>>>>>> parent of c6490db (feat: add structured results and workflow improvements)
 
 export default function ReturnedResults() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+<<<<<<< HEAD
   const { items, total, loading, error } = usePathologistWorklist('returned', query, currentPage)
   const selectedCase = items.find((item) => item.id === selectedId) ?? items[0]
+=======
+  const pageSize = 10
+  const { result, error } = useApiResource(() => api.pathologist.returned({ page: 1, pageSize: 100 }), [])
+  const returned = (result?.data ?? []).map((request) => {
+    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ name: `${test.testName} · ${value.label}`, value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—', range: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '' })) }))
+    return { ...request, id: request.requestNumber, patient: request.patientName, priority: request.priority.replace(/\b\w/g, (char) => char.toUpperCase()), test: tests.map((test) => test.testName).join(', '), date: formatDateTime(request.requestedAt), reason: tests.map((test) => test.reviewRemarks).filter(Boolean).join('; '), results: tests.flatMap((test) => test.results) }
+  })
+  const { catalog } = useTestCatalog({ availableOnly: true })
+  const testOptions = [...new Set(catalog.tests.map((test) => test.name))].sort()
+
+  const filtered = useMemo(() => returned.filter((item) => {
+    const matchesSearch = `${item.id} ${item.patient} ${item.test}`.toLowerCase().includes(query.toLowerCase())
+    return matchesSearch && (testFilter === 'All tests' || item.test.split(', ').includes(testFilter))
+      && (priorityFilter === 'All priorities' || item.priority === priorityFilter)
+  }), [returned, priorityFilter, query, testFilter])
+  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+>>>>>>> parent of c6490db (feat: add structured results and workflow improvements)
 
   return (
     <section className="admin-page pathologist-page" aria-label="Returned results">

@@ -7,7 +7,7 @@ import { emailService } from "../email.js";
 
 const ACTIVE_REQUEST_STATUSES = ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction"];
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
-const patientNamePattern = /^[\p{L}\p{M}]+(?:[ '\u2019.-][\p{L}\p{M}]+)*$/u;
+const patientNamePattern = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u;
 const patientIdNumberPattern = /^[\p{L}\p{N}][\p{L}\p{N} /-]*$/u;
 
 export function validatePatientDetails(body) {
@@ -30,7 +30,7 @@ export function validatePatientDetails(body) {
       continue;
     }
     if (value !== value.trim()) errors[field] = "Names cannot start or end with spaces.";
-    else if ((field !== "middleName" && value.length < 2) || value.length > 50) errors[field] = field === "middleName" ? "Middle name or initial cannot exceed 50 characters." : "Names must be between 2 and 50 characters.";
+    else if (value.length < 2 || value.length > 50) errors[field] = "Names must be between 2 and 50 characters.";
     else if (!patientNamePattern.test(value)) {
       errors[field] = "Names can contain letters and single spaces only.";
     }
@@ -184,7 +184,7 @@ export function createCashierRouter({ client }) {
         }
         await tx.unsafe(
           `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-           values ($1, $2, $3, 'activation', now() + interval '24 hours')`,
+           values ($1, $2, $3, 'activation', null)`,
           [req.user.clinicId, userId, activation.hash],
         );
         await tx.unsafe(
@@ -208,57 +208,11 @@ export function createCashierRouter({ client }) {
       });
       return res.status(201).json({
         data: { patientId: data.patientId, pid: data.pid },
-        activation: { code: activation.code, revealOnce: true, expiresInHours: 24 },
+        activation: { code: activation.code, revealOnce: true, expires: null },
         emailDelivery,
       });
     } catch (error) {
       if (["PATIENT_NOT_FOUND", "PORTAL_ALREADY_ACTIVE"].includes(error.code)) return res.status(error.code === "PATIENT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
-      return next(error);
-    }
-  });
-
-  router.post("/patients/:id/password-reset", allowRoles("cashier"), async (req, res, next) => {
-    try {
-      if (req.body?.identityVerified !== true) return res.status(400).json({ error: "IDENTITY_VERIFICATION_REQUIRED", message: "Verify the patient's identity in person before issuing a reset code." });
-      const reset = createOneTimeCode();
-      const patient = await client.begin(async (tx) => {
-        const [record] = await tx.unsafe(
-          `select p.id, p.pid, p.email, p.portal_user_id, p.first_name, p.middle_name, p.last_name,
-                  u.is_active
-             from public.patients p
-             left join public.users u on u.id = p.portal_user_id and u.clinic_id = p.clinic_id
-            where p.id = $1 and p.clinic_id = $2 for update of p`,
-          [req.params.id, req.user.clinicId],
-        );
-        if (!record) throw Object.assign(new Error("Patient was not found."), { code: "PATIENT_NOT_FOUND" });
-        if (!record.portal_user_id || !record.is_active) throw Object.assign(new Error("The patient needs an active portal account before its password can be reset."), { code: "PORTAL_ACCOUNT_REQUIRED" });
-        await tx.unsafe(
-          `update public.account_tokens set consumed_at = now()
-            where user_id = $1 and clinic_id = $2 and purpose = 'password_reset' and consumed_at is null`,
-          [record.portal_user_id, req.user.clinicId],
-        );
-        await tx.unsafe(
-          `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-           values ($1, $2, $3, 'password_reset', now() + interval '24 hours')`,
-          [req.user.clinicId, record.portal_user_id, reset.hash],
-        );
-        await tx.unsafe(
-          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'patient.password_reset_issued', 'patient', $3,
-             jsonb_build_object('identityVerifiedInPerson', true, 'expiresInHours', 24))`,
-          [req.user.clinicId, req.user.sub, record.id],
-        );
-        return record;
-      });
-      const name = [patient.first_name, patient.middle_name, patient.last_name].filter(Boolean).join(" ");
-      const emailDelivery = await emailService.sendPasswordResetEmail({ to: patient.email, name, pid: patient.pid, code: reset.code });
-      return res.status(201).json({
-        data: { patientId: patient.id, pid: patient.pid },
-        reset: { code: reset.code, revealOnce: true, expiresInHours: 24 },
-        emailDelivery,
-      });
-    } catch (error) {
-      if (["PATIENT_NOT_FOUND", "PORTAL_ACCOUNT_REQUIRED"].includes(error.code)) return res.status(error.code === "PATIENT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });

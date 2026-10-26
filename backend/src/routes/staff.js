@@ -30,7 +30,7 @@ export function createStaffRouter({ client }) {
         [req.user.clinicId, role, status],
       );
       const staff = await client.unsafe(
-        `select u.id, u.username, u.email, u.role, u.is_active, u.last_sign_in_at, (u.password_hash is null) as pending_activation,
+        `select u.id, u.username, u.email, u.role, u.is_active, u.last_sign_in_at,
                 p.first_name, p.middle_name, p.last_name, p.date_of_birth,
                 p.phone, p.country, p.city, p.house_number, p.street
            from public.users u
@@ -84,7 +84,7 @@ export function createStaffRouter({ client }) {
         );
         await tx.unsafe(
           `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-           values ($1, $2, $3, 'activation', now() + interval '24 hours')`,
+           values ($1, $2, $3, 'activation', null)`,
           [user.clinic_id, user.id, activation.hash],
         );
         await tx.unsafe(
@@ -103,41 +103,11 @@ export function createStaffRouter({ client }) {
       });
       return res.status(201).json({
         data: { id: result.id, username: result.username, role: result.role, isActive: false },
-        activation: { code: activation.code, revealOnce: true, expiresInHours: 24 },
+        activation: { code: activation.code, revealOnce: true, expires: null },
         emailDelivery,
       });
     } catch (error) {
       if (error.code === "23505") return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "This email is already assigned to an account in the clinic." });
-      return next(error);
-    }
-  });
-
-  router.post("/:id/activation", async (req, res, next) => {
-    try {
-      const activation = createOneTimeCode();
-      const staff = await client.begin(async (tx) => {
-        const [target] = await tx.unsafe(
-          `select u.id, u.username, u.role, u.email, sp.first_name, sp.last_name
-             from public.users u join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
-            where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient'
-              and u.is_active = false and u.password_hash is null for update of u`,
-          [req.params.id, req.user.clinicId]);
-        if (!target) throw Object.assign(new Error("Only a staff account that has not yet been activated can receive a replacement activation code."), { code: "STAFF_NOT_PENDING_ACTIVATION" });
-        await tx.unsafe(`update public.account_tokens set consumed_at = now() where user_id = $1 and clinic_id = $2 and purpose = 'activation' and consumed_at is null`, [target.id, req.user.clinicId]);
-        await tx.unsafe(
-          `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-           values ($1, $2, $3, 'activation', now() + interval '24 hours')`,
-          [req.user.clinicId, target.id, activation.hash]);
-        await tx.unsafe(
-          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'staff.activation_reissued', 'user', $3, jsonb_build_object('username', $4::text))`,
-          [req.user.clinicId, req.user.sub, target.id, target.username]);
-        return target;
-      });
-      const emailDelivery = await emailService.sendActivationEmail({ to: staff.email, name: `${staff.first_name} ${staff.last_name}`, accountId: staff.username, code: activation.code, role: staff.role.replaceAll("_", " ") });
-      return res.json({ data: { id: staff.id }, activation: { code: activation.code, revealOnce: true, expiresInHours: 24 }, emailDelivery });
-    } catch (error) {
-      if (error.code === "STAFF_NOT_PENDING_ACTIVATION") return res.status(409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });

@@ -2,8 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 const ISSUER = "labstream-api";
 const AUDIENCE = "labstream-client";
-export const SESSION_IDLE_TTL_SECONDS = 30 * 60;
-export const SESSION_MAX_TTL_SECONDS = 60 * 60 * 8;
+const TOKEN_TTL_SECONDS = 60 * 60 * 8;
 
 function encode(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -18,7 +17,6 @@ export function createAccessToken(user, secret, now = Date.now()) {
     throw new Error("AUTH_TOKEN_SECRET must contain at least 32 bytes.");
   }
   const issuedAt = Math.floor(now / 1000);
-  const authenticatedAt = Number.isInteger(user.auth_at) ? user.auth_at : issuedAt;
   const header = encode({ alg: "HS256", typ: "JWT" });
   const payload = encode({
     sub: user.id,
@@ -28,8 +26,7 @@ export function createAccessToken(user, secret, now = Date.now()) {
     iss: ISSUER,
     aud: AUDIENCE,
     iat: issuedAt,
-    authAt: authenticatedAt,
-    exp: Math.min(issuedAt + SESSION_IDLE_TTL_SECONDS, authenticatedAt + SESSION_MAX_TTL_SECONDS),
+    exp: issuedAt + TOKEN_TTL_SECONDS,
   });
   const content = `${header}.${payload}`;
   return `${content}.${sign(content, secret)}`;
@@ -53,11 +50,6 @@ export function verifyAccessToken(token, secret, now = Date.now()) {
     if (typeof payload.sub !== "string" || typeof payload.clinicId !== "string") return null;
     if (!Number.isInteger(payload.exp) || payload.exp <= nowSeconds) return null;
     if (!Number.isInteger(payload.iat) || payload.iat > nowSeconds + 30) return null;
-    // Invalidate pre-idle-timeout sessions at deployment.
-    if (!Number.isInteger(payload.authAt)) return null;
-    const authenticatedAt = payload.authAt;
-    if (authenticatedAt > nowSeconds + 30 || nowSeconds - authenticatedAt >= SESSION_MAX_TTL_SECONDS) return null;
-    payload.authAt = authenticatedAt;
     return payload;
   } catch {
     return null;
