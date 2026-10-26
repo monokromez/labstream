@@ -9,7 +9,7 @@ import * as AdministratorPages from '../../pages/administrator/index.js'
 import * as PatientPages from '../../pages/patient/index.js'
 import { TechnologistProvider } from '../../pages/medical-technologist/TechnologistContext.jsx'
 
-export default function AppShell({ children, role = 'administrator', userName = 'User', activeItem, onLogout }) {
+export default function AppShell({ children, role = 'cashier', userName = 'User', activeItem, onSignOut }) {
   const cashierPages = {
     dashboard: <CashierPages.CashierDashboard />,
     'register-request': <CashierPages.RegisterRequest />,
@@ -70,7 +70,7 @@ export default function AppShell({ children, role = 'administrator', userName = 
         userName={userName}
         activeItem={currentItem.id}
         onSelect={setSelectedItem}
-        onLogout={onLogout}
+        onSignOut={onSignOut}
       />
       <main className="app-shell__main">
         <PageHeader 

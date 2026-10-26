@@ -1,114 +1,83 @@
-import { useMemo, useState } from 'react'
-import SearchInput from '../../components/data/SearchInput.jsx'
-import AdminDialog from '../../components/data/AdminDialog.jsx'
-import SummaryCard from '../../components/reports/SummaryCard.jsx'
+import { useState } from 'react'
 import TablePagination from '../../components/data/TablePagination.jsx'
-import PathologistResultTable from './PathologistResultTable.jsx'
-import { LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
-import { api } from '../../api/client.js'
-import useApiResource from '../../api/useApiResource.js'
-import useTestCatalog from '../../data/useTestCatalog.js'
-import { formatDateTime } from '../../utils/dateFormat.js'
+import { apiRequest } from '../../lib/api.js'
+import PathologistSummary from './PathologistSummary.jsx'
+import {
+  formatPathologistDate,
+  getReferenceRange,
+  getResultValue,
+  usePathologistWorklist,
+} from './usePathologistData.js'
 import './PendingValidation.css'
 import { resultValueForDisplay } from '../../utils/resultValue.js'
 
+const PAGE_SIZE = 10
 
 export default function PendingValidation() {
   const [query, setQuery] = useState('')
-  const [testFilter, setTestFilter] = useState('All tests')
-  const [priorityFilter, setPriorityFilter] = useState('All priorities')
-  const [activeCase, setActiveCase] = useState(null)
-  const [confirmAction, setConfirmAction] = useState('')
+  const [selectedId, setSelectedId] = useState('')
   const [remarks, setRemarks] = useState('')
   const [interpretations, setInterpretations] = useState({})
   const [recollectionItems, setRecollectionItems] = useState([])
   const [notice, setNotice] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 10
-  const { result, error, refresh } = useApiResource(() => api.pathologist.pending({ page: 1, pageSize: 100 }), [])
-  const cases = (result?.data ?? []).map((request) => {
-    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ parameter: value.label, value: Array.isArray(value.structuredValue) ? null : resultValueForDisplay(value), structuredValue: value.structuredValue, unit: value.unit, referenceRange: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '—' })) }))
-    return { ...request, uuid: request.id, id: request.requestNumber, patient: request.patientName, priority: request.priority.replace(/\b\w/g, (char) => char.toUpperCase()), submitted: formatDateTime(request.requestedAt), test: tests.map((test) => test.testName).join(', '), tests, results: tests.flatMap((test) => test.results.map((row) => ({ ...row, name: `${test.testName} · ${row.parameter}`, range: row.referenceRange }))) }
-  })
-  const { catalog } = useTestCatalog({ availableOnly: true })
-  const testOptions = [...new Set(catalog.tests.map((test) => test.name))].sort()
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [isSaving, setIsSaving] = useState(false)
+  const { items, total, loading, error } = usePathologistWorklist('pending', query, currentPage, refreshKey)
+  const selectedCase = items.find((item) => item.id === selectedId) ?? items[0]
 
-  const filteredCases = useMemo(() => cases.filter((item) => {
-    const matchesSearch = `${item.id} ${item.patient} ${item.test}`.toLowerCase().includes(query.toLowerCase())
-    return matchesSearch && (testFilter === 'All tests' || item.tests.some((test) => test.testName === testFilter))
-      && (priorityFilter === 'All priorities' || item.priority === priorityFilter)
-  }), [cases, priorityFilter, query, testFilter])
-  const visibleCases = filteredCases.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-
-  function openReview(item) {
-    setActiveCase(item)
-    setRemarks('')
-    setRecollectionItems([])
-    setInterpretations(Object.fromEntries((item.tests ?? []).map((test) => [test.requestItemId, test.pathologistInterpretation ?? ''])))
-    setNotice('')
-  }
-
-  function requestReview(action) {
-    if (!activeCase) return
-    if (action === 'return' && !remarks.trim()) {
+  async function completeReview(decision) {
+    if (!selectedCase || isSaving) return
+    if (decision === 'returned' && !remarks.trim()) {
       setNotice('Add a remark before returning this result for correction.')
       return
     }
-    if (activeCase.tests.some((test) => !interpretations[test.requestItemId]?.trim())) {
-      setNotice(action === 'return'
-        ? 'Add a pathologist interpretation for every test before returning the results.'
-        : 'Add a pathologist interpretation for every test before approving the results.')
-      return
-    }
-    setConfirmAction(action)
-  }
 
-  async function completeReview() {
-    if (!activeCase || !confirmAction) return
-    const reviewed = activeCase
-    const action = confirmAction
+    setIsSaving(true)
+    setNotice('')
     try {
-      const response = await api.pathologist.review(reviewed.uuid, reviewed.tests.map((test) => ({
-        requestItemId: test.requestItemId,
-        decision: action === 'approve' ? 'approved' : 'returned',
-        interpretation: interpretations[test.requestItemId] ?? '',
-        remarks: action === 'return' ? remarks : '',
-        requiresRetest: action === 'return' && recollectionItems.includes(test.requestItemId),
-      })))
-      setActiveCase(null)
-      setConfirmAction('')
+      await apiRequest(`/api/pathologist/requests/${selectedCase.id}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, comments: remarks }),
+      })
+      setNotice(`${selectedCase.requestNumber} was ${decision === 'approved' ? 'approved and released' : 'returned for correction'}.`)
       setRemarks('')
-      const emailNotice = response.emailDelivery?.status === 'sent'
-        ? ' Patient notification email sent.'
-        : response.emailDelivery?.status === 'skipped'
-          ? ' No patient email is on file; notification email was skipped.'
-          : response.emailDelivery?.status === 'failed'
-            ? ' Results were released, but notification email delivery failed.'
-            : ''
-      setNotice(`${reviewed.id} for ${reviewed.patient} was ${action === 'approve' ? 'approved for release' : 'returned for correction'}.${emailNotice}`)
-      await refresh()
-    } catch (requestError) { setNotice(requestError.message || 'Unable to submit this review.') }
+      setSelectedId('')
+      if (currentPage > 1 && items.length === 1) setCurrentPage((current) => current - 1)
+      setRefreshKey((current) => current + 1)
+    } catch (reviewError) {
+      setNotice(reviewError.message)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
     <section className="admin-page pathologist-page" aria-label="Pending validation worklist">
-      <div className="admin-dashboard__summary">
-        <SummaryCard title="Awaiting validation" value={String(cases.length).padStart(2, '0')} helperText="Results ready for your review" />
-        <SummaryCard title="Urgent reviews" value={String(cases.filter((item) => item.priority === 'Urgent').length).padStart(2, '0')} helperText="Prioritize these cases" />
-        <SummaryCard title="Reviewed today" value="00" helperText="Across all result types" />
-        <SummaryCard title="Returned today" value="00" helperText="Sent back for correction" />
-      </div>
-
+      <PathologistSummary refreshKey={refreshKey} />
       {notice && <p className="pathologist-page__notice" role="status">{notice}</p>}
-      {error && <p className="pathologist-page__notice" role="alert">{error}</p>}
+      {error && <p className="pathologist-page__notice pathologist-page__notice--error" role="alert">{error}</p>}
 
-      <section className="pathologist-list" aria-label="Pending validation results">
-        <div className="pathologist-list__heading"><div><h2>Pending Validation</h2><p>Review submitted results before approving or returning them.</p></div><span className="pathologist-list__count">{filteredCases.length} {filteredCases.length === 1 ? 'result' : 'results'}</span></div>
-        <hr className="pathologist-list__divider" />
-        <div className="pathologist-toolbar">
-          <SearchInput className="pathologist-toolbar__search" label="Search pending results" value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1) }} placeholder="Patient or request number" />
-          <label className="pathologist-filter">Test<select value={testFilter} onChange={(event) => { setTestFilter(event.target.value); setCurrentPage(1) }}><option>All tests</option>{testOptions.map((test) => <option key={test}>{test}</option>)}</select></label>
-          <label className="pathologist-filter">Priority<select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value); setCurrentPage(1) }}><option>All priorities</option><option>Routine</option><option>Urgent</option></select></label>
+      <section className="admin-panel pathologist-panel" aria-labelledby="pending-list-title">
+        <div className="admin-panel__heading">
+          <div><h2 id="pending-list-title">Results awaiting review</h2><p>Check patient details and result values before approving or returning.</p></div>
+          <label className="admin-toolbar__field admin-toolbar__field--search">Search pending results<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setCurrentPage(1); setSelectedId('') }} placeholder="Patient or request number" /></label>
+        </div>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th scope="col">Request / Patient</th><th scope="col">Tests</th><th scope="col">Submitted</th><th scope="col"><span className="visually-hidden">Review</span></th></tr></thead>
+            <tbody>
+              {items.map((item) => <tr key={item.id} className={selectedCase?.id === item.id ? 'is-selected' : ''}>
+                <td><button className="admin-table__primary pathologist-table__patient" type="button" onClick={() => { setSelectedId(item.id); setRemarks(''); setNotice('') }}>{item.patient.name}<span className="admin-table__secondary">{item.requestNumber} · {item.patient.pid}</span></button></td>
+                <td>{item.results.map((result) => result.testName).join(', ')}</td>
+                <td>{formatPathologistDate(item.submittedAt)}</td>
+                <td><button className="admin-button admin-button--secondary admin-button--small" type="button" onClick={() => { setSelectedId(item.id); setRemarks(''); setNotice('') }}>Review <span aria-hidden="true">→</span></button></td>
+              </tr>)}
+              {!loading && items.length === 0 && <tr><td className="admin-empty" colSpan="4">{error ? 'The worklist could not be loaded.' : 'No pending results match your search.'}</td></tr>}
+              {loading && <tr><td className="admin-empty" colSpan="4">Loading validation worklist…</td></tr>}
+            </tbody>
+          </table>
+          <TablePagination currentPage={currentPage} pageSize={PAGE_SIZE} totalItems={total} onPageChange={setCurrentPage} />
         </div>
         <div className="pathologist-table-scroll"><table className="admin-table pathologist-list-table">
           <thead><tr><th scope="col">Request</th><th scope="col">Patient</th><th scope="col">Test</th><th scope="col">Submitted</th><th scope="col">Priority</th><th scope="col"><span className="visually-hidden">Review action</span></th></tr></thead>
@@ -122,31 +91,19 @@ export default function PendingValidation() {
         <TablePagination currentPage={currentPage} pageSize={pageSize} totalItems={filteredCases.length} onPageChange={setCurrentPage} />
       </section>
 
-      {activeCase && !confirmAction && <AdminDialog className="pathologist-dialog" title="Review test results" description="Interpret this test, then approve it or return it for correction." onClose={() => setActiveCase(null)} size="large" footer={(
-        <><button className="admin-button admin-button--negative" type="button" onClick={() => requestReview('return')}>Return for correction</button><button className="admin-button admin-button--positive" type="button" onClick={() => requestReview('approve')}>Approve result</button></>
-      )}>
-        <div className="pathologist-dialog__details">
-          <div><span>Request</span><strong>{activeCase.id}</strong></div><div><span>Patient</span><strong>{activeCase.patient}</strong></div><div><span>Tests</span><strong>{activeCase.test}</strong></div><div><span>Priority</span><strong>{activeCase.priority}</strong></div><div><span>Submitted</span><strong>{activeCase.submitted}</strong></div>
+      {selectedCase && <section className="admin-panel pathologist-review" aria-labelledby="review-title">
+        <div className="pathologist-review__top"><div><span className="pathologist-eyebrow">Selected case · {selectedCase.requestNumber}</span><h2 id="review-title">{selectedCase.patient.name}</h2><p>{selectedCase.patient.pid} <span aria-hidden="true">·</span> {selectedCase.results.map((result) => result.testName).join(', ')}</p></div><span className="pathologist-review__submitted">Submitted {formatPathologistDate(selectedCase.submittedAt)}</span></div>
+        <div className="pathologist-review__content">
+          <div className="pathologist-review__results"><h3>Result values</h3><div className="admin-table-wrap"><table className="admin-table pathologist-table--results"><thead><tr><th scope="col">Test</th><th scope="col">Result</th><th scope="col">Reference range</th><th scope="col">Review</th></tr></thead><tbody>{selectedCase.results.map((result) => <tr key={result.requestItemId}><td>{result.testName}</td><td className="pathologist-result-value">{getResultValue(result)}</td><td>{getReferenceRange(result)}</td><td><span className={`admin-badge ${result.abnormal ? 'admin-badge--warning' : 'admin-badge--success'}`}>{result.abnormal ? 'Abnormal' : 'Within range'}</span></td></tr>)}</tbody></table></div></div>
+          <form className="pathologist-review__form" onSubmit={(event) => { event.preventDefault(); completeReview('approved') }}>
+            <label htmlFor="pathologist-remarks">Pathologist remarks <span>Optional for approval</span></label>
+            <textarea id="pathologist-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Add an interpretation or instructions for the technologist…" rows="4" maxLength="2000" />
+            <div className="pathologist-review__actions"><button className="admin-button admin-button--secondary pathologist-button--return" type="button" disabled={isSaving} onClick={() => completeReview('returned')}>Return for correction</button><button className="admin-button" type="submit" disabled={isSaving}>{isSaving ? 'Saving…' : 'Approve result'} <span aria-hidden="true">→</span></button></div>
+            <p className="pathologist-review__hint">Approval releases all results in this request to the patient portal.</p>
+          </form>
         </div>
-        <PathologistResultTable results={activeCase.results} />
-        {notice && <p className="pathologist-page__notice" role="alert">{notice}</p>}
-        {activeCase.tests.map((test) => <section className="pathologist-dialog__test-review" key={test.requestItemId}>
-          <label className="pathologist-dialog__remarks" htmlFor={`interpretation-${test.requestItemId}`}>{test.testName} · Pathologist interpretation<LimitedTextarea id={`interpretation-${test.requestItemId}`} value={interpretations[test.requestItemId] ?? ''} onChange={(event) => { setInterpretations((current) => ({ ...current, [test.requestItemId]: event.target.value })); setNotice('') }} placeholder={`Interpret ${test.testName} in clinical context…`} rows="3" maxLength={2000} /></label>
-          <label className="pathologist-dialog__recollection"><input type="checkbox" checked={recollectionItems.includes(test.requestItemId)} onChange={(event) => setRecollectionItems((current) => event.target.checked ? [...current, test.requestItemId] : current.filter((id) => id !== test.requestItemId))} /><span>If returned: collect a new specimen for this test</span></label>
-        </section>)}
-        <label className="pathologist-dialog__remarks" htmlFor="pathologist-remarks">Return remark <span>(required only when returning)</span><LimitedTextarea id="pathologist-remarks" value={remarks} onChange={(event) => { setRemarks(event.target.value); setNotice('') }} placeholder="Explain the correction or retest needed…" rows="3" maxLength={1000} /></label>
-        <p className="pathologist-page__return-hint">A result is released to the patient only after every test in the request is approved.</p>
-      </AdminDialog>}
-      {activeCase && confirmAction && <AdminDialog className="pathologist-dialog" title={confirmAction === 'approve' ? 'Approve result for release?' : 'Return result for correction?'} onClose={() => setConfirmAction('')} size="small">
-        <p className="admin-dialog__confirm">{confirmAction === 'approve'
-          ? <>Approve <strong>{activeCase.id}</strong> for release to <strong>{activeCase.patient}</strong>?</>
-          : <>Return <strong>{activeCase.id}</strong> to the medical technologist with your remarks?</>}</p>
-        <div className="admin-dialog__footer">
-          <button className="admin-button admin-button--secondary" type="button" onClick={() => setConfirmAction('')}>Back to review</button>
-          <button className={`admin-button ${confirmAction === 'approve' ? 'admin-button--positive' : 'admin-button--negative'}`} type="button" onClick={completeReview}>{confirmAction === 'approve' ? 'Confirm approval' : 'Confirm return'}</button>
-        </div>
-      </AdminDialog>}
-      {cases.length === 0 && <div className="admin-panel pathologist-all-done"><span aria-hidden="true">✓</span><div><strong>Worklist cleared</strong><p>All available results have been reviewed.</p></div></div>}
+      </section>}
+      {!loading && !error && total === 0 && <div className="admin-panel pathologist-all-done"><span aria-hidden="true">✓</span><div><strong>Worklist clear</strong><p>There are no results awaiting validation.</p></div></div>}
     </section>
   )
 }
