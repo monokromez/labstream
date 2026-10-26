@@ -87,6 +87,8 @@ export default function RegisterRequest() {
   const [showPortalConfirm, setShowPortalConfirm] = useState(false)
   const [portalSubmitting, setPortalSubmitting] = useState(false)
   const [portalActivation, setPortalActivation] = useState(null)
+  const [portalReset, setPortalReset] = useState(null)
+  const [identityVerified, setIdentityVerified] = useState(false)
   const [actionError, setActionError] = useState('')
   const { result: patientResult, refresh: refreshPatients, error: patientLoadError } = useApiResource(
     () => api.patients.list({ page: 1, pageSize: 100, q: searchQuery }), [searchQuery],
@@ -164,6 +166,8 @@ export default function RegisterRequest() {
     setShowPortalConfirm(false)
     setPortalSubmitting(false)
     setPortalActivation(null)
+    setPortalReset(null)
+    setIdentityVerified(false)
     if (type === 'add') {
       setPatientCountry('')
       setPatientCountryCode('')
@@ -240,6 +244,18 @@ export default function RegisterRequest() {
     } finally {
       setPortalSubmitting(false)
     }
+  }
+
+  const issuePatientPasswordReset = async () => {
+    if (!selectedPatient) return
+    setPortalSubmitting(true)
+    setActionError('')
+    try {
+      const response = await api.cashier.issuePatientPasswordReset(selectedPatient.id, identityVerified)
+      setPortalReset({ pid: selectedPatient.pid, code: response.reset.code, emailDelivery: response.emailDelivery })
+      setShowPortalConfirm(false)
+    } catch (error) { setActionError(error.message || 'Unable to issue a password reset code.') }
+    finally { setPortalSubmitting(false) }
   }
 
   const confirmRegisterPatient = async () => {
@@ -466,7 +482,8 @@ export default function RegisterRequest() {
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
                 </dl>
-                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>This code does not expire and can only be used once. The patient chooses their own password.</p><p role={portalActivation.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalActivation.emailDelivery?.status === 'sent' ? 'Activation email sent to the patient.' : portalActivation.emailDelivery?.message}</p></div>}
+                {portalActivation && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Portal activation issued</h3><p>PID: <strong>{portalActivation.pid}</strong></p><p>One-time activation code: <strong>{portalActivation.code}</strong></p><p>This code expires in 24 hours and can only be used once. The patient chooses their own password.</p><p role={portalActivation.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalActivation.emailDelivery?.status === 'sent' ? 'Activation email sent to the patient.' : portalActivation.emailDelivery?.message}</p></div>}
+                {portalReset && <div className='register-request__confirmation register-request__confirmation--portal' role='status'><h3>Password reset code issued</h3><p>PID: <strong>{portalReset.pid}</strong></p><p>One-time reset code: <strong>{portalReset.code}</strong></p><p>The patient can use this code once within 24 hours at the sign-in page.</p><p role={portalReset.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{portalReset.emailDelivery?.status === 'sent' ? 'Reset instructions emailed to the patient.' : portalReset.emailDelivery?.message}</p></div>}
                 </>
               )}
 
@@ -626,6 +643,7 @@ export default function RegisterRequest() {
                 </button>
               )}
               {activeModal === 'details' && selectedPatient && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setShowPortalConfirm(true) }}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
+              {activeModal === 'details' && selectedPatient && selectedPatient.portalActive && !portalReset && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setIdentityVerified(false); setShowPortalConfirm(true) }}>Reset Portal Password</button>}
               {activeModal === 'add' && !showRequestPrompt && (
                 <button className='register-request__modal-primary' type='submit' form='new-patient-form'>Register Patient</button>
               )}
@@ -673,12 +691,13 @@ export default function RegisterRequest() {
       {showPortalConfirm && selectedPatient && (
         <div className='register-request__confirm-backdrop'>
           <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-portal-title'>
-            <h2 id='confirm-portal-title'>Issue patient portal access?</h2>
-            <p>This is optional and only needed if the patient wants online portal access. Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? It will be emailed to the patient when an email address is on file and shown once here. The code does not expire and can only be used once.</p>
+            <h2 id='confirm-portal-title'>{selectedPatient.portalActive ? 'Reset patient portal password?' : 'Issue patient portal access?'}</h2>
+            <p>{selectedPatient.portalActive ? <>Confirm the patient’s identity in person using their valid ID before issuing a one-time reset code for <strong>{getPatientName(selectedPatient)}</strong>. The code is shown once, expires in 24 hours, and invalidates any earlier reset code.</> : <>This is optional and only needed if the patient wants online portal access. Create a one-time activation code for <strong>{getPatientName(selectedPatient)}</strong>? It will be emailed to the patient when an email address is on file and shown once here. The code expires in 24 hours and can only be used once.</>}</p>
+            {selectedPatient.portalActive && <label><input type='checkbox' checked={identityVerified} onChange={(event) => setIdentityVerified(event.target.checked)} /> I verified the patient’s identity in person using their valid ID.</label>}
             {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
             <div className='register-request__confirm-actions'>
               <button className='register-request__modal-secondary' type='button' disabled={portalSubmitting} onClick={() => setShowPortalConfirm(false)}>Cancel</button>
-              <button className='register-request__modal-primary' type='button' disabled={portalSubmitting} onClick={issuePortalActivation}>{portalSubmitting ? 'Issuing…' : 'Issue Activation Code'}</button>
+              <button className='register-request__modal-primary' type='button' disabled={portalSubmitting || (selectedPatient.portalActive && !identityVerified)} onClick={selectedPatient.portalActive ? issuePatientPasswordReset : issuePortalActivation}>{portalSubmitting ? 'Issuing…' : selectedPatient.portalActive ? 'Issue Reset Code' : 'Issue Activation Code'}</button>
             </div>
           </section>
         </div>

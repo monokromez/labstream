@@ -18,7 +18,7 @@ export function createApp({ database = null, publishCatalogChanged = null, publi
 
   app.disable("x-powered-by");
   app.use(helmet());
-  app.use(cors({ origin: allowedOrigin, credentials: true }));
+  app.use(cors({ origin: allowedOrigin, credentials: true, exposedHeaders: ["Content-Disposition"] }));
   app.use(express.json({ limit: "1mb" }));
   app.use((_req, res, next) => {
     const sendJson = res.json.bind(res);
@@ -64,6 +64,7 @@ export function createApp({ database = null, publishCatalogChanged = null, publi
     });
     app.use("/api/auth/login", authAttemptLimiter);
     app.use("/api/auth/activate", authAttemptLimiter);
+    app.use("/api/auth/password-reset", authAttemptLimiter);
     // Notify other signed-in users in the same laboratory after a successful write.
     // req.user is populated by the route's auth middleware before the response finishes.
     app.use("/api", (req, res, next) => {

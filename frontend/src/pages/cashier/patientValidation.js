@@ -4,7 +4,7 @@ export const PATIENT_NAME_MIN = 2
 export const PATIENT_NAME_MAX = 50
 export const PATIENT_AGE_LIMIT = 120
 
-const NAME_PATTERN = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u
+const NAME_PATTERN = /^[\p{L}\p{M}]+(?:[ '\u2019.-][\p{L}\p{M}]+)*$/u
 const ID_NUMBER_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} /-]*$/u
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const localDateValue = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -33,9 +33,9 @@ export function getPatientFieldError(field, value, context = {}) {
     if (!trimmed) return `${label} is required.`
     if (text !== trimmed) return `${label} cannot start or end with spaces.`
     if (field !== 'middleName' && trimmed.length < PATIENT_NAME_MIN) return `${label} must contain at least ${PATIENT_NAME_MIN} characters.`
-    if (text.length < PATIENT_NAME_MIN) return `${label} must be at least ${PATIENT_NAME_MIN} characters.`
+    if (field !== 'middleName' && text.length < PATIENT_NAME_MIN) return `${label} must be at least ${PATIENT_NAME_MIN} characters.`
     if (text.length > PATIENT_NAME_MAX) return `${label} cannot exceed ${PATIENT_NAME_MAX} characters.`
-    if (!NAME_PATTERN.test(text)) return `${label} can contain letters and single spaces only.`
+    if (!NAME_PATTERN.test(text)) return `${label} can contain letters, spaces, hyphens, apostrophes, and periods.`
     return ''
   }
 

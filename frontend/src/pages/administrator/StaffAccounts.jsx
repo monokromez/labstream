@@ -131,6 +131,12 @@ export default function StaffAccounts() {
       await refresh()
     } catch (error) { setDialog({ type: 'error', message: error.message }) }
   }
+  async function reissueActivation(person) {
+    try {
+      const result = await api.staff.reissueActivation(person.id)
+      setDialog({ type: 'activation-reissued', username: person.username, activationCode: result.activation.code, email: person.email, emailDelivery: result.emailDelivery })
+    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+  }
 
   return (
     <section className="admin-page" aria-label="Staff accounts">
@@ -151,7 +157,7 @@ export default function StaffAccounts() {
             <td className="admin-table__primary">{displayName(person)}<span className="admin-table__secondary">{person.email}</span></td>
             <td>{person.post}</td><td>{formatDateTime(person.lastSignIn)}</td>
             <td><span className={`admin-badge ${person.status === 'Active' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{person.status}</span></td>
-            <td><button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button></td>
+            <td><button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>{person.pendingActivation && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</td>
           </tr>)}
           {visibleStaff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
@@ -235,7 +241,7 @@ export default function StaffAccounts() {
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="staff-add-form">Review account</button></div>
       </AdminDialog>}
       {dialog?.type === 'confirm-add' && <AdminDialog title="Confirm staff account" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Add <strong>{form.firstName} {form.surname}</strong> as <strong>{form.post}</strong>?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog({ type: 'add' })}>Back</button><button className="admin-button" type="button" onClick={commitAdd}>Confirm add</button></div></AdminDialog>}
-      {dialog?.type === 'created' && <AdminDialog title="Staff account created" onClose={() => setDialog(null)} size="small"><p>These one-time activation details are shown only now. The code does not expire and can only be used once.</p><p>Username: <strong>{dialog.username}</strong></p><p>Activation code: <strong>{dialog.activationCode}</strong></p><p role={dialog.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{dialog.emailDelivery?.status === 'sent' ? `Activation email sent to ${dialog.email}.` : dialog.emailDelivery?.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => { setDialog(null); setPage(1) }}>Done</button></div></AdminDialog>}
+      {(dialog?.type === 'created' || dialog?.type === 'activation-reissued') && <AdminDialog title={dialog.type === 'created' ? 'Staff account created' : 'Activation code reissued'} onClose={() => setDialog(null)} size="small"><p>These one-time activation details are shown only now. The code expires in 24 hours and can only be used once.</p><p>Username: <strong>{dialog.username}</strong></p><p>Activation code: <strong>{dialog.activationCode}</strong></p><p role={dialog.emailDelivery?.status === 'failed' ? 'alert' : 'status'}>{dialog.emailDelivery?.status === 'sent' ? `Activation email sent to ${dialog.email}.` : dialog.emailDelivery?.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => { setDialog(null); setPage(1) }}>Done</button></div></AdminDialog>}
       {dialog?.type === 'error' && <AdminDialog title="Unable to complete action" onClose={() => setDialog(null)} size="small"><p role="alert">{dialog.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button></div></AdminDialog>}
       {dialog?.type === 'status' && <AdminDialog title={`${dialog.person.status === 'Active' ? 'Deactivate' : 'Activate'} account?`} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Confirm {dialog.person.status === 'Active' ? 'deactivating' : 'activating'} <strong>{displayName(dialog.person)}</strong>’s staff account?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className={`admin-button ${dialog.person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={commitStatus}>Confirm</button></div></AdminDialog>}
     </section>

@@ -9,6 +9,7 @@ import useApiResource from '../../api/useApiResource.js'
 import useTestCatalog from '../../data/useTestCatalog.js'
 import { formatDateTime } from '../../utils/dateFormat.js'
 import './ReleasedResults.css'
+import { resultValueForDisplay } from '../../utils/resultValue.js'
 
 export default function ReleasedResults() {
   const [query, setQuery] = useState('')
@@ -19,7 +20,7 @@ export default function ReleasedResults() {
   const pageSize = 10
   const { result, error } = useApiResource(() => api.pathologist.released({ page: 1, pageSize: 100 }), [])
   const myReleased = (result?.data ?? []).map((request) => {
-    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ name: `${test.testName} · ${value.label}`, value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—', range: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '' })) }))
+    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ name: `${test.testName} · ${value.label}`, value: Array.isArray(value.structuredValue) ? null : resultValueForDisplay(value), structuredValue: value.structuredValue, range: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '' })) }))
     return { ...request, id: request.requestNumber, patient: request.patientName, priority: request.priority.replace(/\b\w/g, (char) => char.toUpperCase()), test: tests.map((test) => test.testName).join(', '), released: formatDateTime(request.releasedAt), technologist: request.technologist, results: tests.flatMap((test) => test.results), remarks: tests.map((test) => test.pathologistInterpretation).filter(Boolean).join('; ') }
   })
   const { catalog } = useTestCatalog({ availableOnly: true })

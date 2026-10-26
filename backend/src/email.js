@@ -81,11 +81,24 @@ export function createEmailService({
       return deliver("account_activation", {
         to,
         subject: "Activate your Labstream account",
-        text: `Your ${role} Labstream account is ready. Sign in with account ID ${accountId} and one-time activation code ${code}, then choose your password. This code does not expire and can only be used once.`,
+        text: `Your ${role} Labstream account is ready. Sign in with account ID ${accountId} and one-time activation code ${code}, then choose your password. This code expires in 24 hours and can only be used once.`,
         html: emailFrame(name, `<p>Your ${safeRole} Labstream account is ready.</p>
           <p>Use this account ID and one-time activation code to sign in and choose your password:</p>
           <p><strong>Account ID:</strong> ${safeAccountId}<br><strong>Activation code:</strong> ${safeCode}</p>
-          <p>This code does not expire and can only be used once. If you did not expect this account, contact your laboratory administrator.</p>`),
+          <p>This code expires in 24 hours and can only be used once. If you did not expect this account, contact your laboratory administrator.</p>`),
+      });
+    },
+
+    sendPasswordResetEmail({ to, name, pid, code }) {
+      const safePid = escapeHtml(pid);
+      const safeCode = escapeHtml(code);
+      return deliver("patient_password_reset", {
+        to,
+        subject: "Your Labstream password reset code",
+        text: `A cashier issued a password reset for your Labstream patient account. PID: ${pid}. Reset code: ${code}. It expires in 24 hours and can only be used once. If you did not request this, contact the laboratory.`,
+        html: emailFrame(name, `<p>A cashier issued a password reset for your Labstream patient account.</p>
+          <p><strong>PID:</strong> ${safePid}<br><strong>Reset code:</strong> ${safeCode}</p>
+          <p>This code expires in 24 hours and can only be used once. If you did not request this, contact the laboratory.</p>`),
       });
     },
 

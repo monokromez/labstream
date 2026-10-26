@@ -10,6 +10,7 @@ import useApiResource from '../../api/useApiResource.js'
 import useTestCatalog from '../../data/useTestCatalog.js'
 import { formatDateTime } from '../../utils/dateFormat.js'
 import './PendingValidation.css'
+import { resultValueForDisplay } from '../../utils/resultValue.js'
 
 
 export default function PendingValidation() {
@@ -26,7 +27,7 @@ export default function PendingValidation() {
   const pageSize = 10
   const { result, error, refresh } = useApiResource(() => api.pathologist.pending({ page: 1, pageSize: 100 }), [])
   const cases = (result?.data ?? []).map((request) => {
-    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ parameter: value.label, value: [value.numericValue, value.textValue, value.selectValue, value.booleanValue].find((entry) => entry != null) ?? '—', unit: value.unit, referenceRange: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '—' })) }))
+    const tests = (request.tests ?? []).map((test) => ({ ...test, testName: test.testName, results: (test.values ?? []).map((value) => ({ parameter: value.label, value: Array.isArray(value.structuredValue) ? null : resultValueForDisplay(value), structuredValue: value.structuredValue, unit: value.unit, referenceRange: value.lowerLimit != null || value.upperLimit != null ? `${value.lowerLimit ?? '—'} – ${value.upperLimit ?? '—'}` : '—', flag: value.isAbnormal ? 'Abnormal' : '—' })) }))
     return { ...request, uuid: request.id, id: request.requestNumber, patient: request.patientName, priority: request.priority.replace(/\b\w/g, (char) => char.toUpperCase()), submitted: formatDateTime(request.requestedAt), test: tests.map((test) => test.testName).join(', '), tests, results: tests.flatMap((test) => test.results.map((row) => ({ ...row, name: `${test.testName} · ${row.parameter}`, range: row.referenceRange }))) }
   })
   const { catalog } = useTestCatalog({ availableOnly: true })

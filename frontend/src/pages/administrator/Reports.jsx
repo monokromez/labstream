@@ -34,26 +34,9 @@ export default function Reports() {
   const performanceRows = reportMetrics
   const { currentPage, pageSize, setCurrentPage, visibleItems: pageRows } = useTablePagination(performanceRows)
 
-  function exportForExcel() {
-    const rows = [
-      ['Laboratory Operations & Revenue Report'],
-      ['Metric', 'Value'],
-      ...reportMetrics,
-      [],
-      ['Test category', 'Tests processed'],
-      ...testVolume.map(({ category, value }) => [category, String(value)]),
-    ]
-    const csv = rows.map((row) => row.map((cell) => {
-      const value = String(cell ?? '')
-      return `"${value.replaceAll('"', '""')}"`
-    }).join(',')).join('\r\n')
-    const file = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(file)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'labstream-operations-report.csv'
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  async function exportReport(format) {
+    try { await api.administrator.exportReport(format) }
+    catch (error) { window.alert(error.message || 'Unable to export report.') }
   }
 
   return (
@@ -62,11 +45,11 @@ export default function Reports() {
       <div className="admin-page__title-row">
         <p>Review laboratory activity, revenue, turnaround times, and test volumes.</p>
         <div className="admin-toolbar">
-          <button className="admin-button admin-button--positive" type="button" onClick={exportForExcel}>
+          <button className="admin-button admin-button--positive" type="button" onClick={() => exportReport('xlsx')}>
             Export Spreadsheet
           </button>
-          <button className="admin-button" type="button" onClick={() => window.print()}>
-            Print / Save PDF
+          <button className="admin-button" type="button" onClick={() => exportReport('pdf')}>
+            Export PDF
           </button>
         </div>
       </div>

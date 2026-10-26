@@ -1,7 +1,7 @@
 import argon2 from "argon2";
 import { Router } from "express";
 import { createAccessToken } from "../auth/accessToken.js";
-import { requireAuth, requireSameOrigin, SESSION_COOKIE } from "../auth/middleware.js";
+import { requireAuth, requireSameOrigin, renewUserSession, SESSION_COOKIE } from "../auth/middleware.js";
 import { hashOneTimeCode } from "../auth/oneTimeCode.js";
 
 const STAFF_ROLES = new Set(["administrator", "cashier", "medical_technologist", "pathologist"]);
@@ -13,7 +13,7 @@ export function createAuthRouter(client) {
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     path: "/api",
-    maxAge: 8 * 60 * 60 * 1000,
+    maxAge: 30 * 60 * 1000,
   };
   router.use(requireSameOrigin);
 
@@ -37,8 +37,8 @@ export function createAuthRouter(client) {
              left join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
              left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
             where (upper(u.username) = $1 or upper(p.pid) = $1)
-            and at.token_hash = $2 and at.purpose = 'activation'
-              and at.consumed_at is null and (at.expires_at is null or at.expires_at > now())
+              and at.token_hash = $2 and at.purpose = 'activation'
+              and at.consumed_at is null and at.expires_at > now()
               and u.is_active = false
             for update of at, u`,
           [identifier, hash],
@@ -63,6 +63,58 @@ export function createAuthRouter(client) {
       res.cookie(SESSION_COOKIE, token, cookieOptions);
       res.set("Cache-Control", "no-store");
       return res.json({ message: "Account activated.", user: { id: result.id, role: result.role, username: result.username, displayName: result.display_name, pid: result.pid } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/password-reset", async (req, res, next) => {
+    try {
+      const identifier = String(req.body?.identifier ?? "").trim().toUpperCase();
+      const resetCode = String(req.body?.resetCode ?? "").trim();
+      const newPassword = req.body?.newPassword;
+      if (!identifier || !resetCode || typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 128) {
+        return res.status(400).json({ error: "INVALID_PASSWORD_RESET", message: "Provide your PID, cashier-issued reset code, and a password of 12 to 128 characters." });
+      }
+      const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+      const tokenHash = hashOneTimeCode(resetCode);
+      const account = await client.begin(async (tx) => {
+        const [patient] = await tx.unsafe(
+          `select u.id, u.clinic_id, u.role, u.username, p.pid, p.id as patient_id,
+                  concat_ws(' ', p.first_name, p.middle_name, p.last_name) as display_name,
+                  at.id as token_id
+             from public.account_tokens at
+             join public.users u on u.id = at.user_id and u.clinic_id = at.clinic_id
+             join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
+            where upper(p.pid) = $1 and at.token_hash = $2 and at.purpose = 'password_reset'
+              and at.consumed_at is null and at.expires_at > now() and u.role = 'patient' and u.is_active = true
+            for update of at, u`,
+          [identifier, tokenHash],
+        );
+        if (!patient) return null;
+        await tx.unsafe(
+          `update public.users set password_hash = $1, must_change_password = false, updated_at = now()
+            where id = $2 and clinic_id = $3`,
+          [passwordHash, patient.id, patient.clinic_id],
+        );
+        await tx.unsafe(`update public.account_tokens set consumed_at = now() where id = $1`, [patient.token_id]);
+        await tx.unsafe(
+          `update public.account_tokens set consumed_at = now()
+            where user_id = $1 and clinic_id = $2 and purpose = 'password_reset' and consumed_at is null`,
+          [patient.id, patient.clinic_id],
+        );
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'patient.password_reset_completed', 'patient', $3, '{}'::jsonb)`,
+          [patient.clinic_id, patient.id, patient.patient_id],
+        );
+        return patient;
+      });
+      if (!account) return res.status(400).json({ error: "INVALID_PASSWORD_RESET", message: "The PID or reset code is invalid, expired, or already used." });
+      const token = createAccessToken({ id: account.id, clinic_id: account.clinic_id, role: account.role, must_change_password: false }, process.env.AUTH_TOKEN_SECRET);
+      res.cookie(SESSION_COOKIE, token, cookieOptions);
+      res.set("Cache-Control", "no-store");
+      return res.json({ message: "Password reset.", user: { id: account.id, role: account.role, username: account.username, displayName: account.display_name, pid: account.pid } });
     } catch (error) {
       return next(error);
     }
@@ -141,6 +193,16 @@ export function createAuthRouter(client) {
         displayName: user.display_name,
         mustChangePassword: user.must_change_password,
       });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/activity", requireAuth, async (req, res, next) => {
+    try {
+      const account = await renewUserSession(client, req, res);
+      if (!account) return res.status(401).json({ error: "ACCOUNT_INACTIVE", message: "This account is no longer active." });
+      return res.json({ renewed: true });
     } catch (error) {
       return next(error);
     }

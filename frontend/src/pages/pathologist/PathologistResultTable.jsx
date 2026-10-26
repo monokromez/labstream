@@ -1,5 +1,6 @@
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
+import StructuredValueTable from '../../components/data/StructuredValueTable.jsx'
 
 export default function PathologistResultTable({ results, title = 'Result values' }) {
   const { currentPage, pageSize, setCurrentPage, visibleItems } = useTablePagination(results)
@@ -16,7 +17,7 @@ export default function PathologistResultTable({ results, title = 'Result values
             {visibleItems.map((result) => (
               <tr key={result.name}>
                 <td>{result.name}</td>
-                <td className="pathologist-result-value">{result.value}</td>
+                <td className="pathologist-result-value">{Array.isArray(result.structuredValue) ? <StructuredValueTable rows={result.structuredValue} /> : result.value}</td>
                 <td>{result.range}</td>
                 <td>{result.flag
                   ? <span className="admin-badge admin-badge--warning">{result.flag}</span>

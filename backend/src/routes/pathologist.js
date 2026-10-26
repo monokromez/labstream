@@ -50,7 +50,7 @@ export function createPathologistRouter({ client }) {
                 coalesce((select jsonb_agg(jsonb_build_object(
                   'id', rv.id, 'analyteId', a.id, 'label', a.label, 'valueType', a.value_type,
                   'numericValue', rv.numeric_value, 'textValue', rv.text_value, 'selectValue', rv.select_value,
-                  'booleanValue', rv.boolean_value, 'unit', rv.unit_snapshot,
+                  'booleanValue', rv.boolean_value, 'structuredValue', rv.structured_value, 'unit', rv.unit_snapshot,
                   'lowerLimit', rv.lower_limit_snapshot, 'upperLimit', rv.upper_limit_snapshot,
                   'isAbnormal', rv.is_abnormal) order by a.sort_order)
                   from public.result_values rv join public.test_analytes a on a.id = rv.analyte_id and a.clinic_id = rv.clinic_id

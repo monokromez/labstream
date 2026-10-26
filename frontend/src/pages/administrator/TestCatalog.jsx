@@ -176,6 +176,10 @@ export default function TestCatalog() {
         setSaveNotice('Provide at least one option for each dropdown parameter.')
         return
       }
+      if (analytesPayload.some((a) => a.valueType === 'structured' && (a.options.length < 2 || a.options.some((column) => !column) || new Set(a.options.map((column) => column.toLowerCase())).size !== a.options.length))) {
+        setSaveNotice('Structured result fields need at least two unique column labels.')
+        return
+      }
       const specimenPayload = form.specimens.map((item) => ({
         ...item,
         specimenType: item.specimenType.trim(),
@@ -353,6 +357,7 @@ export default function TestCatalog() {
                           <option value="text">Text</option>
                           <option value="select">Dropdown</option>
                           <option value="boolean">Yes / no</option>
+                          <option value="structured">Repeatable table</option>
                         </select>
                       </label>
                       {analyte.valueType === 'numeric' && (
@@ -370,10 +375,10 @@ export default function TestCatalog() {
                           <LimitedInput required value={analyte.customAnalyteUnit} maxLength={30} onChange={(e) => updateAnalyte(index, 'customAnalyteUnit', e.target.value)} placeholder="Specify unit" />
                         </label>
                       )}
-                      {analyte.valueType === 'select' && (
+                      {(analyte.valueType === 'select' || analyte.valueType === 'structured') && (
                         <label className="admin-dialog__field">
-                          Options (comma-separated)
-                          <LimitedInput required value={analyte.analyteOptions} maxLength={500} onChange={(e) => updateAnalyte(index, 'analyteOptions', e.target.value)} placeholder="Positive, Negative" />
+                          {analyte.valueType === 'select' ? 'Options (comma-separated)' : 'Table columns (comma-separated)'}
+                          <LimitedInput required value={analyte.analyteOptions} maxLength={500} onChange={(e) => updateAnalyte(index, 'analyteOptions', e.target.value)} placeholder={analyte.valueType === 'select' ? 'Positive, Negative' : 'Cell, Result, Comment'} />
                         </label>
                       )}
                     </div>

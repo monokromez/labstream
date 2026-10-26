@@ -6,6 +6,17 @@ import useTestCatalog from '../../data/useTestCatalog.js'
 
 const statusLabels = { expected: 'Expected', received: 'Received', accepted: 'Accepted', rejected: 'Rejected', for_recollection: 'For Recollection' }
 
+function toApiAnalyteValue(field, values) {
+  const current = values[field.key]
+  const valueKey = { numeric: 'numericValue', select: 'selectValue', boolean: 'booleanValue', structured: 'structuredValue', text: 'textValue' }[field.valueType]
+  let value = current
+  if (field.valueType === 'boolean') value = current === '' || current == null ? null : current === 'true'
+  else if (field.valueType === 'numeric') value = current === '' || current == null ? null : Number(current)
+  else if (field.valueType === 'structured') value = Array.isArray(current) && current.some((row) => Object.values(row).some((cell) => String(cell ?? '').trim())) ? current : null
+  else if (current === '') value = null
+  return { analyteId: field.analyteId, [valueKey]: value }
+}
+
 export function TechnologistProvider({ children, onNavigate }) {
   const [requests, setRequests] = useState([])
   const [specimens, setSpecimens] = useState([])
@@ -72,8 +83,8 @@ export function TechnologistProvider({ children, onNavigate }) {
             : states.some((value) => ['draft', 'drafted'].includes(value)) ? 'draft' : 'awaiting'
         const values = Object.fromEntries(tests.flatMap((test) => test.fields.map((field) => {
           const saved = (test.latestResult?.values ?? []).find((value) => value.analyteId === field.analyteId)
-          const value = saved && [saved.numericValue, saved.textValue, saved.selectValue, saved.booleanValue].find((entry) => entry != null)
-          return [field.key, value == null ? '' : String(value)]
+          const value = saved && [saved.numericValue, saved.textValue, saved.selectValue, saved.booleanValue, saved.structuredValue].find((entry) => entry != null)
+          return [field.key, value == null ? (field.valueType === 'structured' ? [] : '') : field.valueType === 'structured' ? value : String(value)]
         })))
         return { specimenLabel: specimen.label, requestId: specimen.requestId, state, values, feedback: tests.map((test) => test.latestResult?.reviewRemarks).filter(Boolean).join('; '), submittedAt: tests.map((test) => test.latestResult?.updatedAt).filter(Boolean).at(0) ?? '', labNumbers: [], tests }
       })
@@ -115,7 +126,7 @@ export function TechnologistProvider({ children, onNavigate }) {
     } catch (error) { setNotice(error.message || 'Unable to reject this specimen.') }
   }, [findSpecimen, refresh])
 
-  const saveDraft = useCallback(async (specimenLabel, values) => {
+  const saveDraft = useCallback(async (specimenLabel, values, { quiet = false } = {}) => {
     const specimen = findSpecimen(specimenLabel)
     const request = requests.find((item) => item.id === specimen?.requestId)
     const specimenResult = results.find((item) => item.specimenLabel === specimenLabel)
@@ -123,12 +134,16 @@ export function TechnologistProvider({ children, onNavigate }) {
     try {
       for (const test of specimenResult.tests) {
         const linkedSpecimens = specimens.filter((entry) => entry.status === 'Accepted' && entry.requestId === request.id && entry.linkedItemIds.includes(test.requestItemId))
-        const analyteValues = test.fields.map((field) => ({ analyteId: field.analyteId, [field.valueType === 'numeric' ? 'numericValue' : field.valueType === 'select' ? 'selectValue' : field.valueType === 'boolean' ? 'booleanValue' : 'textValue']: field.valueType === 'boolean' ? values[field.key] === 'true' : values[field.key] === '' || values[field.key] == null ? null : field.valueType === 'numeric' ? Number(values[field.key]) : values[field.key] }))
+        const analyteValues = test.fields.map((field) => toApiAnalyteValue(field, values))
         await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenIds: linkedSpecimens.map((entry) => entry.id), values: analyteValues })
       }
       await refresh()
-      setNotice('Draft saved to the server.')
-    } catch (error) { setNotice(error.message || 'Unable to save this result draft.') }
+      if (!quiet) setNotice('Draft saved to the server.')
+      return true
+    } catch (error) {
+      if (!quiet) setNotice(error.message || 'Unable to save this result draft.')
+      throw error
+    }
   }, [findSpecimen, requests, results, specimens, refresh])
 
   const submitRequest = useCallback(async (requestId, valuesBySpecimen = {}) => {
@@ -144,7 +159,7 @@ export function TechnologistProvider({ children, onNavigate }) {
           seen.add(test.requestItemId)
           const values = valuesBySpecimen[specimen.label] ?? specimenResult.values
           const linkedSpecimens = accepted.filter((entry) => entry.linkedItemIds.includes(test.requestItemId))
-          const analyteValues = test.fields.map((field) => ({ analyteId: field.analyteId, [field.valueType === 'numeric' ? 'numericValue' : field.valueType === 'select' ? 'selectValue' : field.valueType === 'boolean' ? 'booleanValue' : 'textValue']: field.valueType === 'boolean' ? values[field.key] === 'true' : values[field.key] === '' || values[field.key] == null ? null : field.valueType === 'numeric' ? Number(values[field.key]) : values[field.key] }))
+          const analyteValues = test.fields.map((field) => toApiAnalyteValue(field, values))
           await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenIds: linkedSpecimens.map((entry) => entry.id), values: analyteValues })
         }
       }
