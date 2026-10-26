@@ -8,7 +8,6 @@ import { emailService } from "../email.js";
 const ACTIVE_REQUEST_STATUSES = ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction"];
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
 const patientNamePattern = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u;
-const patientFullNamePattern = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)+$/u;
 const patientIdNumberPattern = /^[\p{L}\p{N}][\p{L}\p{N} /-]*$/u;
 
 export function validatePatientDetails(body) {
@@ -26,14 +25,14 @@ export function validatePatientDetails(body) {
     }
     if (!value && field === "middleName") continue;
     if (!value) continue;
-    if (field !== "middleName" && typeof value === "string" && value.trim() && value.trim().split(" ").length < 2) {
-      errors[field] = "Enter at least two words.";
+    if (field !== "middleName" && typeof value === "string" && value.trim() && value.trim().length < 2) {
+      errors[field] = "Enter at least two characters.";
       continue;
     }
     if (value !== value.trim()) errors[field] = "Names cannot start or end with spaces.";
     else if (value.length < 2 || value.length > 50) errors[field] = "Names must be between 2 and 50 characters.";
-    else if (!(field === "middleName" ? patientNamePattern : patientFullNamePattern).test(value)) {
-      errors[field] = field === "middleName" ? "Names can contain letters and single spaces only." : "Use at least two words containing letters and single spaces only.";
+    else if (!patientNamePattern.test(value)) {
+      errors[field] = "Names can contain letters and single spaces only.";
     }
   }
 

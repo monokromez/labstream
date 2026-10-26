@@ -32,7 +32,7 @@ export function getPatientFieldError(field, value, context = {}) {
     if (!trimmed && field === 'middleName') return ''
     if (!trimmed) return `${label} is required.`
     if (text !== trimmed) return `${label} cannot start or end with spaces.`
-    if (field !== 'middleName' && trimmed.split(' ').length < 2) return `${label} must contain at least two words.`
+    if (field !== 'middleName' && trimmed.length < PATIENT_NAME_MIN) return `${label} must contain at least ${PATIENT_NAME_MIN} characters.`
     if (text.length < PATIENT_NAME_MIN) return `${label} must be at least ${PATIENT_NAME_MIN} characters.`
     if (text.length > PATIENT_NAME_MAX) return `${label} cannot exceed ${PATIENT_NAME_MAX} characters.`
     if (!NAME_PATTERN.test(text)) return `${label} can contain letters and single spaces only.`
