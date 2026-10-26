@@ -40,7 +40,7 @@ export const staffProfiles = pgTable("staff_profiles", {
 });
 export const accountTokens = pgTable("account_tokens", {
   id: id(), clinicId: uuid("clinic_id").notNull(), userId: uuid("user_id").notNull(), tokenHash: varchar("token_hash", { length: 64 }).notNull(),
-  purpose: varchar("purpose", { length: 24 }).notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  purpose: varchar("purpose", { length: 24 }).notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }),
   consumedAt: timestamp("consumed_at", { withTimezone: true }), createdAt: createdAt(),
 });
 export const patients = pgTable("patients", {

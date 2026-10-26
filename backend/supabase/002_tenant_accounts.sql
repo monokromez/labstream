@@ -141,9 +141,11 @@ create table public.account_tokens (
   user_id uuid not null references public.users(id) on delete restrict,
   token_hash varchar(64) not null unique,
   purpose varchar(24) not null check (purpose in ('activation', 'password_reset')),
-  expires_at timestamptz not null,
+  expires_at timestamptz,
   consumed_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint account_tokens_expiry_by_purpose_check
+    check ((purpose = 'activation' and expires_at is null) or (purpose = 'password_reset' and expires_at is not null))
 );
 create index account_tokens_user_purpose_idx
   on public.account_tokens(user_id, purpose, expires_at);

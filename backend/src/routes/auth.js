@@ -38,7 +38,7 @@ export function createAuthRouter(client) {
              left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
             where (upper(u.username) = $1 or upper(p.pid) = $1)
             and at.token_hash = $2 and at.purpose = 'activation'
-              and at.consumed_at is null and at.expires_at > now()
+              and at.consumed_at is null and (at.expires_at is null or at.expires_at > now())
               and u.is_active = false
             for update of at, u`,
           [identifier, hash],
@@ -53,7 +53,7 @@ export function createAuthRouter(client) {
         await tx.unsafe(`update public.account_tokens set consumed_at = now() where id = $1`, [account.token_id]);
         return account;
       });
-      if (!result) return res.status(400).json({ error: "INVALID_ACTIVATION", message: "The activation details are invalid, expired, or already used." });
+      if (!result) return res.status(400).json({ error: "INVALID_ACTIVATION", message: "The activation details are invalid or already used." });
       const token = createAccessToken({
         id: result.id,
         clinic_id: result.clinic_id,

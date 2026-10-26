@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
+import { emailService } from "../email.js";
 
 export function createPathologistRouter({ client }) {
   const router = Router();
@@ -109,7 +110,7 @@ export function createPathologistRouter({ client }) {
       }
       const outcome = await client.begin(async (tx) => {
         const [request] = await tx.unsafe(
-          `select id, status from public.test_requests
+          `select id, request_number, status from public.test_requests
             where id = $1 and clinic_id = $2 and assigned_pathologist_id = $3 for update`,
           [req.params.id, req.user.clinicId, req.user.sub],
         );
@@ -193,6 +194,17 @@ export function createPathologistRouter({ client }) {
           }
         }
         const [after] = await tx.unsafe(`select status from public.test_requests where id = $1 and clinic_id = $2`, [request.id, req.user.clinicId]);
+        let releasedPatient = null;
+        if (after.status === "released") {
+          [releasedPatient] = await tx.unsafe(
+            `select p.email, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as name, c.name as clinic_name
+               from public.test_requests r
+               join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+               join public.clinics c on c.id = r.clinic_id
+              where r.id = $1 and r.clinic_id = $2`,
+            [request.id, req.user.clinicId],
+          );
+        }
         await tx.unsafe(
           `insert into public.request_status_history (clinic_id, request_id, old_status, new_status, changed_by)
            values ($1, $2, $3, $4::public.request_status, $5)`,
@@ -203,9 +215,27 @@ export function createPathologistRouter({ client }) {
            values ($1, $2, 'results.reviewed', 'test_request', $3, jsonb_build_object('approvedOrReturnedCount', $4::integer, 'finalStatus', $5::text))`,
           [req.user.clinicId, req.user.sub, request.id, submissions.length, after.status],
         );
-        return { requestId: request.id, status: after.status, testCount: submissions.length, returnedCount };
+        return {
+          requestId: request.id,
+          requestNumber: request.request_number,
+          status: after.status,
+          testCount: submissions.length,
+          returnedCount,
+          releasedPatient,
+        };
       });
-      return res.json({ data: outcome });
+      let emailDelivery;
+      if (outcome.status === "released") {
+        emailDelivery = await emailService.sendResultsReleasedEmail({
+          to: outcome.releasedPatient.email,
+          name: outcome.releasedPatient.name,
+          requestNumber: outcome.requestNumber,
+          clinicName: outcome.releasedPatient.clinic_name,
+          portalUrl: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+        });
+      }
+      const { releasedPatient, ...data } = outcome;
+      return res.json({ data, ...(emailDelivery ? { emailDelivery } : {}) });
     } catch (error) {
       if (["REQUEST_NOT_FOUND", "INVALID_REQUEST_STATUS", "REVIEW_SET_INCOMPLETE"].includes(error.code)) return res.status(error.code === "REQUEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);

@@ -1,7 +1,7 @@
 -- Create the single laboratory record and its first Administrator after schema.sql.
 -- This creates NO patients, tests, requests, specimens, results, or other demo data.
 -- Edit the clinic name/code and email before running. Run only once per fresh DB.
--- The temporary output includes a one-time activation code; copy it privately.
+-- The output includes a one-time activation code; copy it privately.
 
 with activation_secret as (
   select rtrim(translate(encode(gen_random_bytes(32), 'base64'), '+/', '-_'), '=') as code
@@ -25,11 +25,11 @@ profile_row as (
 ),
 token_row as (
   insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-  select a.clinic_id, a.id, encode(digest(s.code, 'sha256'), 'hex'), 'activation', now() + interval '24 hours'
+  select a.clinic_id, a.id, encode(digest(s.code, 'sha256'), 'hex'), 'activation', null
     from admin_row a cross join activation_secret s
-  returning user_id, expires_at
+  returning user_id
 )
-select c.name as laboratory_name, a.username, s.code as activation_code, t.expires_at
+select c.name as laboratory_name, a.username, s.code as activation_code
   from clinic_row c
   join admin_row a on a.clinic_id = c.id
   join profile_row p on p.user_id = a.id

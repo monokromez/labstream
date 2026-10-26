@@ -3,6 +3,7 @@ import { Router } from "express";
 import { isSupportedCountry, parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
+import { emailService } from "../email.js";
 
 const ACTIVE_REQUEST_STATUSES = ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction"];
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
@@ -155,7 +156,7 @@ export function createCashierRouter({ client }) {
       const activation = createOneTimeCode();
       const data = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
-          `select id, pid, email, portal_user_id
+          `select id, pid, email, portal_user_id, first_name, middle_name, last_name
              from public.patients where id = $1 and clinic_id = $2 for update`,
           [req.params.id, req.user.clinicId],
         );
@@ -184,7 +185,7 @@ export function createCashierRouter({ client }) {
         }
         await tx.unsafe(
           `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-           values ($1, $2, $3, 'activation', now() + interval '24 hours')`,
+           values ($1, $2, $3, 'activation', null)`,
           [req.user.clinicId, userId, activation.hash],
         );
         await tx.unsafe(
@@ -192,9 +193,25 @@ export function createCashierRouter({ client }) {
            values ($1, $2, 'patient.portal_activation_issued', 'patient', $3, jsonb_build_object('pid', $4::text))`,
           [req.user.clinicId, req.user.sub, patient.id, patient.pid],
         );
-        return { patientId: patient.id, pid: patient.pid };
+        return {
+          patientId: patient.id,
+          pid: patient.pid,
+          email: patient.email,
+          name: [patient.first_name, patient.middle_name, patient.last_name].filter(Boolean).join(" "),
+        };
       });
-      return res.status(201).json({ data, activation: { code: activation.code, expiresInHours: 24, revealOnce: true } });
+      const emailDelivery = await emailService.sendActivationEmail({
+        to: data.email,
+        name: data.name,
+        accountId: data.pid,
+        code: activation.code,
+        role: "patient",
+      });
+      return res.status(201).json({
+        data: { patientId: data.patientId, pid: data.pid },
+        activation: { code: activation.code, revealOnce: true, expires: null },
+        emailDelivery,
+      });
     } catch (error) {
       if (["PATIENT_NOT_FOUND", "PORTAL_ALREADY_ACTIVE"].includes(error.code)) return res.status(error.code === "PATIENT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
@@ -354,8 +371,14 @@ export function createCashierRouter({ client }) {
     try {
       const result = await client.begin(async (tx) => {
         const [request] = await tx.unsafe(
-          `select id, request_number, total_amount, status
-             from public.test_requests where id = $1 and clinic_id = $2 for update`,
+          `select r.id, r.request_number, r.total_amount, r.status,
+                  pt.email as patient_email,
+                  concat_ws(' ', pt.first_name, pt.middle_name, pt.last_name) as patient_name,
+                  c.name as clinic_name
+             from public.test_requests r
+             join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
+             join public.clinics c on c.id = r.clinic_id
+            where r.id = $1 and r.clinic_id = $2 for update of r`,
           [req.params.id, req.user.clinicId],
         );
         if (!request) throw Object.assign(new Error("Request was not found."), { code: "REQUEST_NOT_FOUND" });
@@ -423,9 +446,37 @@ export function createCashierRouter({ client }) {
            values ($1, $2, 'request.paid', 'test_request', $3, jsonb_build_object('paymentId', $4::uuid, 'invoiceId', $5::uuid, 'technologistId', $6::uuid, 'paymentMethod', $7::text))`,
           [req.user.clinicId, req.user.sub, request.id, payment.id, invoice.id, technologist.id, paymentMethod],
         );
-        return { requestId: request.id, requestNumber: request.request_number, payment, invoice, assignedTechnologistId: technologist.id };
+        return {
+          requestId: request.id,
+          requestNumber: request.request_number,
+          payment,
+          invoice,
+          assignedTechnologistId: technologist.id,
+          patientEmail: request.patient_email,
+          patientName: request.patient_name,
+          clinicName: request.clinic_name,
+        };
       });
-      return res.status(201).json({ data: result });
+      const emailDelivery = await emailService.sendPaymentReceiptEmail({
+        to: result.patientEmail,
+        name: result.patientName,
+        requestNumber: result.requestNumber,
+        invoiceNumber: result.invoice.invoice_number,
+        amount: result.payment.amount,
+        paidAt: result.payment.paid_at,
+        paymentMethod: result.payment.method,
+        clinicName: result.clinicName,
+      });
+      return res.status(201).json({
+        data: {
+          requestId: result.requestId,
+          requestNumber: result.requestNumber,
+          payment: result.payment,
+          invoice: result.invoice,
+          assignedTechnologistId: result.assignedTechnologistId,
+        },
+        emailDelivery,
+      });
     } catch (error) {
       if (["REQUEST_NOT_FOUND", "INVALID_REQUEST_STATUS", "NO_TECHNOLOGIST_AVAILABLE"].includes(error.code)) {
         return res.status(error.code === "REQUEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });

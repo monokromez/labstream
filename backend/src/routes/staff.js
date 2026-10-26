@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
+import { emailService } from "../email.js";
 
 const STAFF_ROLES = new Set(["cashier", "medical_technologist", "pathologist"]);
 const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "for_validation", "correction"];
@@ -83,7 +84,7 @@ export function createStaffRouter({ client }) {
         );
         await tx.unsafe(
           `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
-           values ($1, $2, $3, 'activation', now() + interval '24 hours')`,
+           values ($1, $2, $3, 'activation', null)`,
           [user.clinic_id, user.id, activation.hash],
         );
         await tx.unsafe(
@@ -91,11 +92,19 @@ export function createStaffRouter({ client }) {
            values ($1, $2, 'staff.created', 'user', $3, jsonb_build_object('role', $4::text, 'username', $5::text))`,
           [user.clinic_id, req.user.sub, user.id, role, user.username],
         );
-        return user;
+        return { ...user, email, firstName, lastName };
+      });
+      const emailDelivery = await emailService.sendActivationEmail({
+        to: result.email,
+        name: `${result.firstName} ${result.lastName}`,
+        accountId: result.username,
+        code: activation.code,
+        role: result.role.replaceAll("_", " "),
       });
       return res.status(201).json({
         data: { id: result.id, username: result.username, role: result.role, isActive: false },
-        activation: { code: activation.code, expiresInHours: 24, revealOnce: true },
+        activation: { code: activation.code, revealOnce: true, expires: null },
+        emailDelivery,
       });
     } catch (error) {
       if (error.code === "23505") return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "This email is already assigned to an account in the clinic." });
