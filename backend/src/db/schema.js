@@ -147,7 +147,7 @@ export const resultSubmissionSpecimens = pgTable("result_submission_specimens", 
   clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), specimenId: uuid("specimen_id").notNull(),
 });
 export const resultValues = pgTable("result_values", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), analyteId: uuid("analyte_id").notNull(),
+  id: id(), clinicId: uuid("clinic_id").notNull(), resultSubmissionId: uuid("result_submission_id").notNull(), specimenId: uuid("specimen_id").notNull(), analyteId: uuid("analyte_id").notNull(),
   numericValue: numeric("numeric_value", { precision: 14, scale: 4 }), textValue: text("text_value"), selectValue: text("select_value"), booleanValue: boolean("boolean_value"), structuredValue: jsonb("structured_value"),
   unitSnapshot: varchar("unit_snapshot", { length: 40 }), lowerLimitSnapshot: numeric("lower_limit_snapshot", { precision: 14, scale: 4 }),
   upperLimitSnapshot: numeric("upper_limit_snapshot", { precision: 14, scale: 4 }), isAbnormal: boolean("is_abnormal").notNull().default(false),

@@ -85,12 +85,13 @@ export function createPatientRouter({ client }) {
           `select ri.id as request_item_id, ri.test_name_snapshot as test_name,
                   rs.pathologist_interpretation,
                   coalesce((select jsonb_agg(jsonb_build_object(
-                    'label', a.label, 'valueType', a.value_type,
+                    'specimenId', rv.specimen_id, 'specimenType', s.specimen_type, 'specimenAttempt', s.attempt_number, 'label', a.label, 'valueType', a.value_type,
                     'numericValue', rv.numeric_value, 'textValue', rv.text_value,
                     'selectValue', rv.select_value, 'booleanValue', rv.boolean_value, 'structuredValue', rv.structured_value,
                     'unit', rv.unit_snapshot, 'lowerLimit', rv.lower_limit_snapshot,
                     'upperLimit', rv.upper_limit_snapshot, 'isAbnormal', rv.is_abnormal) order by a.sort_order)
                     from public.result_values rv join public.test_analytes a on a.id = rv.analyte_id and a.clinic_id = rv.clinic_id
+                    join public.specimens s on s.id = rv.specimen_id and s.clinic_id = rv.clinic_id
                    where rv.result_submission_id = rs.id), '[]'::jsonb) as values
              from public.request_items ri
              join lateral (select rs.* from public.result_submissions rs
@@ -195,12 +196,13 @@ export function createPatientRouter({ client }) {
       const tests = await client.unsafe(
         `select ri.test_name_snapshot as test_name, rs.pathologist_interpretation,
                 coalesce((select jsonb_agg(jsonb_build_object(
-                  'label', a.label, 'numericValue', rv.numeric_value, 'textValue', rv.text_value,
+                  'specimenType', s.specimen_type, 'specimenAttempt', s.attempt_number, 'label', a.label, 'numericValue', rv.numeric_value, 'textValue', rv.text_value,
                   'selectValue', rv.select_value, 'booleanValue', rv.boolean_value,
                   'structuredValue', rv.structured_value, 'unit', rv.unit_snapshot,
                   'lowerLimit', rv.lower_limit_snapshot, 'upperLimit', rv.upper_limit_snapshot)
                   order by a.sort_order) from public.result_values rv
                   join public.test_analytes a on a.id = rv.analyte_id and a.clinic_id = rv.clinic_id
+                  join public.specimens s on s.id = rv.specimen_id and s.clinic_id = rv.clinic_id
                  where rv.result_submission_id = rs.id), '[]'::jsonb) as values
            from public.request_items ri
            join lateral (select rs.* from public.result_submissions rs
@@ -232,7 +234,7 @@ export function createPatientRouter({ client }) {
           const result = Array.isArray(value.structuredValue)
             ? value.structuredValue.map((row) => Object.entries(row).map(([key, cell]) => `${key}: ${cell}`).join(" · ")).join(" | ")
             : [value.numericValue, value.textValue, value.selectValue, value.booleanValue == null ? null : (value.booleanValue ? "Yes" : "No")].find((entry) => entry != null) ?? "—";
-          pdf.fontSize(9).fillColor("#183f43").text(`${value.label}: ${result}${value.unit ? ` ${value.unit}` : ""}`);
+          pdf.fontSize(9).fillColor("#183f43").text(`${value.specimenType ? `${value.specimenType}${value.specimenAttempt > 1 ? ` · Attempt ${value.specimenAttempt}` : ""} · ` : ""}${value.label}: ${result}${value.unit ? ` ${value.unit}` : ""}`);
           if (value.lowerLimit != null || value.upperLimit != null) pdf.fontSize(8).fillColor("#526d70").text(`Reference range: ${value.lowerLimit ?? "—"} – ${value.upperLimit ?? "—"}${value.unit ? ` ${value.unit}` : ""}`);
         }
         if (test.pathologist_interpretation) pdf.moveDown(0.3).fontSize(9).fillColor("#183f43").text(`Pathologist interpretation: ${test.pathologist_interpretation}`);

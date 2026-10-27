@@ -48,12 +48,13 @@ export function createPathologistRouter({ client }) {
                   where rr.result_submission_id = rs.id and rr.clinic_id = rs.clinic_id
                   order by rr.reviewed_at desc limit 1) as review_remarks,
                 coalesce((select jsonb_agg(jsonb_build_object(
-                  'id', rv.id, 'analyteId', a.id, 'label', a.label, 'valueType', a.value_type,
+                  'id', rv.id, 'specimenId', rv.specimen_id, 'specimenType', s.specimen_type, 'specimenAttempt', s.attempt_number, 'analyteId', a.id, 'label', a.label, 'valueType', a.value_type,
                   'numericValue', rv.numeric_value, 'textValue', rv.text_value, 'selectValue', rv.select_value,
                   'booleanValue', rv.boolean_value, 'structuredValue', rv.structured_value, 'unit', rv.unit_snapshot,
                   'lowerLimit', rv.lower_limit_snapshot, 'upperLimit', rv.upper_limit_snapshot,
-                  'isAbnormal', rv.is_abnormal) order by a.sort_order)
+                  'isAbnormal', rv.is_abnormal) order by s.specimen_type, a.sort_order)
                   from public.result_values rv join public.test_analytes a on a.id = rv.analyte_id and a.clinic_id = rv.clinic_id
+                  join public.specimens s on s.id = rv.specimen_id and s.clinic_id = rv.clinic_id
                  where rv.result_submission_id = rs.id), '[]'::jsonb) as values,
                 coalesce((select jsonb_agg(jsonb_build_object('type', s.specimen_type, 'status', s.status, 'attempt', s.attempt_number))
                   from public.result_submission_specimens rss join public.specimens s
@@ -167,6 +168,13 @@ export function createPathologistRouter({ client }) {
                    where rss.result_submission_id = $1 and s.specimen_type = $2 order by s.attempt_number desc limit 1`,
                   [submission.submission_id, requirement.specimen_type],
                 );
+                if (oldSpecimen) {
+                  await tx.unsafe(
+                    `update public.specimens set status = 'for_recollection', updated_at = now()
+                      where id = $1 and request_id = $2 and clinic_id = $3 and status = 'accepted'`,
+                    [oldSpecimen.id, request.id, req.user.clinicId],
+                  );
+                }
                 const [replacement] = await tx.unsafe(
                   `insert into public.specimens (clinic_id, request_id, specimen_type, attempt_number, replaces_specimen_id, status, notes)
                    select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'expected', $5

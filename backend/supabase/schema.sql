@@ -446,6 +446,7 @@ create table public.result_submission_specimens (
   clinic_id uuid not null references public.clinics(id) on delete restrict,
   request_id uuid not null, result_submission_id uuid not null, specimen_id uuid not null,
   primary key (result_submission_id, specimen_id),
+  unique (result_submission_id, specimen_id, clinic_id),
   foreign key (result_submission_id, request_id, clinic_id) references public.result_submissions(id, request_id, clinic_id) on delete restrict,
   foreign key (specimen_id, request_id, clinic_id) references public.specimens(id, request_id, clinic_id) on delete restrict
 );
@@ -470,19 +471,22 @@ on public.result_submissions for each row execute function public.validate_resul
 create table public.result_values (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  result_submission_id uuid not null, analyte_id uuid not null,
+  result_submission_id uuid not null, specimen_id uuid not null, analyte_id uuid not null,
   numeric_value numeric(14,4), text_value text, select_value text, boolean_value boolean, structured_value jsonb,
   unit_snapshot varchar(40),
   lower_limit_snapshot numeric(14,4), upper_limit_snapshot numeric(14,4),
   is_abnormal boolean not null default false,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (result_submission_id, analyte_id),
+  unique (result_submission_id, specimen_id, analyte_id),
   foreign key (result_submission_id, clinic_id) references public.result_submissions(id, clinic_id) on delete restrict,
+  foreign key (result_submission_id, specimen_id, clinic_id) references public.result_submission_specimens(result_submission_id, specimen_id, clinic_id) on delete restrict,
   foreign key (analyte_id, clinic_id) references public.test_analytes(id, clinic_id) on delete restrict,
   check (num_nonnulls(numeric_value, text_value, select_value, boolean_value, structured_value) = 1),
   check (structured_value is null or case when jsonb_typeof(structured_value) = 'array' then jsonb_array_length(structured_value) > 0 else false end),
   check (lower_limit_snapshot is null or upper_limit_snapshot is null or lower_limit_snapshot <= upper_limit_snapshot)
 );
+create index result_values_specimen_idx
+  on public.result_values(result_submission_id, specimen_id, analyte_id);
 
 -- A result's selected analyte must belong to the test represented by its
 -- request item, and its value column must match the catalog analyte's type.

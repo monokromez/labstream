@@ -64,6 +64,7 @@ export function createTechnologistRouter({ client }) {
                           from public.reference_ranges ranges
                          where ranges.analyte_id = a.id and ranges.clinic_id = a.clinic_id and ranges.is_active = true
                            and (ranges.sex is null or lower(ranges.sex) = lower(p.sex))
+                           and (nullif(btrim(a.unit), '') is null or lower(btrim(coalesce(ranges.unit, ''))) = lower(btrim(a.unit)))
                            and (ranges.min_age_days is null or current_date - p.date_of_birth >= ranges.min_age_days)
                            and (ranges.max_age_days is null or current_date - p.date_of_birth <= ranges.max_age_days)
                          order by (ranges.sex is not null) desc, coalesce(ranges.min_age_days, 0) desc limit 1
@@ -92,7 +93,7 @@ export function createTechnologistRouter({ client }) {
                       where rr.result_submission_id = rs.id and rr.clinic_id = rs.clinic_id
                       order by rr.reviewed_at desc limit 1) as review_remarks,
                     coalesce((select jsonb_agg(jsonb_build_object(
-                      'analyteId', rv.analyte_id, 'numericValue', rv.numeric_value,
+                      'specimenId', rv.specimen_id, 'analyteId', rv.analyte_id, 'numericValue', rv.numeric_value,
                       'textValue', rv.text_value, 'selectValue', rv.select_value,
                       'booleanValue', rv.boolean_value, 'structuredValue', rv.structured_value
                     )) from public.result_values rv where rv.result_submission_id = rs.id and rv.clinic_id = rs.clinic_id), '[]'::jsonb) as values
@@ -374,9 +375,9 @@ export function createTechnologistRouter({ client }) {
 
   router.post("/requests/:requestId/items/:itemId/draft", async (req, res, next) => {
     try {
-      const specimenIds = [...new Set(Array.isArray(req.body?.specimenIds) ? req.body.specimenIds : [req.body?.specimenId].filter(Boolean))];
+      const specimenId = String(req.body?.specimenId ?? (Array.isArray(req.body?.specimenIds) && req.body.specimenIds.length === 1 ? req.body.specimenIds[0] : ""));
       const values = Array.isArray(req.body?.values) ? req.body.values : null;
-      if (!specimenIds.length || specimenIds.length > 10 || !values || values.length > 100) return res.status(400).json({ error: "INVALID_RESULT_DRAFT" });
+      if (!specimenId || !values || values.length > 100) return res.status(400).json({ error: "INVALID_RESULT_DRAFT" });
       const result = await client.begin(async (tx) => {
         const [context] = await tx.unsafe(
           `select r.id as request_id, r.status as request_status, r.assigned_technologist_id,
@@ -397,23 +398,11 @@ export function createTechnologistRouter({ client }) {
              from public.specimens s
              join public.specimen_request_items sri on sri.specimen_id = s.id and sri.request_id = s.request_id and sri.clinic_id = s.clinic_id
             where sri.request_item_id = $1 and s.request_id = $2 and s.clinic_id = $3
-              and s.id = any($4::uuid[]) and s.status = 'accepted'`,
-          [context.item_id, context.request_id, req.user.clinicId, specimenIds],
+              and s.id = $4 and s.status = 'accepted'
+              and not exists (select 1 from public.specimens replacement where replacement.replaces_specimen_id = s.id and replacement.clinic_id = s.clinic_id)`,
+          [context.item_id, context.request_id, req.user.clinicId, specimenId],
         );
-        if (acceptedSpecimens.length !== specimenIds.length) throw Object.assign(new Error("Choose only accepted specimens linked to this test."), { code: "SPECIMEN_NOT_ACCEPTED" });
-        const [missingSpecimenRequirement] = await tx.unsafe(
-          `select sr.specimen_type
-             from public.test_specimen_requirements sr
-            where sr.test_id = $1 and sr.clinic_id = $2 and sr.configuration_version = $6 and sr.is_required = true
-              and not exists (
-                select 1 from public.specimen_request_items sri
-                join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
-                where sri.request_item_id = $3 and sri.request_id = $4 and sri.clinic_id = $2
-                  and s.specimen_type = sr.specimen_type and s.id = any($5::uuid[]) and s.status = 'accepted'
-              ) limit 1`,
-          [context.test_id, req.user.clinicId, context.item_id, context.request_id, specimenIds, context.configuration_version],
-        );
-        if (missingSpecimenRequirement) throw Object.assign(new Error(`The required ${missingSpecimenRequirement.specimen_type} specimen must be accepted before result entry.`), { code: "SPECIMEN_NOT_ACCEPTED" });
+        if (acceptedSpecimens.length !== 1) throw Object.assign(new Error("Choose one current accepted specimen linked to this test."), { code: "SPECIMEN_NOT_ACCEPTED" });
         const analytes = await tx.unsafe(
           `select a.id, a.value_type::text as value_type, a.options, a.unit,
                   rr.lower_limit, rr.upper_limit, coalesce(rr.unit, a.unit) as result_unit, a.is_required
@@ -423,6 +412,7 @@ export function createTechnologistRouter({ client }) {
                  from public.reference_ranges r
                 where r.analyte_id = a.id and r.clinic_id = a.clinic_id and r.is_active = true
                   and (r.sex is null or lower(r.sex) = lower($3))
+                  and (nullif(btrim(a.unit), '') is null or lower(btrim(coalesce(r.unit, ''))) = lower(btrim(a.unit)))
                   and (r.min_age_days is null or current_date - $4::date >= r.min_age_days)
                   and (r.max_age_days is null or current_date - $4::date <= r.max_age_days)
                 order by (r.sex is not null) desc, coalesce(r.min_age_days, 0) desc limit 1
@@ -458,28 +448,48 @@ export function createTechnologistRouter({ client }) {
         let submission;
         if (latest?.status === "draft") {
           [submission] = await tx.unsafe(
-            `update public.result_submissions set specimen_id = $1, pathologist_interpretation = null, updated_at = now()
-              where id = $2 and clinic_id = $3 returning id, revision_number`,
-            [specimenIds[0], latest.id, req.user.clinicId],
+            `update public.result_submissions set pathologist_interpretation = null, updated_at = now()
+              where id = $1 and clinic_id = $2 returning id, revision_number`,
+            [latest.id, req.user.clinicId],
           );
-          await tx.unsafe(`delete from public.result_values where result_submission_id = $1 and clinic_id = $2`, [latest.id, req.user.clinicId]);
-          await tx.unsafe(`delete from public.result_submission_specimens where result_submission_id = $1 and clinic_id = $2`, [latest.id, req.user.clinicId]);
+          await tx.unsafe(`delete from public.result_values where result_submission_id = $1 and specimen_id = $2 and clinic_id = $3`, [latest.id, specimenId, req.user.clinicId]);
         } else {
           const revision = (latest?.revision_number ?? 0) + 1;
           [submission] = await tx.unsafe(
             `insert into public.result_submissions
               (clinic_id, request_id, request_item_id, specimen_id, revision_number, status, entered_by, supersedes_result_id)
              values ($1, $2, $3, $4, $5, 'draft', $6, $7) returning id, revision_number`,
-            [req.user.clinicId, context.request_id, context.item_id, specimenIds[0], revision, req.user.sub, ["returned", "approved"].includes(latest?.status) ? latest.id : null],
+            [req.user.clinicId, context.request_id, context.item_id, specimenId, revision, req.user.sub, latest?.id ?? null],
           );
+          if (latest) {
+            await tx.unsafe(
+              `insert into public.result_submission_specimens (clinic_id, request_id, result_submission_id, specimen_id)
+               select $1, old.request_id, $2, old.specimen_id
+                 from public.result_submission_specimens old
+                 join public.specimens s on s.id = old.specimen_id and s.request_id = old.request_id and s.clinic_id = old.clinic_id
+                where old.result_submission_id = $3 and old.clinic_id = $1 and s.status = 'accepted'
+                  and not exists (select 1 from public.specimens replacement where replacement.replaces_specimen_id = s.id and replacement.clinic_id = s.clinic_id)
+               on conflict (result_submission_id, specimen_id) do nothing`,
+              [req.user.clinicId, submission.id, latest.id],
+            );
+            await tx.unsafe(
+              `insert into public.result_values
+                (clinic_id, result_submission_id, specimen_id, analyte_id, numeric_value, text_value, select_value, boolean_value, structured_value,
+                 unit_snapshot, lower_limit_snapshot, upper_limit_snapshot, is_abnormal)
+               select rv.clinic_id, $2, rv.specimen_id, rv.analyte_id, rv.numeric_value, rv.text_value, rv.select_value, rv.boolean_value, rv.structured_value,
+                      rv.unit_snapshot, rv.lower_limit_snapshot, rv.upper_limit_snapshot, rv.is_abnormal
+                 from public.result_values rv
+                 join public.result_submission_specimens rss on rss.result_submission_id = $2 and rss.specimen_id = rv.specimen_id and rss.clinic_id = rv.clinic_id
+                where rv.result_submission_id = $3 and rv.clinic_id = $1`,
+              [req.user.clinicId, submission.id, latest.id],
+            );
+          }
         }
-        for (const specimenId of specimenIds) {
-          await tx.unsafe(
-            `insert into public.result_submission_specimens (clinic_id, request_id, result_submission_id, specimen_id)
-             values ($1, $2, $3, $4)`,
-            [req.user.clinicId, context.request_id, submission.id, specimenId],
-          );
-        }
+        await tx.unsafe(
+          `insert into public.result_submission_specimens (clinic_id, request_id, result_submission_id, specimen_id)
+           values ($1, $2, $3, $4) on conflict (result_submission_id, specimen_id) do nothing`,
+          [req.user.clinicId, context.request_id, submission.id, specimenId],
+        );
         for (const value of values) {
           const analyte = byId.get(value.analyteId);
           const supplied = [value.numericValue, value.textValue, value.selectValue, value.booleanValue, value.structuredValue].some((entry) => entry != null && entry !== "");
@@ -488,10 +498,10 @@ export function createTechnologistRouter({ client }) {
           const abnormal = numericValue != null && ((analyte.lower_limit != null && numericValue < Number(analyte.lower_limit)) || (analyte.upper_limit != null && numericValue > Number(analyte.upper_limit)));
           await tx.unsafe(
             `insert into public.result_values
-              (clinic_id, result_submission_id, analyte_id, numeric_value, text_value, select_value, boolean_value, structured_value,
+              (clinic_id, result_submission_id, specimen_id, analyte_id, numeric_value, text_value, select_value, boolean_value, structured_value,
                unit_snapshot, lower_limit_snapshot, upper_limit_snapshot, is_abnormal)
-             values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)`,
-            [req.user.clinicId, submission.id, value.analyteId,
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13)`,
+            [req.user.clinicId, submission.id, specimenId, value.analyteId,
               analyte.value_type === "numeric" ? numericValue : null,
               analyte.value_type === "text" ? value.textValue ?? null : null,
               analyte.value_type === "select" ? value.selectValue ?? null : null,
@@ -539,6 +549,22 @@ export function createTechnologistRouter({ client }) {
             [item.id, req.user.clinicId],
           );
           if (!latest || latest.status !== "draft") throw Object.assign(new Error("A saved draft is required before marking this test complete."), { code: "RESULT_NOT_EDITABLE" });
+          const [missingSpecimen] = await tx.unsafe(
+            `select sr.specimen_type
+               from public.test_specimen_requirements sr
+              where sr.test_id = (select test_id from public.request_items where id = $1 and clinic_id = $2)
+                and sr.clinic_id = $2
+                and sr.configuration_version = (select configuration_version from public.request_items where id = $1 and clinic_id = $2)
+                and sr.is_required = true
+                and not exists (
+                  select 1 from public.specimen_request_items sri
+                  join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
+                 where sri.request_item_id = $1 and sri.clinic_id = $2 and s.specimen_type = sr.specimen_type and s.status = 'accepted'
+                   and not exists (select 1 from public.specimens replacement where replacement.replaces_specimen_id = s.id and replacement.clinic_id = s.clinic_id)
+                ) limit 1`,
+            [item.id, req.user.clinicId],
+          );
+          if (missingSpecimen) throw Object.assign(new Error(`Accept the required ${missingSpecimen.specimen_type} specimen before completing this test.`), { code: "SPECIMEN_NOT_ACCEPTED" });
           const [check] = await tx.unsafe(
             `select count(*)::integer as total,
                     count(*) filter (where rv.id is null
@@ -550,9 +576,13 @@ export function createTechnologistRouter({ client }) {
                         or exists (select 1 from jsonb_array_elements(rv.structured_value) as row_data(value)
                           where exists (select 1 from jsonb_array_elements_text(a.options) as column_name(label)
                             where btrim(coalesce(row_data.value ->> column_name.label, '')) = '')))))::integer as missing
-               from public.test_analytes a
-               left join public.result_values rv on rv.analyte_id = a.id and rv.result_submission_id = $3 and rv.clinic_id = a.clinic_id
-              where a.test_id = (select test_id from public.request_items where id = $1 and clinic_id = $2)
+               from public.specimen_request_items sri
+               join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
+               cross join public.test_analytes a
+               left join public.result_values rv on rv.analyte_id = a.id and rv.result_submission_id = $3 and rv.specimen_id = s.id and rv.clinic_id = a.clinic_id
+              where sri.request_item_id = $1 and sri.clinic_id = $2 and s.status = 'accepted'
+                and not exists (select 1 from public.specimens replacement where replacement.replaces_specimen_id = s.id and replacement.clinic_id = s.clinic_id)
+                and a.test_id = (select test_id from public.request_items where id = $1 and clinic_id = $2)
                 and a.clinic_id = $2 and a.configuration_version = (select configuration_version from public.request_items where id = $1 and clinic_id = $2)
                 and a.is_required = true`,
             [item.id, req.user.clinicId, latest.id],
@@ -572,7 +602,7 @@ export function createTechnologistRouter({ client }) {
       });
       return res.json({ data });
     } catch (error) {
-      const codes = ["RESULT_CONTEXT_NOT_FOUND", "INVALID_REQUEST_STATUS", "RESULT_NOT_EDITABLE", "RESULTS_INCOMPLETE"];
+      const codes = ["RESULT_CONTEXT_NOT_FOUND", "INVALID_REQUEST_STATUS", "RESULT_NOT_EDITABLE", "RESULTS_INCOMPLETE", "SPECIMEN_NOT_ACCEPTED"];
       if (codes.includes(error.code)) return res.status(error.code === "RESULT_CONTEXT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
@@ -605,32 +635,49 @@ export function createTechnologistRouter({ client }) {
         if (!drafts.length) throw Object.assign(new Error("Mark every test complete before submitting the request."), { code: "NO_RESULT_DRAFTS" });
         if (drafts.length !== target.total) throw Object.assign(new Error("Complete every test in this request before submitting the results."), { code: "REQUEST_RESULTS_INCOMPLETE" });
         const completeness = await tx.unsafe(
-          `select ri.id, count(a.id)::integer as required_count,
-                  count(rv.id)::integer as entered_count,
-                  count(rv.id) filter (where a.value_type = 'structured' and (
-                    rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
-                    or exists (select 1 from jsonb_array_elements(rv.structured_value) as rows(value)
-                      where exists (select 1 from jsonb_array_elements_text(a.options) as columns(label)
-                        where btrim(coalesce(rows.value ->> columns.label, '')) = ''))
-                  ))::integer as incomplete_structured_count
+          `select ri.id
              from public.request_items ri
-             join public.test_analytes a on a.test_id = ri.test_id and a.clinic_id = ri.clinic_id
-                  and a.configuration_version = ri.configuration_version and a.is_required = true
-             left join lateral (select id from public.result_submissions rs
-                                 where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
-                                 order by revision_number desc limit 1) latest on true
-             left join public.result_values rv on rv.result_submission_id = latest.id and rv.analyte_id = a.id and rv.clinic_id = ri.clinic_id
+             join lateral (select rs.id from public.result_submissions rs
+                            where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
+                            order by rs.revision_number desc limit 1) latest on true
             where ri.request_id = $1 and ri.clinic_id = $2 and ri.status = 'completed'
-            group by ri.id having count(a.id) = 0 or count(a.id) <> count(rv.id)
-              or count(rv.id) filter (where a.value_type = 'structured' and (
-                rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
-                or exists (select 1 from jsonb_array_elements(rv.structured_value) as rows(value)
-                  where exists (select 1 from jsonb_array_elements_text(a.options) as columns(label)
-                    where btrim(coalesce(rows.value ->> columns.label, '')) = ''))
-              )) > 0`,
+              and (
+                not exists (select 1 from public.test_analytes a where a.test_id = ri.test_id and a.clinic_id = ri.clinic_id
+                             and a.configuration_version = ri.configuration_version and a.is_required = true)
+                or exists (
+                  select 1 from public.test_specimen_requirements sr
+                   where sr.test_id = ri.test_id and sr.clinic_id = ri.clinic_id
+                     and sr.configuration_version = ri.configuration_version and sr.is_required = true
+                     and not exists (
+                       select 1 from public.specimen_request_items sri
+                       join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
+                      where sri.request_item_id = ri.id and sri.clinic_id = ri.clinic_id and s.specimen_type = sr.specimen_type and s.status = 'accepted'
+                        and not exists (select 1 from public.specimens replacement where replacement.replaces_specimen_id = s.id and replacement.clinic_id = s.clinic_id)
+                     )
+                )
+                or exists (
+                  select 1 from public.specimen_request_items sri
+                  join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
+                  cross join public.test_analytes a
+                  left join public.result_values rv on rv.result_submission_id = latest.id and rv.specimen_id = s.id
+                    and rv.analyte_id = a.id and rv.clinic_id = ri.clinic_id
+                 where sri.request_item_id = ri.id and sri.clinic_id = ri.clinic_id and s.status = 'accepted'
+                   and not exists (select 1 from public.specimens replacement where replacement.replaces_specimen_id = s.id and replacement.clinic_id = s.clinic_id)
+                   and a.test_id = ri.test_id and a.clinic_id = ri.clinic_id and a.configuration_version = ri.configuration_version and a.is_required = true
+                   and (rv.id is null
+                     or (a.value_type = 'numeric' and rv.numeric_value is null)
+                     or (a.value_type = 'text' and nullif(btrim(rv.text_value), '') is null)
+                     or (a.value_type = 'select' and nullif(btrim(rv.select_value), '') is null)
+                     or (a.value_type = 'boolean' and rv.boolean_value is null)
+                     or (a.value_type = 'structured' and (rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
+                       or exists (select 1 from jsonb_array_elements(rv.structured_value) as rows(value)
+                         where exists (select 1 from jsonb_array_elements_text(a.options) as columns(label)
+                           where btrim(coalesce(rows.value ->> columns.label, '')) = ''))))
+                )
+              )`,
           [request.id, req.user.clinicId],
         );
-        if (completeness.length) throw Object.assign(new Error("Complete every required result field for the drafted tests before submitting."), { code: "RESULTS_INCOMPLETE", details: completeness.map((row) => row.id) });
+        if (completeness.length) throw Object.assign(new Error("Accept every required specimen and complete its result fields before submitting."), { code: "RESULTS_INCOMPLETE", details: completeness.map((row) => row.id) });
         for (const draft of drafts) {
           await tx.unsafe(`update public.result_submissions set status = 'submitted', submitted_at = now(), updated_at = now() where id = $1 and clinic_id = $2`, [draft.submission_id, req.user.clinicId]);
           await tx.unsafe(`update public.request_items set status = 'submitted', updated_at = now() where id = $1 and clinic_id = $2`, [draft.item_id, req.user.clinicId]);

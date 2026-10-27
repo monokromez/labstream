@@ -23,6 +23,10 @@ function reportPeriodWord(period) {
   return period === "weekly" ? "week" : period === "annual" ? "year" : "month";
 }
 
+function unitMatchesAnalyte(referenceUnit, analyteUnit) {
+  return !analyteUnit || String(referenceUnit ?? "").trim().toLocaleLowerCase() === String(analyteUnit).trim().toLocaleLowerCase();
+}
+
 export function createAdministratorRouter({ client, publishCatalogChanged }) {
   const router = Router();
   router.use(createRequireAuth(client), requirePasswordSetupComplete, requireSameOrigin, allowRoles("administrator"));
@@ -840,8 +844,9 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       const body = req.body ?? {};
       const validationError = validateReferenceRangeDetails(body);
       if (validationError) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE", message: validationError });
-      const [analyte] = await client.unsafe(`select id from public.test_analytes where id = $1 and clinic_id = $2`, [body.analyteId, req.user.clinicId]);
+      const [analyte] = await client.unsafe(`select id, unit from public.test_analytes where id = $1 and clinic_id = $2`, [body.analyteId, req.user.clinicId]);
       if (!analyte) return res.status(404).json({ error: "ANALYTE_NOT_FOUND" });
+      if (!unitMatchesAnalyte(body.unit, analyte.unit)) return res.status(400).json({ error: "REFERENCE_RANGE_UNIT_MISMATCH", message: `Use the result field unit (${analyte.unit}) for this reference range.` });
       const [data] = await client.unsafe(
         `insert into public.reference_ranges
           (clinic_id, analyte_id, sex, min_age_days, max_age_days, lower_limit, upper_limit, unit, guidance)
@@ -864,13 +869,19 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       const body = req.body ?? {};
       const validationError = validateReferenceRangeDetails(body, { partial: true });
       if (validationError) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE", message: validationError });
-      if (Object.hasOwn(body, "analyteId")) {
-        const [analyte] = await client.unsafe(
-          `select id from public.test_analytes where id = $1 and clinic_id = $2`,
-          [body.analyteId, req.user.clinicId],
-        );
-        if (!analyte) return res.status(404).json({ error: "ANALYTE_NOT_FOUND" });
-      }
+      const [currentRange] = await client.unsafe(
+        `select analyte_id, unit from public.reference_ranges where id = $1 and clinic_id = $2 and is_active = true`,
+        [req.params.id, req.user.clinicId],
+      );
+      if (!currentRange) return res.status(404).json({ error: "REFERENCE_RANGE_NOT_FOUND" });
+      const analyteId = body.analyteId ?? currentRange.analyte_id;
+      const [analyte] = await client.unsafe(
+        `select id, unit from public.test_analytes where id = $1 and clinic_id = $2`,
+        [analyteId, req.user.clinicId],
+      );
+      if (!analyte) return res.status(404).json({ error: "ANALYTE_NOT_FOUND" });
+      const nextUnit = body.unit ?? currentRange.unit;
+      if (!unitMatchesAnalyte(nextUnit, analyte.unit)) return res.status(400).json({ error: "REFERENCE_RANGE_UNIT_MISMATCH", message: `Use the result field unit (${analyte.unit}) for this reference range.` });
       const [data] = await client.unsafe(
         `update public.reference_ranges set sex = case when $1::boolean then $2 else sex end,
                 min_age_days = case when $3::boolean then $4 else min_age_days end,
