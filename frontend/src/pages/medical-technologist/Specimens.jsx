@@ -331,15 +331,16 @@ export default function Specimens() {
               <h3>{isReplacementAttempt ? 'What to do next' : 'How to fix this'}</h3>
               {isReplacementAttempt ? (
                 <p className="medtech-form__notice">
-                  Collect a new {activeSpecimen.type.toLowerCase()} sample
-                  {detailOriginal ? ` to replace ${detailOriginal.label}` : ''}, then receive and accept it.
-                  The request stays open until the replacement is accepted.
+                  This attempt replaces {detailOriginal ? detailOriginal.label : 'a rejected specimen'}.
+                  The patient returns to the collection area for a new {activeSpecimen.type.toLowerCase()} collection;
+                  the medical technologist receives and accepts the new tube here. The request stays open until the
+                  replacement is accepted.
                 </p>
               ) : isLabelRejected ? (
                 <>
                   <p className="medtech-form__notice">
-                    The sample itself is usable. Relabel the same tube, reopen it here, then accept it in Specimens.
-                    No new sample is needed.
+                    The sample itself is usable. After confirming the patient&apos;s identity, the medical technologist
+                    relabels the same tube, reopens it here, then accepts it in Specimens. No new sample is needed.
                   </p>
                   <form className="medtech-form" onSubmit={submitRelabel}>
                     <label className="medtech-form__field" htmlFor="corrected-label">
@@ -358,9 +359,11 @@ export default function Specimens() {
                 </>
               ) : (
                 <p className="medtech-form__notice">
-                  This sample cannot be used, so a new sample is required. {detailReplacement
-                    ? `${detailReplacement.label} is ${detailReplacement.status.toLowerCase()} — receive and accept it when it arrives.`
-                    : 'A replacement will be expected for this specimen.'}
+                  This sample cannot be used, so a new sample is required. The patient returns to the collection area
+                  for a new {activeSpecimen.type.toLowerCase()} collection; the medical technologist receives and
+                  accepts the new tube here. {detailReplacement
+                    ? `${detailReplacement.label} is awaiting collection — the system does not send a sample automatically.`
+                    : 'A replacement attempt will be expected for this specimen.'}
                 </p>
               )}
             </section>
