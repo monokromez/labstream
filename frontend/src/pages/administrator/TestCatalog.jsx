@@ -32,7 +32,6 @@ const emptyTest = {
   price: '',
   turnaroundHours: '',
   turnaroundMinutePart: '',
-  availability: 'Available',
   specimenType: 'Blood',
   specimens: [{ specimenType: 'Whole blood', collectionInstructions: '', minimumQuantity: '', quantityUnit: '', isRequired: true }],
   analytes: [
@@ -236,13 +235,13 @@ export default function TestCatalog() {
       if (dialog.editingId) {
         await api.administrator.updateTest(dialog.editingId, {
           name: form.name, categoryIds, price: Number(form.price), turnaroundMinutes,
-          isAvailable: form.availability === 'Available', specimens: specimenPayload, analytes: analytesPayload,
+          specimens: specimenPayload, analytes: analytesPayload,
         })
         setDialog(null)
       } else {
         await api.administrator.addTest({
           name: form.name, categoryIds, price: Number(form.price), turnaroundMinutes,
-          isAvailable: form.availability === 'Available', specimens: specimenPayload,
+          isAvailable: false, specimens: specimenPayload,
           analytes: analytesPayload,
         })
         setForm({ ...emptyTest, categoryIds: firstActiveCategoryId ? [firstActiveCategoryId] : [] })
@@ -290,6 +289,10 @@ export default function TestCatalog() {
       setDialog(null)
       await refresh()
     } catch (error) {
+      if (error.code === 'TEST_REFERENCE_RANGE_REQUIRED') {
+        setDialog({ type: 'missing-reference-range', test })
+        return
+      }
       setSaveNotice(error.message || 'Unable to update test availability.')
     }
   }
@@ -355,7 +358,6 @@ export default function TestCatalog() {
         price: String(test.price),
         turnaroundHours: turnaroundMinutes == null ? '' : String(Math.floor(turnaroundMinutes / 60)),
         turnaroundMinutePart: turnaroundMinutes == null ? '' : String(turnaroundMinutes % 60),
-        availability: test.availability,
         specimenType,
         specimens: (config.specimens ?? []).map((specimen) => ({
           specimenType: specimen.specimenType,
@@ -396,7 +398,7 @@ export default function TestCatalog() {
         <div className="admin-table-wrap"><table className="admin-table">
           <thead><tr><th>Test</th><th>Category</th><th>Price</th><th>TAT</th><th>Availability</th><th>Actions</th></tr></thead>
           <tbody>
-            {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => viewConfiguration(test)}>Params ({test.analyteCount ?? 1})</button><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className={`admin-button admin-button--small ${test.isAvailable ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => requestTestAvailability(test)}>{test.isAvailable ? 'Archive' : 'Restore'}</button></td></tr>)}
+            {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => viewConfiguration(test)}>Params ({test.analyteCount ?? 1})</button><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className={`admin-button admin-button--small ${test.isAvailable ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => requestTestAvailability(test)}>{test.isAvailable ? 'Make unavailable' : 'Make available'}</button></td></tr>)}
             {pageRows.length === 0 && <tr><td className="admin-empty" colSpan="6">{catalogResult ? 'No tests match your filters.' : 'Loading test catalog…'}</td></tr>}
           </tbody>
         </table></div>
@@ -418,7 +420,7 @@ export default function TestCatalog() {
           <fieldset className="admin-dialog__field test-catalog__category-select"><legend>Categories</legend><div className="test-catalog__category-options">{categoryRecords.filter((category) => category.isActive).map((category) => <label className={`test-catalog__category-option${form.categoryIds.includes(category.id) ? ' test-catalog__category-option--selected' : ''}`} key={category.id}><input type="checkbox" checked={form.categoryIds.includes(category.id)} onChange={(event) => setForm((prev) => ({ ...prev, categoryIds: event.target.checked ? [...prev.categoryIds, category.id] : prev.categoryIds.filter((id) => id !== category.id) }))} /><span>{category.name}</span></label>)}</div></fieldset>
           <label className="admin-dialog__field">Price (₱)<CurrencyInput required value={form.price} onValueChange={(price) => setForm({ ...form, price })} /></label>
           <div className="admin-dialog__field test-catalog__turnaround-field" role="group" aria-label="Turnaround Time"><span className="test-catalog__turnaround-label">Turnaround Time</span><div className="test-catalog__turnaround-inputs"><label><input aria-label="Turnaround hours (maximum 720)" type="text" inputMode="numeric" maxLength={3} placeholder="0" value={form.turnaroundHours} onChange={(event) => setForm({ ...form, turnaroundHours: event.target.value.replace(/\D/g, '').slice(0, 3) })} /><span aria-hidden="true">HRS</span></label><label><input aria-label="Turnaround minutes (maximum 59)" type="text" inputMode="numeric" maxLength={2} placeholder="0" value={form.turnaroundMinutePart} onChange={(event) => setForm({ ...form, turnaroundMinutePart: event.target.value.replace(/\D/g, '').slice(0, 2) })} /><span aria-hidden="true">MIN</span></label></div><small className="character-count">{Number(form.turnaroundHours || 0)}/720 hours · {Number(form.turnaroundMinutePart || 0)}/59 minutes (max 30 days)</small></div>
-          <label className="admin-dialog__field">Availability<select value={form.availability} onChange={(event) => setForm({ ...form, availability: event.target.value })}><option>Available</option><option>Unavailable</option></select></label>
+          {!dialog.editingId && <p className="admin-dialog__note admin-dialog__span">New tests are saved as unavailable. Add a reference range in Reference Ranges before making a test available.</p>}
           <section className="test-catalog__analytes-section admin-dialog__span">
             <div className="test-catalog__section-header"><div><h3 className="test-catalog__section-title">Required Specimens ({form.specimens.length})</h3><p className="test-catalog__section-desc">Choose each specimen type needed for this test.</p></div><button type="button" className="admin-button admin-button--small admin-button--positive" onClick={addSpecimen}>+ Add Specimen</button></div>
             <div className="test-catalog__analyte-list">{form.specimens.map((specimen, index) => <div key={index} className="test-catalog__analyte-card"><div className="test-catalog__analyte-grid"><label className="admin-dialog__field">Specimen {index + 1}<select required value={specimen.specimenType} onChange={(event) => updateSpecimen(index, 'specimenType', event.target.value)}>{specimenTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label className="admin-dialog__field">Collection instructions<LimitedInput value={specimen.collectionInstructions} maxLength={500} onChange={(event) => updateSpecimen(index, 'collectionInstructions', event.target.value)} placeholder="Optional" /></label><label className="admin-dialog__field">Minimum quantity<DecimalInput value={specimen.minimumQuantity} onValueChange={(value) => updateSpecimen(index, 'minimumQuantity', value)} placeholder="Optional" /></label><label className="admin-dialog__field">Quantity unit<LimitedInput value={specimen.quantityUnit} maxLength={40} onChange={(event) => updateSpecimen(index, 'quantityUnit', event.target.value)} placeholder="e.g. mL" /></label></div>{form.specimens.length > 1 && <button type="button" className="admin-button admin-button--small admin-button--negative test-catalog__remove-btn" onClick={() => removeSpecimen(index)}>Remove</button>}</div>)}</div>
@@ -510,15 +512,27 @@ export default function TestCatalog() {
         </div>
       </AdminDialog>}
 
+      {dialog?.type === 'missing-reference-range' && <AdminDialog
+        title="Reference range required"
+        description="This test cannot be made available yet."
+        onClose={() => setDialog(null)}
+        size="small"
+      >
+        <p className="admin-dialog__confirm"><strong>{dialog.test.name}</strong> does not have an active reference range. Add at least one reference range for this test, then try making it available again.</p>
+        <div className="admin-dialog__footer">
+          <button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button>
+        </div>
+      </AdminDialog>}
+
       {dialog?.type === 'confirm-test-availability' && <AdminDialog
-        title={`${dialog.test.isAvailable ? 'Archive' : 'Restore'} test?`}
+        title={`${dialog.test.isAvailable ? 'Make test unavailable?' : 'Make test available?'}`}
         onClose={() => { setSaveNotice(''); setDialog(null) }}
         size="small"
       >
         <p className="admin-dialog__confirm">
           {dialog.test.isAvailable
-            ? <>Archive <strong>{dialog.test.name}</strong>? Cashiers will no longer be able to add it to new requests. Past requests and released results keep this test.</>
-            : <>Restore <strong>{dialog.test.name}</strong> to the catalog so it can be requested again?</>}
+            ? <>Make <strong>{dialog.test.name}</strong> unavailable? Cashiers will no longer be able to add it to new requests. Past requests and released results keep this test.</>
+            : <>Make <strong>{dialog.test.name}</strong> available so it can be requested again?</>}
         </p>
         {saveNotice && <p className="admin-dialog__note" role="alert">{saveNotice}</p>}
         <div className="admin-dialog__footer">

@@ -7,7 +7,7 @@ create extension if not exists pgcrypto;
 
 create type public.user_role as enum ('administrator', 'cashier', 'medical_technologist', 'pathologist', 'patient');
 create type public.request_status as enum ('awaiting_payment', 'paid', 'specimen_collection', 'processing', 'for_validation', 'correction', 'released', 'cancelled');
-create type public.request_item_status as enum ('awaiting_specimen', 'specimen_received', 'processing', 'drafted', 'submitted', 'returned', 'for_recollection', 'approved', 'released', 'cancelled');
+create type public.request_item_status as enum ('awaiting_specimen', 'specimen_received', 'processing', 'drafted', 'completed', 'submitted', 'returned', 'for_recollection', 'approved', 'released', 'cancelled');
 create type public.specimen_status as enum ('expected', 'received', 'accepted', 'rejected', 'for_recollection', 'consumed');
 create type public.result_value_type as enum ('numeric', 'text', 'select', 'boolean', 'structured');
 create type public.result_status as enum ('draft', 'submitted', 'returned', 'approved');
@@ -125,7 +125,7 @@ create table public.test_catalog (
   code varchar(40) not null, name varchar(160) not null, description text,
   price numeric(10,2) not null check (price >= 0),
   turnaround_minutes integer check (turnaround_minutes is null or turnaround_minutes > 0),
-  is_available boolean not null default true,
+  is_available boolean not null default false,
   current_configuration_version integer not null default 1,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id), unique (clinic_id, code),
@@ -206,6 +206,63 @@ create table public.reference_ranges (
   check (lower_limit is null or upper_limit is null or lower_limit <= upper_limit)
 );
 create index reference_ranges_analyte_idx on public.reference_ranges(analyte_id, is_active);
+
+create function public.require_reference_range_for_available_test()
+returns trigger language plpgsql as $$
+begin
+  if new.is_available and not exists (
+    select 1
+      from public.test_analytes a
+      join public.reference_ranges rr on rr.analyte_id = a.id and rr.clinic_id = a.clinic_id and rr.is_active = true
+     where a.test_id = new.id and a.clinic_id = new.clinic_id
+       and a.configuration_version = new.current_configuration_version
+  ) then
+    raise exception using
+      errcode = '23514',
+      constraint = 'test_catalog_reference_range_required',
+      message = 'An active reference range is required before a test can be made available.';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger test_catalog_reference_range_required
+before insert or update of is_available, current_configuration_version on public.test_catalog
+for each row execute function public.require_reference_range_for_available_test();
+
+create function public.prevent_removing_last_range_from_available_test()
+returns trigger language plpgsql as $$
+declare
+  target_test_id uuid;
+  test_is_available boolean;
+begin
+  if old.is_active and (not new.is_active or new.analyte_id is distinct from old.analyte_id) then
+    select t.id, t.is_available into target_test_id, test_is_available
+      from public.test_analytes a
+      join public.test_catalog t on t.id = a.test_id and t.clinic_id = a.clinic_id
+     where a.id = old.analyte_id and a.clinic_id = old.clinic_id
+       and a.configuration_version = t.current_configuration_version;
+    if coalesce(test_is_available, false) and not exists (
+      select 1
+        from public.test_analytes a
+        join public.reference_ranges rr on rr.analyte_id = a.id and rr.clinic_id = a.clinic_id
+       where a.test_id = target_test_id and a.clinic_id = old.clinic_id
+         and a.configuration_version = (select current_configuration_version from public.test_catalog where id = target_test_id and clinic_id = old.clinic_id)
+         and rr.is_active = true and rr.id <> old.id
+    ) then
+      raise exception using
+        errcode = '23514',
+        constraint = 'available_test_requires_reference_range',
+        message = 'Archive this test before removing its last active reference range.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger available_test_requires_reference_range
+before update of is_active, analyte_id on public.reference_ranges
+for each row execute function public.prevent_removing_last_range_from_available_test();
 
 create table public.test_requests (
   id uuid primary key default gen_random_uuid(),

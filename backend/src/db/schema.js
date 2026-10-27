@@ -10,7 +10,7 @@ const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull(
 
 export const userRole = pgEnum("user_role", ["administrator", "cashier", "medical_technologist", "pathologist", "patient"]);
 export const requestStatus = pgEnum("request_status", ["awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction", "released", "cancelled"]);
-export const requestItemStatus = pgEnum("request_item_status", ["awaiting_specimen", "specimen_received", "processing", "drafted", "submitted", "returned", "for_recollection", "approved", "released", "cancelled"]);
+export const requestItemStatus = pgEnum("request_item_status", ["awaiting_specimen", "specimen_received", "processing", "drafted", "completed", "submitted", "returned", "for_recollection", "approved", "released", "cancelled"]);
 export const specimenStatus = pgEnum("specimen_status", ["expected", "received", "accepted", "rejected", "for_recollection", "consumed"]);
 export const resultValueType = pgEnum("result_value_type", ["numeric", "text", "select", "boolean", "structured"]);
 export const resultStatus = pgEnum("result_status", ["draft", "submitted", "returned", "approved"]);
@@ -66,7 +66,7 @@ export const testCategories = pgTable("test_categories", {
 export const testCatalog = pgTable("test_catalog", {
   id: id(), clinicId: uuid("clinic_id").notNull(), categoryId: uuid("category_id").notNull(), code: varchar("code", { length: 40 }).notNull(),
   name: varchar("name", { length: 160 }).notNull(), description: text("description"), price: numeric("price", { precision: 10, scale: 2 }).notNull(),
-  turnaroundMinutes: integer("turnaround_minutes"), isAvailable: boolean("is_available").notNull().default(true),
+  turnaroundMinutes: integer("turnaround_minutes"), isAvailable: boolean("is_available").notNull().default(false),
   currentConfigurationVersion: integer("current_configuration_version").notNull().default(1), createdAt: createdAt(), updatedAt: updatedAt(),
 });
 export const testConfigurationVersions = pgTable("test_configuration_versions", {

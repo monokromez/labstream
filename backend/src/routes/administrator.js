@@ -7,6 +7,11 @@ import { isUuid, validateCategoryDetails, validateReferenceRangeDetails, validat
 const REPORT_PERIODS = new Set(["weekly", "monthly", "annual"]);
 const STAFF_ROLES = new Set(["administrator", "cashier", "medical_technologist", "pathologist", "patient"]);
 
+function isDatabaseConstraint(error, name, message) {
+  return error.code === "23514"
+    && (error.constraint === name || error.constraint_name === name || String(error.message ?? "").includes(message));
+}
+
 function reportStartExpression(period) {
   return period === "weekly" ? "date_trunc('day', now()) - interval '6 days'"
     : period === "annual" ? "date_trunc('year', now())"
@@ -388,8 +393,8 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
         if (!categoryIds.length || categories.length !== categoryIds.length) throw Object.assign(new Error("Choose one or more active categories in this clinic."), { code: "INVALID_CATEGORY" });
         const [test] = await tx.unsafe(
           `insert into public.test_catalog (clinic_id, category_id, code, name, description, price, turnaround_minutes, is_available)
-           values ($1,$2,$3,$4,$5,$6,$7,$8) returning id, code, name, category_id, price, turnaround_minutes, is_available`,
-          [req.user.clinicId, categoryId, code, name, String(body.description ?? "").trim() || null, price, turnaround, body.isAvailable !== false],
+           values ($1,$2,$3,$4,$5,$6,$7,false) returning id, code, name, category_id, price, turnaround_minutes, is_available`,
+          [req.user.clinicId, categoryId, code, name, String(body.description ?? "").trim() || null, price, turnaround],
         );
         await tx.unsafe(
           `insert into public.test_configuration_versions (clinic_id, test_id, version_number, created_by)
@@ -494,7 +499,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
         if (Object.hasOwn(body, "analytes") !== Object.hasOwn(body, "specimens")) {
           throw Object.assign(new Error("Submit analytes and specimens together when changing a workflow configuration."), { code: "INVALID_TEST_CONFIGURATION" });
         }
-        const configurationProvided = Array.isArray(body.analytes) && Array.isArray(body.specimens);
+        let configurationProvided = Array.isArray(body.analytes) && Array.isArray(body.specimens);
         const analytes = configurationProvided ? body.analytes : [];
         const specimens = configurationProvided ? body.specimens : [];
         if (configurationProvided && (!analytes.length || !specimens.length)) {
@@ -517,6 +522,54 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
           if (new Set(specimenNames).size !== specimenNames.length
             || specimens.some((item) => item.minimumQuantity != null && item.minimumQuantity !== "" && (!Number.isFinite(Number(item.minimumQuantity)) || Number(item.minimumQuantity) <= 0))) {
             throw Object.assign(new Error("Use unique specimen types and a positive minimum quantity when one is specified."), { code: "INVALID_TEST_CONFIGURATION" });
+          }
+        }
+        if (configurationProvided) {
+          const currentAnalytes = await tx.unsafe(
+            `select key, label, value_type::text as value_type, options, unit, sort_order, is_required
+               from public.test_analytes
+              where test_id = $1 and clinic_id = $2 and configuration_version = $3
+              order by sort_order, label`,
+            [current.id, req.user.clinicId, current.current_configuration_version],
+          );
+          const currentSpecimens = await tx.unsafe(
+            `select specimen_type, collection_instructions, minimum_quantity, quantity_unit, is_required
+               from public.test_specimen_requirements
+              where test_id = $1 and clinic_id = $2 and configuration_version = $3
+              order by created_at, specimen_type`,
+            [current.id, req.user.clinicId, current.current_configuration_version],
+          );
+          const submittedAnalytes = analytes.map((item, index) => ({
+            key: String(item.key || `PARAM_${index + 1}`).trim(),
+            label: String(item.label).trim(),
+            value_type: item.valueType,
+            options: Array.isArray(item.options) ? item.options : [],
+            unit: item.valueType === "numeric" ? item.unit || null : null,
+            sort_order: index,
+            is_required: item.isRequired !== false,
+          }));
+          const submittedSpecimens = specimens.map((item) => ({
+            specimen_type: String(item.specimenType).trim(),
+            collection_instructions: item.collectionInstructions || null,
+            minimum_quantity: item.minimumQuantity === "" || item.minimumQuantity == null ? null : Number(item.minimumQuantity),
+            quantity_unit: item.quantityUnit || null,
+            is_required: item.isRequired !== false,
+          })).sort((a, b) => a.specimen_type.localeCompare(b.specimen_type));
+          const normalizedCurrentAnalytes = currentAnalytes.map((item, index) => ({
+            ...item,
+            options: Array.isArray(item.options) ? item.options : [],
+            unit: item.value_type === "numeric" ? item.unit : null,
+            sort_order: index,
+          }));
+          const normalizedCurrentSpecimens = currentSpecimens.map((item) => ({
+            ...item,
+            collection_instructions: item.collection_instructions || null,
+            minimum_quantity: item.minimum_quantity == null ? null : Number(item.minimum_quantity),
+            quantity_unit: item.quantity_unit || null,
+          })).sort((a, b) => a.specimen_type.localeCompare(b.specimen_type));
+          if (JSON.stringify(submittedAnalytes) === JSON.stringify(normalizedCurrentAnalytes)
+            && JSON.stringify(submittedSpecimens) === JSON.stringify(normalizedCurrentSpecimens)) {
+            configurationProvided = false;
           }
         }
         const nextVersion = configurationProvided ? current.current_configuration_version + 1 : current.current_configuration_version;
@@ -546,12 +599,13 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
             );
           }
         }
+        const nextAvailability = configurationProvided ? false : body.isAvailable ?? current.is_available;
         const [updated] = await tx.unsafe(
           `update public.test_catalog set category_id = $1, name = coalesce($2,name), description = coalesce($3,description),
                   price = coalesce($4,price), turnaround_minutes = coalesce($5,turnaround_minutes),
-                  is_available = coalesce($6,is_available), current_configuration_version = $7, updated_at = now()
+                  is_available = $6, current_configuration_version = $7, updated_at = now()
             where id = $8 and clinic_id = $9 returning id, code, name, category_id, price, turnaround_minutes, is_available, current_configuration_version`,
-          [categoryId, body.name?.trim() || null, body.description ?? null, body.price == null ? null : Number(body.price), body.turnaroundMinutes == null ? null : Number(body.turnaroundMinutes), body.isAvailable ?? null, nextVersion, current.id, req.user.clinicId],
+          [categoryId, body.name?.trim() || null, body.description ?? null, body.price == null ? null : Number(body.price), body.turnaroundMinutes == null ? null : Number(body.turnaroundMinutes), nextAvailability, nextVersion, current.id, req.user.clinicId],
         );
         if (updated.is_available) {
           const [setup] = await tx.unsafe(
@@ -559,7 +613,16 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
                     exists(select 1 from public.test_specimen_requirements where test_id = $1 and clinic_id = $2 and configuration_version = $3 and is_required = true) as has_specimens`,
             [current.id, req.user.clinicId, nextVersion],
           );
+          const [referenceRange] = await tx.unsafe(
+            `select exists (
+               select 1 from public.test_analytes a
+               join public.reference_ranges rr on rr.analyte_id = a.id and rr.clinic_id = a.clinic_id and rr.is_active = true
+              where a.test_id = $1 and a.clinic_id = $2 and a.configuration_version = $3
+             ) as exists`,
+            [current.id, req.user.clinicId, nextVersion],
+          );
           if (!setup.has_analytes || !setup.has_specimens) throw Object.assign(new Error("Configure analytes and required specimens before making this test available."), { code: "TEST_WORKFLOW_CONFIGURATION_REQUIRED" });
+          if (!referenceRange.exists) throw Object.assign(new Error("This test has no active reference range. Add a reference range before making it available."), { code: "TEST_REFERENCE_RANGE_REQUIRED" });
         }
         if (membershipsProvided) {
           await tx.unsafe(`delete from public.test_category_memberships where test_id = $1 and clinic_id = $2`, [current.id, req.user.clinicId]);
@@ -573,7 +636,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       publishCatalogChanged?.(req.user.clinicId);
       return res.json({ data: result });
     } catch (error) {
-      if (["TEST_NOT_FOUND", "INVALID_CATEGORY", "TEST_WORKFLOW_CONFIGURATION_REQUIRED", "INVALID_TEST_CONFIGURATION"].includes(error.code)) return res.status(error.code === "TEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      if (["TEST_NOT_FOUND", "INVALID_CATEGORY", "TEST_WORKFLOW_CONFIGURATION_REQUIRED", "TEST_REFERENCE_RANGE_REQUIRED", "INVALID_TEST_CONFIGURATION"].includes(error.code)) return res.status(error.code === "TEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });
@@ -616,11 +679,17 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
             `select exists(select 1 from public.test_analytes
                             where test_id = $1 and clinic_id = $2 and configuration_version = $3) as has_analytes,
                     exists(select 1 from public.test_specimen_requirements
-                            where test_id = $1 and clinic_id = $2 and configuration_version = $3 and is_required = true) as has_specimens`,
+                            where test_id = $1 and clinic_id = $2 and configuration_version = $3 and is_required = true) as has_specimens,
+                    exists(select 1 from public.test_analytes a
+                             join public.reference_ranges rr on rr.analyte_id = a.id and rr.clinic_id = a.clinic_id and rr.is_active = true
+                            where a.test_id = $1 and a.clinic_id = $2 and a.configuration_version = $3) as has_reference_range`,
             [current.id, req.user.clinicId, current.current_configuration_version],
           );
           if (!setup.has_analytes || !setup.has_specimens) {
             throw Object.assign(new Error("Configure analytes and required specimens before making this test available."), { code: "TEST_WORKFLOW_CONFIGURATION_REQUIRED" });
+          }
+          if (!setup.has_reference_range) {
+            throw Object.assign(new Error("This test has no active reference range. Add a reference range before making it available."), { code: "TEST_REFERENCE_RANGE_REQUIRED" });
           }
         }
         const [updated] = await tx.unsafe(
@@ -638,7 +707,10 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       publishCatalogChanged?.(req.user.clinicId);
       return res.json({ data: test });
     } catch (error) {
-      if (["TEST_NOT_FOUND", "TEST_WORKFLOW_CONFIGURATION_REQUIRED"].includes(error.code)) {
+      if (isDatabaseConstraint(error, "test_catalog_reference_range_required", "An active reference range is required")) {
+        return res.status(409).json({ error: "TEST_REFERENCE_RANGE_REQUIRED", message: "This test has no active reference range. Add one before making it available." });
+      }
+      if (["TEST_NOT_FOUND", "TEST_WORKFLOW_CONFIGURATION_REQUIRED", "TEST_REFERENCE_RANGE_REQUIRED"].includes(error.code)) {
         return res.status(error.code === "TEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       }
       return next(error);
@@ -819,6 +891,9 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       await client.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'reference_range.updated','reference_range',$3)`, [req.user.clinicId, req.user.sub, data.id]);
       return res.json({ data });
     } catch (error) {
+      if (isDatabaseConstraint(error, "available_test_requires_reference_range", "Archive this test before removing its last active reference range")) {
+        return res.status(409).json({ error: "TEST_REFERENCE_RANGE_REQUIRED", message: "Archive this test before removing or moving its last active reference range." });
+      }
       if (error.code === "23514") return res.status(400).json({ error: "INVALID_REFERENCE_RANGE" });
       return next(error);
     }
@@ -832,6 +907,9 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       await client.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'reference_range.deactivated','reference_range',$3)`, [req.user.clinicId, req.user.sub, data.id]);
       return res.status(204).end();
     } catch (error) {
+      if (isDatabaseConstraint(error, "available_test_requires_reference_range", "Archive this test before removing its last active reference range")) {
+        return res.status(409).json({ error: "TEST_REFERENCE_RANGE_REQUIRED", message: "Archive this test before removing its last active reference range." });
+      }
       return next(error);
     }
   });
