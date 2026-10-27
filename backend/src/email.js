@@ -258,6 +258,19 @@ export function createEmailService({
       });
     },
 
+    sendStaffPasswordResetEmail({ to, name, username, code }) {
+      const safeUsername = escapeHtml(username);
+      const safeCode = escapeHtml(code);
+      return deliver("staff_password_reset", {
+        to,
+        subject: "Your Labstream password reset code",
+        text: `An administrator issued a password reset for your Labstream staff account. Username: ${username}. Reset code: ${code}. Open the sign-in page, choose "Reset password", and enter your username with this code. It expires in 24 hours and can only be used once. If you did not request this, contact your administrator.`,
+        html: emailFrame(name, `<p>An administrator issued a password reset for your Labstream staff account.</p>
+          <p><strong>Username:</strong> ${safeUsername}<br><strong>Reset code:</strong> ${safeCode}</p>
+          <p>Open the sign-in page, choose <strong>Reset password</strong>, and enter your username with this code. It expires in 24 hours and can only be used once. If you did not request this, contact your administrator.</p>`),
+      });
+    },
+
     sendPaymentReceiptEmail({ to, name, requestNumber, invoiceNumber, amount, paidAt, paymentMethod, clinicName }) {
       const formattedAmount = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(amount));
       const paidDate = new Date(paidAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });

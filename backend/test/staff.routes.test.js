@@ -28,6 +28,13 @@ function createTestApp({ role = "cashier", isActive = false, isPendingActivation
     }
     if (query.startsWith("select id, username, role, is_active, password_hash from public.users")) return [target];
     if (query.startsWith("select id, username, role, is_active, deleted_at from public.users")) return [{ ...target, deleted_at: null }];
+    if (query.startsWith("select u.id, u.username, u.role, u.email, u.is_active, u.password_hash")) {
+      return [{ ...target, email: "alex.rivera@example.com", first_name: "Alex", last_name: "Rivera" }];
+    }
+    if (query.startsWith("insert into public.account_tokens")) {
+      writes.push({ query, parameters });
+      return [];
+    }
     if (query.startsWith("select count(*)::integer as total from public.users")) return [{ total: 1 }];
     if (query.startsWith("update public.users set deleted_at =")) {
       writes.push({ query, parameters });
@@ -190,5 +197,50 @@ test("administrators cannot delete their own account", async () => {
   const response = await deleteStaff(app, adminId);
 
   assert.equal(response.status, 409);
+  assert.equal(writes.length, 0);
+});
+
+async function resetStaffPassword(app, id = staffId) {
+  const server = createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const { port } = server.address();
+    const token = createAccessToken({
+      id: adminId,
+      clinic_id: clinicId,
+      role: "administrator",
+      must_change_password: false,
+    }, secret);
+    return await fetch(`http://127.0.0.1:${port}/staff/${id}/password-reset`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, origin, "content-type": "application/json" },
+      body: "{}",
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
+test("an activated account can receive a one-time password reset code", async () => {
+  const { app, writes } = createTestApp({ isActive: true });
+  const response = await resetStaffPassword(app);
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.data.username, "CSH-000003");
+  assert.equal(payload.reset.revealOnce, true);
+  assert.equal(payload.reset.expiresInHours, 24);
+  assert.equal(writes.length, 3);
+  assert.ok(writes[1].query.includes("insert into public.account_tokens"));
+  assert.ok(writes[2].query.includes("staff.password_reset_issued"));
+});
+
+test("a password reset code is refused for an account that was never activated", async () => {
+  const { app, writes } = createTestApp({ isActive: false, isPendingActivation: true });
+  const response = await resetStaffPassword(app);
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "STAFF_NOT_ACTIVE");
   assert.equal(writes.length, 0);
 });

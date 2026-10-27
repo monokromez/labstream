@@ -303,6 +303,64 @@ export function createStaffRouter({ client }) {
     }
   });
 
+  router.post("/:id/password-reset", async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
+      const reset = createOneTimeCode();
+      const staff = await client.begin(async (tx) => {
+        const [target] = await tx.unsafe(
+          `select u.id, u.username, u.role, u.email, u.is_active, u.password_hash,
+                  sp.first_name, sp.last_name
+             from public.users u
+             left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
+            where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient' and u.deleted_at is null
+            for update of u`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!target) throw Object.assign(new Error("Staff account was not found."), { code: "STAFF_NOT_FOUND" });
+        if (!target.is_active || !target.password_hash) {
+          throw Object.assign(
+            new Error("Only an activated staff account can receive a password reset code. Reissue an activation code for an account that has never been activated."),
+            { code: "STAFF_NOT_ACTIVE" },
+          );
+        }
+        await tx.unsafe(
+          `update public.account_tokens set consumed_at = now()
+            where user_id = $1 and clinic_id = $2 and purpose = 'password_reset' and consumed_at is null`,
+          [target.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `insert into public.account_tokens (clinic_id, user_id, token_hash, purpose, expires_at)
+           values ($1, $2, $3, 'password_reset', now() + interval '24 hours')`,
+          [req.user.clinicId, target.id, reset.hash],
+        );
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'staff.password_reset_issued', 'user', $3,
+             jsonb_build_object('username', $4::text, 'expiresInHours', 24))`,
+          [req.user.clinicId, req.user.sub, target.id, target.username],
+        );
+        return target;
+      });
+      const name = [staff.first_name, staff.last_name].filter(Boolean).join(" ") || staff.username;
+      const emailDelivery = await emailService.sendStaffPasswordResetEmail({
+        to: staff.email,
+        name,
+        username: staff.username,
+        code: reset.code,
+      });
+      return res.status(201).json({
+        data: { id: staff.id, username: staff.username },
+        reset: { code: reset.code, revealOnce: true, expiresInHours: 24 },
+        emailDelivery,
+      });
+    } catch (error) {
+      if (error.code === "STAFF_NOT_FOUND") return res.status(404).json({ error: error.code, message: error.message });
+      if (error.code === "STAFF_NOT_ACTIVE") return res.status(409).json({ error: error.code, message: error.message });
+      return next(error);
+    }
+  });
+
   router.patch("/:id/status", async (req, res, next) => {
     try {
       if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });

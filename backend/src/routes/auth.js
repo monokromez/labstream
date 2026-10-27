@@ -74,43 +74,57 @@ export function createAuthRouter(client) {
       const resetCode = String(req.body?.resetCode ?? "").trim();
       const newPassword = req.body?.newPassword;
       if (!identifier || !resetCode || typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 128) {
-        return res.status(400).json({ error: "INVALID_PASSWORD_RESET", message: "Provide your PID, cashier-issued reset code, and a password of 12 to 128 characters." });
+        return res.status(400).json({ error: "INVALID_PASSWORD_RESET", message: "Provide your username or PID, the reset code, and a password of 12 to 128 characters." });
       }
       const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
       const tokenHash = hashOneTimeCode(resetCode);
       const account = await client.begin(async (tx) => {
-        const [patient] = await tx.unsafe(
+        const [record] = await tx.unsafe(
           `select u.id, u.clinic_id, u.role, u.username, p.pid, p.id as patient_id,
-                  concat_ws(' ', p.first_name, p.middle_name, p.last_name) as display_name,
+                  coalesce(nullif(concat_ws(' ', p.first_name, p.middle_name, p.last_name), ''),
+                           nullif(concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name), ''),
+                           u.username) as display_name,
                   at.id as token_id
              from public.account_tokens at
              join public.users u on u.id = at.user_id and u.clinic_id = at.clinic_id
-             join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
-            where upper(p.pid) = $1 and at.token_hash = $2 and at.purpose = 'password_reset'
-              and at.consumed_at is null and at.expires_at > now() and u.role = 'patient' and u.is_active = true
+             left join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
+             left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
+            where at.token_hash = $2 and at.purpose = 'password_reset'
+              and at.consumed_at is null and at.expires_at > now()
+              and u.is_active = true and u.deleted_at is null
+              and (upper(u.username) = $1 or upper(p.pid) = $1)
             for update of at, u`,
           [identifier, tokenHash],
         );
-        if (!patient) return null;
+        if (!record) return null;
         await tx.unsafe(
           `update public.users set password_hash = $1, must_change_password = false, updated_at = now()
             where id = $2 and clinic_id = $3`,
-          [passwordHash, patient.id, patient.clinic_id],
+          [passwordHash, record.id, record.clinic_id],
         );
-        await tx.unsafe(`update public.account_tokens set consumed_at = now() where id = $1`, [patient.token_id]);
+        await tx.unsafe(`update public.account_tokens set consumed_at = now() where id = $1`, [record.token_id]);
         await tx.unsafe(
           `update public.account_tokens set consumed_at = now()
             where user_id = $1 and clinic_id = $2 and purpose = 'password_reset' and consumed_at is null`,
-          [patient.id, patient.clinic_id],
+          [record.id, record.clinic_id],
         );
-        await tx.unsafe(
-          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'patient.password_reset_completed', 'patient', $3, '{}'::jsonb)`,
-          [patient.clinic_id, patient.id, patient.patient_id],
-        );
-        return patient;
+        if (record.role === "patient") {
+          await tx.unsafe(
+            `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+             values ($1, $2, 'patient.password_reset_completed', 'patient', $3, '{}'::jsonb)`,
+            [record.clinic_id, record.id, record.patient_id],
+          );
+        } else {
+          await tx.unsafe(
+            `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+             values ($1, $2, 'staff.password_reset_completed', 'user', $3,
+               jsonb_build_object('username', $4::text))`,
+            [record.clinic_id, record.id, record.id, record.username],
+          );
+        }
+        return record;
       });
-      if (!account) return res.status(400).json({ error: "INVALID_PASSWORD_RESET", message: "The PID or reset code is invalid, expired, or already used." });
+      if (!account) return res.status(400).json({ error: "INVALID_PASSWORD_RESET", message: "The username, PID, or reset code is invalid, expired, or already used." });
       const token = createAccessToken({ id: account.id, clinic_id: account.clinic_id, role: account.role, must_change_password: false }, process.env.AUTH_TOKEN_SECRET);
       res.cookie(SESSION_COOKIE, token, cookieOptions);
       res.set("Cache-Control", "no-store");

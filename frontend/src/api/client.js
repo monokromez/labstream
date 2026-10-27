@@ -108,6 +108,7 @@ export const api = {
     update: (staffId, staff) => request(`/api/admin/staff/${staffId}`, { method: 'PATCH', body: staff }),
     reissueActivation: (staffId) => request(`/api/admin/staff/${staffId}/activation`, { method: 'POST', body: {} }),
     setActive: (staffId, isActive) => request(`/api/admin/staff/${staffId}/status`, { method: 'PATCH', body: { isActive } }),
+    resetPassword: (staffId) => request(`/api/admin/staff/${staffId}/password-reset`, { method: 'POST', body: {} }),
     remove: (staffId) => request(`/api/admin/staff/${staffId}`, { method: 'DELETE' }),
     assignments: (staffId) => request(`/api/admin/staff/${staffId}/assignments`),
   },
