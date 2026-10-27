@@ -19,6 +19,7 @@ drop table if exists
   public.specimen_request_items,
   public.specimens,
   public.invoices,
+  public.payment_refunds,
   public.payments,
   public.queue_entries,
   public.request_items,
@@ -27,6 +28,7 @@ drop table if exists
   public.test_analytes,
   public.test_specimen_requirements,
   public.test_category_memberships,
+  public.test_configuration_versions,
   public.test_catalog,
   public.test_categories,
   public.patients,
@@ -38,6 +40,8 @@ restrict;
 
 drop function if exists public.assign_staff_username();
 drop function if exists public.set_staff_username();
+drop function if exists public.require_reference_range_for_available_test();
+drop function if exists public.prevent_removing_last_range_from_available_test();
 drop function if exists public.validate_request_assignments();
 drop function if exists public.validate_result_value();
 drop function if exists public.validate_result_submission_actor();
