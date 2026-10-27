@@ -793,51 +793,106 @@ export function createCashierRouter({ client }) {
       if (period && !['today', '7days', 'month'].includes(period)) return res.status(400).json({ error: 'INVALID_PERIOD_FILTER' });
       if (!["all", "issued", "corrected", "voided"].includes(state)) return res.status(400).json({ error: "INVALID_INVOICE_STATE" });
       const [count] = await client.unsafe(
-        `select count(*)::integer as total
-           from public.invoices i join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
+        `with latest_invoice as (
+           select distinct on (i.payment_id)
+                  i.id, i.clinic_id, i.payment_id, i.invoice_number, i.issued_at
+             from public.invoices i
+            where i.clinic_id = $1
+            order by i.payment_id, i.issued_at desc, i.id desc
+         )
+         select count(*)::integer as total
+           from latest_invoice li
+           join public.payments p on p.id = li.payment_id and p.clinic_id = li.clinic_id
            join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
            join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
-          where i.clinic_id = $1
+          where li.clinic_id = $1
             and ($2::date is null or p.paid_at::date = $2::date)
             and ($3 = '' or r.request_number ilike '%' || $3 || '%' or pt.pid ilike '%' || $3 || '%'
-              or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%' or i.invoice_number ilike '%' || $3 || '%')
+              or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%'
+              or exists (select 1 from public.invoices chain
+                          where chain.payment_id = li.payment_id and chain.clinic_id = li.clinic_id
+                            and chain.invoice_number ilike '%' || $3 || '%'))
             and ($4 = '' or ($4 = 'today' and p.paid_at::date = current_date)
               or ($4 = '7days' and p.paid_at >= current_date - interval '6 days')
               or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))
             and ($5 = 'all' or ($5 = 'voided' and p.voided_at is not null)
-              or ($5 = 'corrected' and i.corrected_at is not null)
-              or ($5 = 'issued' and p.voided_at is null and i.corrected_at is null))`,
+              or ($5 = 'corrected' and p.voided_at is null and exists (
+                select 1 from public.invoices c
+                 where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null))
+              or ($5 = 'issued' and p.voided_at is null and not exists (
+                select 1 from public.invoices c
+                 where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null)))`,
         [req.user.clinicId, date || null, query, period, state],
       );
       const data = await client.unsafe(
-        `select i.id, i.invoice_number, i.issued_at, i.corrected_at, i.correction_reason,
-                corrected.invoice_number as corrected_invoice_number,
+        `with latest_invoice as (
+           select distinct on (i.payment_id)
+                  i.id, i.clinic_id, i.payment_id, i.invoice_number, i.issued_at,
+                  i.corrected_at, i.correction_reason
+             from public.invoices i
+            where i.clinic_id = $1
+            order by i.payment_id, i.issued_at desc, i.id desc
+         )
+         select li.id, li.invoice_number, li.issued_at,
+                coalesce(li.corrected_at, (select max(c.corrected_at) from public.invoices c
+                   where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null)) as corrected_at,
+                coalesce(li.correction_reason, (select c.correction_reason from public.invoices c
+                   where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null
+                   order by c.corrected_at desc limit 1)) as correction_reason,
                 p.amount, p.paid_at, p.method, p.voided_at, p.void_reason,
                 r.id as request_id, r.request_number, r.status as request_status, pt.pid,
                 concat_ws(' ', pt.first_name, pt.middle_name, pt.last_name) as patient_name,
                 coalesce(refund.amount, 0) as refunded_amount,
                 case when p.voided_at is not null then 'voided'
-                     when i.corrected_at is not null then 'corrected' else 'issued' end as invoice_state,
+                     when exists (select 1 from public.invoices c
+                       where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null) then 'corrected'
+                     else 'issued' end as invoice_state,
+                coalesce((select jsonb_agg(jsonb_build_object(
+                  'invoiceId', a.entity_id,
+                  'previousInvoiceNumber', coalesce(a.details->>'previousInvoiceNumber', prev.invoice_number),
+                  'invoiceNumber', coalesce(a.details->>'newInvoiceNumber', repl.invoice_number),
+                  'reason', coalesce(a.details->>'reason', prev.correction_reason),
+                  'correctedAt', coalesce(
+                    case when a.details->>'correctedAt' ~ '^\\d{4}-\\d{2}-\\d{2}' then (a.details->>'correctedAt')::timestamptz end,
+                    prev.corrected_at, a.created_at),
+                  'correctedBy', coalesce(nullif(concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name), ''), u.username)
+                ) order by a.created_at desc)
+                  from public.audit_logs a
+                  join public.invoices prev on prev.id = a.entity_id and prev.clinic_id = a.clinic_id
+                  left join public.invoices repl on repl.clinic_id = a.clinic_id
+                    and repl.id = case when a.details->>'replacementInvoiceId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                      then (a.details->>'replacementInvoiceId')::uuid end
+                  left join public.users u on u.id = a.actor_user_id and u.clinic_id = a.clinic_id
+                  left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
+                 where a.clinic_id = li.clinic_id and a.entity_type = 'invoice' and a.action = 'invoice.corrected'
+                   and prev.payment_id = li.payment_id), '[]'::jsonb) as corrections,
                 coalesce((select jsonb_agg(jsonb_build_object(
                   'id', ri.id, 'name', ri.test_name_snapshot, 'price', ri.price_snapshot
                 ) order by ri.created_at) from public.request_items ri
                    where ri.request_id = r.id and ri.clinic_id = r.clinic_id), '[]'::jsonb) as tests
-           from public.invoices i join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
+           from latest_invoice li
+           join public.payments p on p.id = li.payment_id and p.clinic_id = li.clinic_id
            join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
            join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
-           left join public.invoices corrected on corrected.id = i.corrected_invoice_id and corrected.clinic_id = i.clinic_id
            left join public.payment_refunds refund on refund.payment_id = p.id and refund.clinic_id = p.clinic_id
-          where i.clinic_id = $1
+          where li.clinic_id = $1
             and ($2::date is null or p.paid_at::date = $2::date)
             and ($3 = '' or r.request_number ilike '%' || $3 || '%' or pt.pid ilike '%' || $3 || '%'
-              or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%' or i.invoice_number ilike '%' || $3 || '%')
+              or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%'
+              or exists (select 1 from public.invoices chain
+                          where chain.payment_id = li.payment_id and chain.clinic_id = li.clinic_id
+                            and chain.invoice_number ilike '%' || $3 || '%'))
             and ($4 = '' or ($4 = 'today' and p.paid_at::date = current_date)
               or ($4 = '7days' and p.paid_at >= current_date - interval '6 days')
               or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))
             and ($5 = 'all' or ($5 = 'voided' and p.voided_at is not null)
-              or ($5 = 'corrected' and i.corrected_at is not null)
-              or ($5 = 'issued' and p.voided_at is null and i.corrected_at is null))
-          order by p.paid_at desc, i.issued_at desc limit $6 offset $7`,
+              or ($5 = 'corrected' and p.voided_at is null and exists (
+                select 1 from public.invoices c
+                 where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null))
+              or ($5 = 'issued' and p.voided_at is null and not exists (
+                select 1 from public.invoices c
+                 where c.payment_id = li.payment_id and c.clinic_id = li.clinic_id and c.corrected_at is not null)))
+          order by p.paid_at desc, li.issued_at desc limit $6 offset $7`,
         [req.user.clinicId, date || null, query, period, state, pageSize, offset],
       );
       return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
@@ -852,37 +907,58 @@ export function createCashierRouter({ client }) {
       if (!reason) return res.status(400).json({ error: "CORRECTION_REASON_REQUIRED" });
       if (reason.length > 500) return res.status(400).json({ error: "CORRECTION_REASON_TOO_LONG" });
       const corrected = await client.begin(async (tx) => {
+        const [requested] = await tx.unsafe(
+          `select i.payment_id from public.invoices i where i.id = $1 and i.clinic_id = $2`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!requested) throw Object.assign(new Error("Invoice was not found."), { code: "INVOICE_NOT_FOUND" });
         const [invoice] = await tx.unsafe(
           `select i.id, i.invoice_number, i.payment_id, i.corrected_at, p.voided_at
              from public.invoices i
              join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
-            where i.id = $1 and i.clinic_id = $2 for update of i, p`,
-          [req.params.id, req.user.clinicId],
+            where i.payment_id = $1 and i.clinic_id = $2
+            order by i.issued_at desc, i.id desc
+            limit 1
+            for update of i, p`,
+          [requested.payment_id, req.user.clinicId],
         );
         if (!invoice) throw Object.assign(new Error("Invoice was not found."), { code: "INVOICE_NOT_FOUND" });
-        if (invoice.corrected_at || invoice.voided_at) {
-          throw Object.assign(new Error("Only an active, uncorrected invoice can be corrected."), { code: "INVOICE_NOT_CORRECTABLE" });
+        if (invoice.voided_at) {
+          throw Object.assign(new Error("A voided or refunded payment cannot be corrected."), { code: "INVOICE_NOT_CORRECTABLE" });
         }
-        const [replacement] = await tx.unsafe(
-          `insert into public.invoices (clinic_id, payment_id, invoice_number)
-           values ($1, $2, $3) returning id, invoice_number, issued_at`,
-          [req.user.clinicId, invoice.payment_id, code("INV")],
-        );
-        await tx.unsafe(
-          `update public.invoices set corrected_at = now(), corrected_by = $1,
-                  correction_reason = $2, corrected_invoice_id = $3
-            where id = $4 and clinic_id = $5`,
-          [req.user.sub, reason, replacement.id, invoice.id, req.user.clinicId],
+        const invoiceNumber = code("INV");
+        const [updated] = await tx.unsafe(
+          `update public.invoices
+              set invoice_number = $1, corrected_at = now(), corrected_by = $2,
+                  correction_reason = $3, corrected_invoice_id = null
+            where id = $4 and clinic_id = $5
+            returning id, invoice_number, issued_at, corrected_at, correction_reason`,
+          [invoiceNumber, req.user.sub, reason, invoice.id, req.user.clinicId],
         );
         await tx.unsafe(
           `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
            values ($1, $2, 'invoice.corrected', 'invoice', $3,
-             jsonb_build_object('replacementInvoiceId', $4::uuid, 'reason', $5::text))`,
-          [req.user.clinicId, req.user.sub, invoice.id, replacement.id, reason],
+             jsonb_build_object('previousInvoiceNumber', $4::text, 'newInvoiceNumber', $5::text,
+               'reason', $6::text, 'correctedAt', now()))`,
+          [req.user.clinicId, req.user.sub, invoice.id, invoice.invoice_number, invoiceNumber, reason],
         );
-        return { originalInvoiceId: invoice.id, originalInvoiceNumber: invoice.invoice_number, replacement };
+        const [actor] = await tx.unsafe(
+          `select coalesce(nullif(concat_ws(' ', sp.first_name, sp.middle_name, sp.last_name), ''), u.username) as name
+             from public.users u
+             left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
+            where u.id = $1 and u.clinic_id = $2`,
+          [req.user.sub, req.user.clinicId],
+        );
+        return {
+          invoiceId: updated.id,
+          previousInvoiceNumber: invoice.invoice_number,
+          invoiceNumber: updated.invoice_number,
+          correctedAt: updated.corrected_at,
+          correctionReason: updated.correction_reason,
+          correctedBy: actor?.name ?? null,
+        };
       });
-      return res.status(201).json({ data: corrected });
+      return res.json({ data: corrected });
     } catch (error) {
       if (["INVOICE_NOT_FOUND", "INVOICE_NOT_CORRECTABLE"].includes(error.code)) {
         return res.status(error.code === "INVOICE_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
@@ -911,7 +987,6 @@ export function createCashierRouter({ client }) {
       );
       if (!invoice) return res.status(404).json({ error: "INVOICE_NOT_FOUND", message: "This invoice was not found in this laboratory." });
       if (invoice.voided_at) return res.status(409).json({ error: "INVOICE_VOIDED", message: "A receipt cannot be emailed for a voided payment." });
-      if (invoice.corrected_at) return res.status(409).json({ error: "INVOICE_CORRECTED", message: "Email the replacement invoice instead." });
       const emailDelivery = await emailService.sendPaymentReceiptEmail({
         to: invoice.patient_email,
         name: invoice.patient_name,

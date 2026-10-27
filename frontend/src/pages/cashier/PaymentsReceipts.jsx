@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
-import { formatDate } from '../../utils/dateFormat.js'
+import { formatDate, formatDateTime } from '../../utils/dateFormat.js'
 import { describeEmailDelivery } from '../../utils/emailDelivery.js'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
@@ -32,7 +32,7 @@ export default function PaymentsReceipts() {
     invoiceState: invoice.invoiceState,
     correctedAt: invoice.correctedAt,
     correctionReason: invoice.correctionReason,
-    correctedInvoiceNumber: invoice.correctedInvoiceNumber,
+    corrections: invoice.corrections ?? [],
     voidedAt: invoice.voidedAt,
     voidReason: invoice.voidReason,
     refundedAmount: Number(invoice.refundedAmount ?? 0),
@@ -74,9 +74,27 @@ export default function PaymentsReceipts() {
     setActionBusy(true)
     try {
       const response = await api.cashier.correctInvoice(dialog.transaction.id, actionReason.trim())
-      setEmailStatus({ tone: 'success', text: `Invoice ${response.data.originalInvoiceNumber} marked corrected. Replacement invoice ${response.data.replacement.invoiceNumber} issued.` })
+      setEmailStatus({ tone: 'success', text: `Invoice updated in place. ${response.data.previousInvoiceNumber} is now ${response.data.invoiceNumber}. No new invoice record was created.` })
       setActionReason('')
-      setDialog((current) => ({ ...current, transaction: { ...current.transaction, invoiceState: 'corrected', correctedInvoiceNumber: response.data.replacement.invoiceNumber } }))
+      setDialog((current) => ({
+        ...current,
+        transaction: {
+          ...current.transaction,
+          id: response.data.invoiceId ?? current.transaction.id,
+          receiptNumber: response.data.invoiceNumber,
+          invoiceState: 'corrected',
+          correctedAt: response.data.correctedAt,
+          correctionReason: response.data.correctionReason,
+          corrections: [{
+            invoiceId: response.data.invoiceId,
+            previousInvoiceNumber: response.data.previousInvoiceNumber,
+            invoiceNumber: response.data.invoiceNumber,
+            reason: response.data.correctionReason,
+            correctedAt: response.data.correctedAt,
+            correctedBy: response.data.correctedBy,
+          }, ...current.transaction.corrections],
+        },
+      }))
       await refresh()
     } catch (requestError) {
       setEmailStatus({ tone: 'error', text: requestError.message || 'Unable to correct this invoice.' })
@@ -112,7 +130,7 @@ export default function PaymentsReceipts() {
 
   return (
     <section className='payments-receipts' aria-label='Payments and invoice'>
-      <div className='payments-receipts__intro'><p>Review payment history, including corrected and voided invoices. Historical invoices are retained for audit.</p></div>
+      <div className='payments-receipts__intro'><p>Review payment history, including corrected and voided invoices. A correction updates the invoice in place and keeps the previous number and reason in View Invoice.</p></div>
       {error && <p role='alert'>{error}</p>}
 
       <div className='payments-receipts__toolbar'>
@@ -177,7 +195,7 @@ export default function PaymentsReceipts() {
                   <td>
                     <button className='payments-receipts__action payments-receipts__action--receipt' type='button' onClick={() => openReceipt(transaction)}>View Invoice</button>
                   </td>
-                  <td>{transaction.invoiceState === 'voided' ? 'Voided / refunded' : transaction.invoiceState === 'corrected' ? `Corrected${transaction.correctedInvoiceNumber ? ` · ${transaction.correctedInvoiceNumber}` : ''}` : 'Issued'}</td>
+                  <td>{transaction.invoiceState === 'voided' ? 'Voided / refunded' : transaction.invoiceState === 'corrected' ? 'Corrected' : 'Issued'}</td>
                 </tr>
               ))}
               {(loading || visibleTransactions.length === 0) && (
@@ -211,7 +229,7 @@ export default function PaymentsReceipts() {
                   <span>Payment invoice · Diagnostic Laboratory</span>
                 </div>
                 <div className='payments-receipts__receipt-line'><span>Invoice no.</span><strong>{dialog.transaction.receiptNumber}</strong></div>
-                <div className='payments-receipts__receipt-line'><span>Invoice status</span><strong>{dialog.transaction.invoiceState === 'voided' ? 'VOIDED / REFUNDED' : dialog.transaction.invoiceState === 'corrected' ? `CORRECTED${dialog.transaction.correctedInvoiceNumber ? ` · ${dialog.transaction.correctedInvoiceNumber}` : ''}` : 'ISSUED'}</strong></div>
+                <div className='payments-receipts__receipt-line'><span>Invoice status</span><strong>{dialog.transaction.invoiceState === 'voided' ? 'VOIDED / REFUNDED' : dialog.transaction.invoiceState === 'corrected' ? 'CORRECTED' : 'ISSUED'}</strong></div>
                 <div className='payments-receipts__receipt-line'><span>Date</span><strong>{formatDate(dialog.transaction.transactionDate)}</strong></div>
                 <div className='payments-receipts__receipt-line'><span>Patient</span><strong>{dialog.transaction.patientName}</strong></div>
                 <div className='payments-receipts__receipt-line'><span>PID</span><strong>{dialog.transaction.pid}</strong></div>
@@ -224,7 +242,27 @@ export default function PaymentsReceipts() {
                 <div className='payments-receipts__receipt-line payments-receipts__receipt-total'><span>{dialog.transaction.paymentMethod === 'waiver' ? 'Waived amount' : 'Total paid · Cash'}</span><strong>{currency.format(dialog.transaction.fee)}</strong></div>
                 {dialog.transaction.refundedAmount > 0 && <div className='payments-receipts__receipt-line'><span>Refund recorded</span><strong>{currency.format(dialog.transaction.refundedAmount)}</strong></div>}
                 {dialog.transaction.voidReason && <p>Void reason: {dialog.transaction.voidReason}</p>}
-                {dialog.transaction.correctionReason && <p>Correction reason: {dialog.transaction.correctionReason}</p>}
+                {dialog.transaction.corrections.length > 0 ? (
+                  <div className='payments-receipts__correction-history'>
+                    <strong>Correction history</strong>
+                    {dialog.transaction.corrections.map((correction, index) => (
+                      <div className='payments-receipts__correction-entry' key={`${correction.correctedAt}-${index}`}>
+                        <div className='payments-receipts__correction-numbers'>
+                          <span>{correction.previousInvoiceNumber || '—'}</span>
+                          <span aria-hidden='true'>→</span>
+                          <strong>{correction.invoiceNumber || '—'}</strong>
+                        </div>
+                        <p>{correction.reason || 'No reason recorded.'}</p>
+                        <small>
+                          {formatDateTime(correction.correctedAt)}
+                          {correction.correctedBy ? ` · Corrected by ${correction.correctedBy}` : ''}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                ) : dialog.transaction.correctionReason && (
+                  <p>Correction reason: {dialog.transaction.correctionReason}</p>
+                )}
                 <p>Keep this receipt. Use your PID and the instructions provided by the laboratory to access your results online after they are released.</p>
               </div>
             )}
@@ -238,13 +276,13 @@ export default function PaymentsReceipts() {
               </p>
             )}
 
-            {dialog.type === 'receipt' && dialog.transaction.invoiceState === 'issued' && !dialog.transaction.voidedAt && (
+            {dialog.type === 'receipt' && !dialog.transaction.voidedAt && (
               <div className='payments-receipts__correction-actions'>
                 {dialog.transaction.requestStatus === 'paid' && <p>Cancellation records the full refund in Labstream; it does not move cash or initiate a bank transfer.</p>}
                 <label className='payments-receipts__reason'>Reason
                   <textarea maxLength={500} required value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder='Explain the invoice correction or request cancellation' />
                 </label>
-                <p className='payments-receipts__correction-note'>Reissue is for correcting an invoice document or clerical error. The replacement keeps the same request and paid amount; it does not change tests, charges, or move money.</p>
+                <p className='payments-receipts__correction-note'>Reissuing updates this invoice in place. The invoice number changes and a correction entry is kept in View Invoice; the request, tests, paid amount, and payment stay the same. No new invoice record is created.</p>
                 <div className='payments-receipts__correction-buttons'>
                   <button className='payments-receipts__dialog-secondary' type='button' disabled={actionBusy || !actionReason.trim()} onClick={correctInvoice}>{actionBusy ? 'Saving…' : 'Reissue corrected invoice'}</button>
                   {dialog.transaction.requestStatus === 'paid' && <button className='payments-receipts__dialog-danger' type='button' disabled={actionBusy || !actionReason.trim()} onClick={cancelAndRefund}>{actionBusy ? 'Saving…' : 'Cancel request & record refund'}</button>}
@@ -254,7 +292,7 @@ export default function PaymentsReceipts() {
 
             <div className='payments-receipts__dialog-footer'>
               {dialog.type === 'receipt' && <>
-                <button className='payments-receipts__dialog-secondary' type='button' disabled={emailSending || dialog.transaction.invoiceState !== 'issued' || Boolean(dialog.transaction.voidedAt)} onClick={emailReceipt}>
+                <button className='payments-receipts__dialog-secondary' type='button' disabled={emailSending || Boolean(dialog.transaction.voidedAt)} onClick={emailReceipt}>
                   {emailSending ? 'Sending…' : 'Email receipt'}
                 </button>
                 <button className='payments-receipts__dialog-secondary' type='button' onClick={() => setDialog(null)}>Close</button>

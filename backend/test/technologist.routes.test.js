@@ -52,7 +52,7 @@ function createTestApp({ requestStatus = "processing", specimenStatus = "receive
   return { app, writes };
 }
 
-function createSubmissionApp({ requestStatus = "processing", remainingCount = 0 } = {}) {
+function createSubmissionApp({ requestStatus = "processing", targetTotal = 1, draftCount = 1 } = {}) {
   process.env.AUTH_TOKEN_SECRET = secret;
   const writes = [];
   const execute = async (statement, parameters = []) => {
@@ -62,12 +62,15 @@ function createSubmissionApp({ requestStatus = "processing", remainingCount = 0 
     if (query.startsWith("select id, status, assigned_pathologist_id from public.test_requests")) {
       return [{ id: requestId, status: requestStatus, assigned_pathologist_id: null }];
     }
-    if (query.startsWith("select count(*)::integer as total from public.request_items ri")) return [{ total: 1 }];
+    if (query.startsWith("select count(*)::integer as total from public.request_items ri")) return [{ total: targetTotal }];
     if (query.startsWith("select ri.id as item_id, rs.id as submission_id")) {
-      return [{ item_id: itemId, submission_id: submissionId, revision_number: 1 }];
+      return Array.from({ length: draftCount }, (_value, index) => ({
+        item_id: itemId,
+        submission_id: `${submissionId.slice(0, -1)}${index}`,
+        revision_number: 1,
+      }));
     }
     if (query.startsWith("select ri.id, count(a.id)::integer as required_count")) return [];
-    if (query.startsWith("select count(*)::integer as total from public.request_items where")) return [{ total: remainingCount }];
     if (query.startsWith("select id from public.users where id = $1")) return [{ id: pathologistId }];
     if (query.startsWith("select u.id from public.users u")) return [{ id: pathologistId }];
     if (query.startsWith("update ") || query.startsWith("insert ")) {
@@ -223,26 +226,23 @@ test("a draft can be saved while other specimens are still expected", async () =
   assert.ok(writes.some((write) => write.query.includes("results.draft_saved")));
 });
 
-test("submitting while a test still needs recollection leaves the request active", async () => {
-  const { app, writes } = createSubmissionApp({ requestStatus: "specimen_collection", remainingCount: 1 });
+test("submitting before every test is complete is blocked", async () => {
+  const { app, writes } = createSubmissionApp({ requestStatus: "specimen_collection", targetTotal: 2, draftCount: 1 });
   const response = await postJson(app, `/technologist/requests/${requestId}/submit-results`);
   const payload = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.equal(payload.data.partial, true);
-  assert.equal(payload.data.remainingTestCount, 1);
-  assert.equal(payload.data.assignedPathologistId, null);
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "REQUEST_RESULTS_INCOMPLETE");
   assert.ok(!writes.some((write) => write.query.includes("status = 'for_validation'")));
-  assert.ok(writes.some((write) => write.query.includes("'partial', true")));
 });
 
-test("submitting the last outstanding test sends the request for validation", async () => {
-  const { app, writes } = createSubmissionApp({ requestStatus: "specimen_collection", remainingCount: 0 });
+test("submitting a complete request sends it for validation", async () => {
+  const { app, writes } = createSubmissionApp({ requestStatus: "specimen_collection", targetTotal: 1, draftCount: 1 });
   const response = await postJson(app, `/technologist/requests/${requestId}/submit-results`);
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(payload.data.partial, false);
+  assert.equal(payload.data.submittedTestCount, 1);
   assert.equal(payload.data.assignedPathologistId, pathologistId);
   assert.ok(writes.some((write) => write.query.includes("status = 'for_validation'")));
 });

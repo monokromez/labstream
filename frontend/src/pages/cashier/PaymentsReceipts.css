@@ -533,6 +533,64 @@
   line-height: 1.5;
 }
 
+.payments-receipts__correction-history {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: #fffdf5;
+}
+
+.payments-receipts__correction-history > strong {
+  color: var(--text-lightbg);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.payments-receipts__correction-entry {
+  display: grid;
+  gap: 0.3rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed var(--border);
+}
+
+.payments-receipts__correction-entry:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.payments-receipts__correction-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+}
+
+.payments-receipts__correction-numbers span {
+  color: var(--text-muted-lightbg);
+  text-decoration: line-through;
+}
+
+.payments-receipts__correction-numbers strong {
+  color: var(--primary);
+}
+
+.payments-receipts__correction-entry p {
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-lightbg);
+  font-size: 0.82rem;
+}
+
+.payments-receipts__correction-entry small {
+  color: var(--text-muted-lightbg);
+  font-size: 0.76rem;
+}
+
 .payments-receipts__correction-actions {
   display: grid;
   gap: 0.75rem;
