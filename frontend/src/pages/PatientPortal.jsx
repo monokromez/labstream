@@ -59,8 +59,10 @@ export default function PatientPortal({ onNavigate }) {
       setEditingProfile(false)
       setProfileNotice('Your profile was updated.')
     } catch (requestError) {
+      const fieldErrors = { ...(requestError.details?.fields ?? {}) }
+      if (requestError.code === 'EMAIL_ALREADY_IN_USE') fieldErrors.email = requestError.message
       setProfileError(requestError.message || 'Unable to update your profile.')
-      setProfileFieldErrors(requestError.details?.fields ?? {})
+      setProfileFieldErrors(fieldErrors)
     } finally {
       setProfileSaving(false)
     }

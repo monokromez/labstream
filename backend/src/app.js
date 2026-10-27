@@ -13,6 +13,7 @@ import { createAdministratorRouter } from "./routes/administrator.js";
 import { describeMailConfiguration } from "./email.js";
 import { toApiShape } from "./apiShape.js";
 import { createAuthAttemptLimiter } from "./auth/authAttemptLimiter.js";
+import { sqlStateErrorResponse } from "./errorResponse.js";
 
 export function createApp({ database = null, publishCatalogChanged = null, publishClinicChanged = null } = {}) {
   const app = express();
@@ -92,6 +93,8 @@ export function createApp({ database = null, publishCatalogChanged = null, publi
     if (error?.type === "entity.parse.failed") {
       return res.status(400).json({ error: "INVALID_JSON", message: "Request body must be valid JSON." });
     }
+    const sqlStateResponse = sqlStateErrorResponse(error);
+    if (sqlStateResponse) return res.status(sqlStateResponse.status).json(sqlStateResponse.body);
     console.error("Unhandled API error", error);
     return res.status(500).json({ error: "INTERNAL_ERROR", message: "An unexpected server error occurred." });
   });

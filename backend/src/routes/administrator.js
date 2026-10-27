@@ -3,13 +3,14 @@ import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { isUuid, validateCategoryDetails, validateReferenceRangeDetails, validateTestDetails } from "../adminValidation.js";
+import { getErrorCode, getErrorConstraint, isCheckViolation, isUniqueViolation } from "../db/errors.js";
 
 const REPORT_PERIODS = new Set(["weekly", "monthly", "annual"]);
 const STAFF_ROLES = new Set(["administrator", "cashier", "medical_technologist", "pathologist", "patient"]);
 
 function isDatabaseConstraint(error, name, message) {
-  return error.code === "23514"
-    && (error.constraint === name || error.constraint_name === name || String(error.message ?? "").includes(message));
+  return isCheckViolation(error)
+    && (getErrorConstraint(error) === name || String(error?.message ?? "").includes(message));
 }
 
 function reportStartExpression(period) {
@@ -361,7 +362,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       publishCatalogChanged?.(req.user.clinicId);
       return res.status(201).json({ data });
     } catch (error) {
-      if (error.code === "23505") return res.status(409).json({ error: "CATEGORY_EXISTS" });
+      if (isUniqueViolation(error)) return res.status(409).json({ error: "CATEGORY_EXISTS" });
       return next(error);
     }
   });
@@ -440,8 +441,8 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       publishCatalogChanged?.(req.user.clinicId);
       return res.status(201).json({ data: result });
     } catch (error) {
-      if (error.code === "INVALID_CATEGORY" || error.code?.startsWith("INVALID_")) return res.status(400).json({ error: error.code, message: error.message });
-      if (error.code === "23505") return res.status(409).json({ error: "TEST_CODE_EXISTS" });
+      if (getErrorCode(error) === "INVALID_CATEGORY" || getErrorCode(error)?.startsWith("INVALID_")) return res.status(400).json({ error: getErrorCode(error), message: error.message });
+      if (isUniqueViolation(error)) return res.status(409).json({ error: "TEST_CODE_EXISTS" });
       return next(error);
     }
   });
@@ -852,7 +853,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       await client.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'reference_range.created','reference_range',$3)`, [req.user.clinicId, req.user.sub, data.id]);
       return res.status(201).json({ data });
     } catch (error) {
-      if (error.code === "23514") return res.status(400).json({ error: "INVALID_REFERENCE_RANGE", message: "Age and numeric limits must be in ascending order." });
+      if (isCheckViolation(error)) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE", message: "Age and numeric limits must be in ascending order." });
       return next(error);
     }
   });
@@ -894,7 +895,7 @@ export function createAdministratorRouter({ client, publishCatalogChanged }) {
       if (isDatabaseConstraint(error, "available_test_requires_reference_range", "Archive this test before removing its last active reference range")) {
         return res.status(409).json({ error: "TEST_REFERENCE_RANGE_REQUIRED", message: "Archive this test before removing or moving its last active reference range." });
       }
-      if (error.code === "23514") return res.status(400).json({ error: "INVALID_REFERENCE_RANGE" });
+      if (isCheckViolation(error)) return res.status(400).json({ error: "INVALID_REFERENCE_RANGE" });
       return next(error);
     }
   });

@@ -11,7 +11,7 @@ const adminId = "550e8400-e29b-41d4-a716-446655440002";
 const staffId = "550e8400-e29b-41d4-a716-446655440003";
 const origin = "http://localhost:5173";
 
-function createTestApp({ role = "cashier", isActive = false, isPendingActivation = false, hasActiveWork = false } = {}) {
+function createTestApp({ role = "cashier", isActive = false, isPendingActivation = false, hasActiveWork = false, emailConflict = false } = {}) {
   process.env.AUTH_TOKEN_SECRET = secret;
   const writes = [];
   const target = {
@@ -50,6 +50,16 @@ function createTestApp({ role = "cashier", isActive = false, isPendingActivation
     }
     if (query.startsWith("select exists(")) return [{ has_active_work: hasActiveWork }];
     if (query.startsWith("update public.users set email =")) {
+      if (emailConflict) {
+        // Drizzle wraps driver errors and keeps the PostgreSQL error on `cause`.
+        const driverError = Object.assign(
+          new Error('duplicate key value violates unique constraint "users_clinic_id_email_key"'),
+          { code: "23505", constraint: "users_clinic_id_email_key" },
+        );
+        const wrapped = new Error("Failed query: update public.users set email = $1");
+        wrapped.cause = driverError;
+        throw wrapped;
+      }
       writes.push({ query, parameters });
       target.role = parameters[1];
       target.username = `NEW-${target.role.toUpperCase()}`;
@@ -147,6 +157,17 @@ test("role changes are rejected while active work remains assigned", async () =>
 
   assert.equal(response.status, 409);
   assert.equal(payload.error, "STAFF_ROLE_CHANGE_HAS_ACTIVE_WORK");
+  assert.equal(writes.length, 0);
+});
+
+test("duplicate staff email is reported as a clear conflict", async () => {
+  const { app, writes } = createTestApp({ emailConflict: true });
+  const response = await patchStaff(app, "cashier");
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "STAFF_EMAIL_EXISTS");
+  assert.match(payload.message, /email/i);
   assert.equal(writes.length, 0);
 });
 

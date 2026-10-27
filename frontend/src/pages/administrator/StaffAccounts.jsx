@@ -52,6 +52,7 @@ export default function StaffAccounts({ currentUserId }) {
   const [dialog, setDialog] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [touched, setTouched] = useState({})
+  const [serverErrors, setServerErrors] = useState({})
   const staffErrors = getStaffFormErrors({
     firstName: form.firstName,
     middleName: form.middleName,
@@ -67,7 +68,7 @@ export default function StaffAccounts({ currentUserId }) {
   }, { countryCode: form.countryCode, countryName: form.country })
   const staffCallingCode = getPatientCallingCode(form.countryCode)
 
-  const visibleStaffError = (field) => (touched[field] ? staffErrors[field] : '')
+  const visibleStaffError = (field) => (touched[field] ? (serverErrors[field] || staffErrors[field]) : '')
   const markTouched = (field) => setTouched((current) => ({ ...current, [field]: true }))
   const handleStaffPhoneChange = (value) => {
     setForm((current) => ({
@@ -94,7 +95,7 @@ export default function StaffAccounts({ currentUserId }) {
 
   const pageRows = staff
 
-  function openAdd() { setForm(emptyForm); setTouched({}); setDialog({ type: 'add' }) }
+  function openAdd() { setForm(emptyForm); setTouched({}); setServerErrors({}); setDialog({ type: 'add' }) }
   async function openView(person) {
     setDialog({ type: 'loading', title: `Loading ${displayName(person)}` })
     try {
@@ -146,6 +147,7 @@ export default function StaffAccounts({ currentUserId }) {
         post: data.role.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
       })
       setTouched({})
+      setServerErrors({})
       setDialog({ type: 'edit', person: data })
     } catch (error) { setDialog({ type: 'error', message: error.message }) }
   }
@@ -175,7 +177,15 @@ export default function StaffAccounts({ currentUserId }) {
       setDialog({ type: 'created', username: result.data.username, activationCode: result.activation.code, email: form.email, emailDelivery: result.emailDelivery })
       setForm(emptyForm)
       await refresh()
-    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+    } catch (error) {
+      if (error.code === 'STAFF_EMAIL_EXISTS') {
+        setServerErrors({ email: error.message })
+        setTouched((current) => ({ ...current, email: true }))
+        setDialog({ type: 'add' })
+        return
+      }
+      setDialog({ type: 'error', message: error.message })
+    }
   }
   async function commitUpdate() {
     if (!validateStaffForm()) {
@@ -209,7 +219,15 @@ export default function StaffAccounts({ currentUserId }) {
       })
       setDialog({ type: 'updated', roleChanged: result.data.roleChanged, username: result.data.username, role: result.data.role })
       await refresh()
-    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+    } catch (error) {
+      if (error.code === 'STAFF_EMAIL_EXISTS') {
+        setServerErrors({ email: error.message })
+        setTouched((current) => ({ ...current, email: true }))
+        setDialog({ type: 'edit', person: dialog.person })
+        return
+      }
+      setDialog({ type: 'error', message: error.message })
+    }
   }
   async function commitStatus() {
     const { person } = dialog
@@ -344,7 +362,7 @@ export default function StaffAccounts({ currentUserId }) {
               {visibleStaffError('contact') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('contact')}</span>}
             </label>
             <label className="admin-dialog__field" htmlFor="staff-email">Email address
-              <LimitedInput id="staff-email" required type="email" autoComplete="email" maxLength={254} aria-invalid={Boolean(visibleStaffError('email'))} value={form.email} onBlur={() => markTouched('email')} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+              <LimitedInput id="staff-email" required type="email" autoComplete="email" maxLength={254} aria-invalid={Boolean(visibleStaffError('email'))} value={form.email} onBlur={() => markTouched('email')} onChange={(event) => { setServerErrors((current) => ({ ...current, email: '' })); setForm({ ...form, email: event.target.value }) }} />
               {visibleStaffError('email') && <span className="admin-dialog__field-error" role="alert">{visibleStaffError('email')}</span>}
             </label>
           </section>

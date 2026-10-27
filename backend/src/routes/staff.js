@@ -3,6 +3,7 @@ import { createOneTimeCode } from "../auth/oneTimeCode.js";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 import { emailService } from "../email.js";
 import { isUuid, validateStaffDetails, validateStaffRoleChange } from "../adminValidation.js";
+import { isUniqueViolation } from "../db/errors.js";
 
 const STAFF_ROLES = new Set(["cashier", "medical_technologist", "pathologist"]);
 const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "for_validation", "correction"];
@@ -203,7 +204,7 @@ export function createStaffRouter({ client }) {
       if (["STAFF_ROLE_CHANGE_REQUIRES_INACTIVE", "STAFF_ACTIVATION_PENDING", "STAFF_ROLE_CHANGE_HAS_ACTIVE_WORK"].includes(error.code)) {
         return res.status(409).json({ error: error.code, message: error.message });
       }
-      if (error.code === "23505") return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "This email is already assigned to an account in the clinic." });
+      if (isUniqueViolation(error)) return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "That email address is already assigned to an account in this laboratory. Use a different email address." });
       return next(error);
     }
   });
@@ -267,7 +268,7 @@ export function createStaffRouter({ client }) {
         emailDelivery,
       });
     } catch (error) {
-      if (error.code === "23505") return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "This email is already assigned to an account in the clinic." });
+      if (isUniqueViolation(error)) return res.status(409).json({ error: "STAFF_EMAIL_EXISTS", message: "That email address is already assigned to an account in this laboratory. Use a different email address." });
       return next(error);
     }
   });

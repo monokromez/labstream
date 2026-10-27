@@ -2,6 +2,7 @@ import { Router } from "express";
 import PDFDocument from "pdfkit";
 import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete } from "../auth/middleware.js";
+import { isUniqueViolation } from "../db/errors.js";
 
 const patientNamePattern = /^[\p{L}\p{M}]+(?:[ '\u2019.-][\p{L}\p{M}]+)*$/u;
 
@@ -172,8 +173,8 @@ export function createPatientRouter({ client }) {
       if (!updated) return res.status(404).json({ error: "PATIENT_PROFILE_NOT_FOUND" });
       return res.json({ data: updated });
     } catch (error) {
-      if (error.code === "23505") {
-        return res.status(409).json({ error: "EMAIL_ALREADY_IN_USE", message: "That email address is already used by another account." });
+      if (isUniqueViolation(error)) {
+        return res.status(409).json({ error: "EMAIL_ALREADY_IN_USE", message: "That email address is already used by another account. Use a different email address." });
       }
       return next(error);
     }
