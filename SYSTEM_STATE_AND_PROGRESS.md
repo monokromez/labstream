@@ -46,9 +46,11 @@ Run backend and frontend in separate terminals. Backend uses `backend/.env`, `DA
 - Cashier patient/request registration, payment queue, payment/invoice handling.
 - Staff and test catalog management, category/filter handling, reference ranges, and audit log access.
 - Test Catalog availability defaults to unavailable and is blocked until a test has an active reference range. API and database guards enforce the rule, including protection against removing a test's last active range.
-- Specimen accept/reject/recollection and per-test result draft/revision/review workflow. A single pathologist re-analysis decision returns the whole request and leaves prior results/reviews in history.
+- Specimen accept/reject/recollection and per-test result draft/revision/review workflow. Result values are keyed to both the requested test and specimen, and the technologist/pathologist/patient views identify the associated specimen. A single pathologist re-analysis decision returns the whole request and leaves prior results/reviews in history.
 - Medical Technologists review every result in a returned request, mark tests Complete with confirmation, may withdraw completion with confirmation, and submit the request as a whole only when every test is complete. Pathologists review the complete resubmission.
 - Existing-database migrations are provided for reference-range gating and the per-test `completed` state. The completion migration also puts approved/drafted sibling items in in-flight correction requests back into the re-analysis cycle.
+- Existing databases also need `20261027_specimen_specific_result_values.sql` for independent results per specimen. It assigns legacy values to the result submission's primary specimen only; it intentionally does not duplicate one historical value onto other specimens.
+- Reference-range results now require the patient's age and sex plus a compatible result unit. The technologist view explains when no range applies; administrator editing defaults the range unit to the selected analyte and flags legacy unit mismatches.
 - A patient/catalog/workflow clearing SQL file preserves staff accounts and the single laboratory record. It is for the user to run; it has not been executed.
 - Patient request-level results and per-test history.
 - Country/city dropdown component and responsive role pages.
