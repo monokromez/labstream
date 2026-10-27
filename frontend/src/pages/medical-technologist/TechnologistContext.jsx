@@ -89,7 +89,11 @@ export function TechnologistProvider({ children, onNavigate }) {
         ...row, label, recollectionOf: specimenLabels.get(row.replacesSpecimenId) ?? '', requestId: row.requestNumber, type: row.specimenType,
         patient: row.patientName ?? '', patientId: row.pid,
         status: statusLabels[row.status] ?? row.status, collectedAt: row.receivedAt,
+        collectedOn: row.collectedAt, receivedAt: row.receivedAt, rejectedAt: row.rejectedAt,
+        replacesSpecimenId: row.replacesSpecimenId ?? null,
         reason: row.rejectionReason ?? row.notes ?? '',
+        rejectionReason: row.rejectionReason ?? null,
+        rejectionNotes: row.notes ?? '',
         linkedItemIds: (row.tests ?? []).map((test) => test.id),
       }})
       const resultRows = specimenRows.filter((specimen) => specimen.status === 'Accepted').map((specimen) => {

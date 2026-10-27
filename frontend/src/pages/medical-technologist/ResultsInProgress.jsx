@@ -5,6 +5,7 @@ import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import useTablePagination from '../../components/data/useTablePagination.js'
 import { LimitedInput, LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
+import { parseRejectionReason } from '../../data/medicalTechnologist.js'
 import './ResultsInProgress.css'
 
 const stateFilters = [
@@ -171,7 +172,7 @@ function getSpecimenTests(request, specimen) {
 }
 
 export default function ResultsInProgress() {
-  const { requests, specimens, results, saveDraft, submitRequest, loadError } = useTechnologist()
+  const { requests, specimens, results, saveDraft, submitRequest, goToSpecimens, loadError } = useTechnologist()
   const [filter, setFilter] = useState('all')
   const [selectedLabel, setSelectedLabel] = useState('')
   const [draftValues, setDraftValues] = useState({})
@@ -202,7 +203,8 @@ export default function ResultsInProgress() {
         const specimenResult = specimen && results.find((item) => item.specimenLabel === specimen.label)
         return Boolean(specimenResult && test.fields.length > 0 && test.fields.every((field) => isFieldComplete(field, specimenResult.values[field.key])))
       })
-      return { ...group, complete }
+      const rejectedSpecimens = specimens.filter((item) => item.requestId === group.request.id && item.status === 'Rejected')
+      return { ...group, complete, rejectedSpecimens }
     })
   }, [visibleResults, specimens, results])
 
@@ -361,6 +363,18 @@ export default function ResultsInProgress() {
                   <div><strong>{group.request.id}</strong><span>{group.request.patient}</span></div>
                   <span className={`medtech-result-request-group__status${group.complete ? ' is-complete' : ''}`}>{group.complete ? 'Tests complete' : 'Tests in progress'}</span>
                 </div>
+                {group.rejectedSpecimens.length > 0 && (
+                  <div className="medtech-result-rejection-notice" role="status">
+                    <p>
+                      <strong>{group.rejectedSpecimens.length} {group.rejectedSpecimens.length === 1 ? 'specimen was' : 'specimens were'} rejected</strong>
+                      {` (${[...new Set(group.rejectedSpecimens.map((specimen) => parseRejectionReason(specimen).reason || 'no reason recorded'))].join(', ')})`}.
+                      Completed results can still be submitted now. The request stays open until the rejected {group.rejectedSpecimens.length === 1 ? 'test is' : 'tests are'} resolved.
+                    </p>
+                    <button className="medtech-button medtech-button--secondary medtech-button--small" type="button" onClick={() => goToSpecimens(group.request.id)}>
+                      View specimens
+                    </button>
+                  </div>
+                )}
                 {group.items.map((result) => {
               const tests = getSpecimenTests(result.request, result.specimen)
               const testSummary = tests.slice(0, 2).map((test) => test.name).join(', ')

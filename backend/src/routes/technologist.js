@@ -46,7 +46,7 @@ export function createTechnologistRouter({ client }) {
       const status = String(req.query.status ?? "");
       const data = await client.unsafe(
         `select s.id, s.request_id, s.replaces_specimen_id, r.request_number, s.specimen_type, s.attempt_number,
-                s.status, s.received_at, s.rejection_reason, s.notes,
+                s.status, s.collected_at, s.received_at, s.rejected_at, s.rejection_reason, s.notes,
                 p.pid, p.sex, p.date_of_birth, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 array_agg(distinct jsonb_build_object(
                   'id', ri.id, 'testId', ri.test_id, 'testName', ri.test_name_snapshot,

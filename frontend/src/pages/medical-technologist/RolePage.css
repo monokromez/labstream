@@ -252,6 +252,63 @@
   gap: 0.4rem;
 }
 
+.medtech-reason-button {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  max-width: 11rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: 0.3rem;
+  padding: 0.35rem 0.55rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.medtech-reason-button:hover,
+.medtech-reason-button:focus-visible {
+  border-color: var(--error);
+}
+
+.medtech-reason-button__reason {
+  overflow: hidden;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.medtech-reason-button__hint {
+  overflow: hidden;
+  color: var(--text-muted-lightbg);
+  font-size: 0.66rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.medtech-rejection-reason {
+  margin: 0;
+  color: var(--text-lightbg);
+  font-size: 0.82rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.medtech-rejection-notes {
+  margin: 0;
+  border-left: 2px solid var(--border);
+  padding-left: 0.65rem;
+  color: var(--text-muted-lightbg);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .medtech-badge {
   display: inline-flex;
   min-height: 1.55rem;
@@ -720,6 +777,27 @@
 .medtech-result-request-group__status.is-complete {
   background: #dff4e9;
   color: #116348;
+}
+
+.medtech-result-rejection-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+  border-radius: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+}
+
+.medtech-result-rejection-notice p {
+  flex: 1 1 12rem;
+  margin: 0;
+  color: #7c3d00;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .medtech-result-card {
