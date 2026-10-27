@@ -13,11 +13,14 @@ const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: '
 export default function PaymentsReceipts() {
   const [searchQuery, setSearchQuery] = useState('')
   const [dateFilter, setDateFilter] = useState('all')
+  const [stateFilter, setStateFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [dialog, setDialog] = useState(null)
   const [emailStatus, setEmailStatus] = useState(null)
   const [emailSending, setEmailSending] = useState(false)
-  const { result, loading, error } = useApiResource(() => api.cashier.invoices({ page: currentPage, pageSize: ROWS_PER_PAGE, q: searchQuery, period: dateFilter === 'all' ? '' : dateFilter }), [currentPage, searchQuery, dateFilter])
+  const [actionReason, setActionReason] = useState('')
+  const [actionBusy, setActionBusy] = useState(false)
+  const { result, loading, error, refresh } = useApiResource(() => api.cashier.invoices({ page: currentPage, pageSize: ROWS_PER_PAGE, q: searchQuery, period: dateFilter === 'all' ? '' : dateFilter, state: stateFilter }), [currentPage, searchQuery, dateFilter, stateFilter])
   const transactions = (result?.data ?? []).map((invoice) => ({
     id: invoice.id,
     pid: invoice.pid,
@@ -26,17 +29,27 @@ export default function PaymentsReceipts() {
     fee: Number(invoice.amount),
     paymentMethod: invoice.method,
     transactionDate: invoice.paidAt?.slice(0, 10),
+    invoiceState: invoice.invoiceState,
+    correctedAt: invoice.correctedAt,
+    correctionReason: invoice.correctionReason,
+    correctedInvoiceNumber: invoice.correctedInvoiceNumber,
+    voidedAt: invoice.voidedAt,
+    voidReason: invoice.voidReason,
+    refundedAmount: Number(invoice.refundedAmount ?? 0),
+    requestId: invoice.requestId,
+    requestStatus: invoice.requestStatus,
     tests: (invoice.tests ?? []).map((test) => ({ ...test, price: Number(test.price) })),
     issuedAt: invoice.issuedAt,
   }))
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, dateFilter])
+  }, [searchQuery, dateFilter, stateFilter])
 
   function openReceipt(transaction) {
     setEmailStatus(null)
     setEmailSending(false)
+    setActionReason('')
     setDialog({ type: 'receipt', transaction })
   }
 
@@ -56,12 +69,50 @@ export default function PaymentsReceipts() {
     }
   }
 
+  async function correctInvoice() {
+    if (!dialog?.transaction || !actionReason.trim() || actionBusy) return
+    setActionBusy(true)
+    try {
+      const response = await api.cashier.correctInvoice(dialog.transaction.id, actionReason.trim())
+      setEmailStatus({ tone: 'success', text: `Invoice ${response.data.originalInvoiceNumber} marked corrected. Replacement invoice ${response.data.replacement.invoiceNumber} issued.` })
+      setActionReason('')
+      setDialog((current) => ({ ...current, transaction: { ...current.transaction, invoiceState: 'corrected', correctedInvoiceNumber: response.data.replacement.invoiceNumber } }))
+      await refresh()
+    } catch (requestError) {
+      setEmailStatus({ tone: 'error', text: requestError.message || 'Unable to correct this invoice.' })
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function cancelAndRefund() {
+    if (!dialog?.transaction || !actionReason.trim() || actionBusy) return
+    setActionBusy(true)
+    try {
+      const response = await api.cashier.cancelRequest(dialog.transaction.requestId, actionReason.trim())
+      const amount = Number(response.data.refundAmount ?? 0)
+      setEmailStatus({
+        tone: 'success',
+        text: amount > 0
+          ? `Request cancelled and full refund of ${currency.format(amount)} recorded. Complete the cash/bank refund outside Labstream.`
+          : 'Request cancelled and the zero-fee payment voided.',
+      })
+      setActionReason('')
+      setDialog((current) => ({ ...current, transaction: { ...current.transaction, invoiceState: 'voided', voidedAt: new Date().toISOString(), refundedAmount: amount, requestStatus: 'cancelled' } }))
+      await refresh()
+    } catch (requestError) {
+      setEmailStatus({ tone: 'error', text: requestError.message || 'Unable to cancel and refund this request.' })
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
   const filteredTransactions = transactions
   const visibleTransactions = transactions
 
   return (
     <section className='payments-receipts' aria-label='Payments and invoice'>
-      <div className='payments-receipts__intro'><p>Review paid requests and view or print their invoices.</p></div>
+      <div className='payments-receipts__intro'><p>Review payment history, including corrected and voided invoices. Historical invoices are retained for audit.</p></div>
       {error && <p role='alert'>{error}</p>}
 
       <div className='payments-receipts__toolbar'>
@@ -79,6 +130,15 @@ export default function PaymentsReceipts() {
             <option value='today'>Today</option>
             <option value='7days'>Last 7 days</option>
             <option value='month'>This month</option>
+          </select>
+        </label>
+        <label className='payments-receipts__filter' htmlFor='payments-state-filter'>
+          <span>Invoice status</span>
+          <select id='payments-state-filter' value={stateFilter} onChange={(event) => setStateFilter(event.target.value)}>
+            <option value='all'>All statuses</option>
+            <option value='issued'>Issued</option>
+            <option value='corrected'>Corrected</option>
+            <option value='voided'>Voided / refunded</option>
           </select>
         </label>
       </div>
@@ -101,6 +161,7 @@ export default function PaymentsReceipts() {
                 <th scope='col'>Fee</th>
                 <th scope='col'>Date</th>
                 <th scope='col'>Invoice</th>
+                <th scope='col'>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -116,10 +177,11 @@ export default function PaymentsReceipts() {
                   <td>
                     <button className='payments-receipts__action payments-receipts__action--receipt' type='button' onClick={() => openReceipt(transaction)}>View Invoice</button>
                   </td>
+                  <td>{transaction.invoiceState === 'voided' ? 'Voided / refunded' : transaction.invoiceState === 'corrected' ? `Corrected${transaction.correctedInvoiceNumber ? ` · ${transaction.correctedInvoiceNumber}` : ''}` : 'Issued'}</td>
                 </tr>
               ))}
               {(loading || visibleTransactions.length === 0) && (
-                <tr><td className='payments-receipts__empty' colSpan='5'>{loading ? 'Loading invoices…' : 'No paid transactions match your search or date filter.'}</td></tr>
+                <tr><td className='payments-receipts__empty' colSpan='6'>{loading ? 'Loading invoices…' : 'No invoices match your search or filters.'}</td></tr>
               )}
             </tbody>
           </table>
@@ -149,6 +211,7 @@ export default function PaymentsReceipts() {
                   <span>Payment invoice · Diagnostic Laboratory</span>
                 </div>
                 <div className='payments-receipts__receipt-line'><span>Invoice no.</span><strong>{dialog.transaction.receiptNumber}</strong></div>
+                <div className='payments-receipts__receipt-line'><span>Invoice status</span><strong>{dialog.transaction.invoiceState === 'voided' ? 'VOIDED / REFUNDED' : dialog.transaction.invoiceState === 'corrected' ? `CORRECTED${dialog.transaction.correctedInvoiceNumber ? ` · ${dialog.transaction.correctedInvoiceNumber}` : ''}` : 'ISSUED'}</strong></div>
                 <div className='payments-receipts__receipt-line'><span>Date</span><strong>{formatDate(dialog.transaction.transactionDate)}</strong></div>
                 <div className='payments-receipts__receipt-line'><span>Patient</span><strong>{dialog.transaction.patientName}</strong></div>
                 <div className='payments-receipts__receipt-line'><span>PID</span><strong>{dialog.transaction.pid}</strong></div>
@@ -159,6 +222,9 @@ export default function PaymentsReceipts() {
                   ))}
                 </div>
                 <div className='payments-receipts__receipt-line payments-receipts__receipt-total'><span>{dialog.transaction.paymentMethod === 'waiver' ? 'Waived amount' : 'Total paid · Cash'}</span><strong>{currency.format(dialog.transaction.fee)}</strong></div>
+                {dialog.transaction.refundedAmount > 0 && <div className='payments-receipts__receipt-line'><span>Refund recorded</span><strong>{currency.format(dialog.transaction.refundedAmount)}</strong></div>}
+                {dialog.transaction.voidReason && <p>Void reason: {dialog.transaction.voidReason}</p>}
+                {dialog.transaction.correctionReason && <p>Correction reason: {dialog.transaction.correctionReason}</p>}
                 <p>Keep this receipt. Use your PID and the instructions provided by the laboratory to access your results online after they are released.</p>
               </div>
             )}
@@ -172,9 +238,22 @@ export default function PaymentsReceipts() {
               </p>
             )}
 
+            {dialog.type === 'receipt' && dialog.transaction.invoiceState === 'issued' && !dialog.transaction.voidedAt && (
+              <div className='payments-receipts__correction-actions'>
+                {dialog.transaction.requestStatus === 'paid' && <p>Cancellation records the full refund in Labstream; it does not move cash or initiate a bank transfer.</p>}
+                <label className='payments-receipts__filter'>Reason
+                  <textarea maxLength={500} required value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder='Enter a reason for correction or cancellation' />
+                </label>
+                <div>
+                  <button className='payments-receipts__dialog-secondary' type='button' disabled={actionBusy || !actionReason.trim()} onClick={correctInvoice}>{actionBusy ? 'Saving…' : 'Correct invoice'}</button>
+                  {dialog.transaction.requestStatus === 'paid' && <button className='payments-receipts__dialog-secondary' type='button' disabled={actionBusy || !actionReason.trim()} onClick={cancelAndRefund}>Cancel request & record refund</button>}
+                </div>
+              </div>
+            )}
+
             <div className='payments-receipts__dialog-footer'>
               {dialog.type === 'receipt' && <>
-                <button className='payments-receipts__dialog-secondary' type='button' disabled={emailSending} onClick={emailReceipt}>
+                <button className='payments-receipts__dialog-secondary' type='button' disabled={emailSending || dialog.transaction.invoiceState !== 'issued' || Boolean(dialog.transaction.voidedAt)} onClick={emailReceipt}>
                   {emailSending ? 'Sending…' : 'Email receipt'}
                 </button>
                 <button className='payments-receipts__dialog-secondary' type='button' onClick={() => setDialog(null)}>Close</button>

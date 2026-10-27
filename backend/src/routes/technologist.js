@@ -40,8 +40,31 @@ export function createTechnologistRouter({ client }) {
       const data = await client.unsafe(
         `select s.id, s.request_id, s.replaces_specimen_id, r.request_number, s.specimen_type, s.attempt_number,
                 s.status, s.received_at, s.rejection_reason, s.notes,
-                p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
-                array_agg(distinct jsonb_build_object('id', ri.id, 'testId', ri.test_id, 'testName', ri.test_name_snapshot, 'category', ri.category_name_snapshot, 'status', ri.status)) as tests
+                p.pid, p.sex, p.date_of_birth, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
+                array_agg(distinct jsonb_build_object(
+                  'id', ri.id, 'testId', ri.test_id, 'testName', ri.test_name_snapshot,
+                  'category', ri.category_name_snapshot, 'status', ri.status,
+                  'analytes', coalesce((
+                    select jsonb_agg(jsonb_build_object(
+                      'id', a.id, 'key', a.key, 'label', a.label, 'valueType', a.value_type,
+                      'options', a.options, 'unit', a.unit, 'isRequired', a.is_required,
+                      'lowerLimit', rr.lower_limit, 'upperLimit', rr.upper_limit,
+                      'resultUnit', coalesce(rr.unit, a.unit)
+                    ) order by a.sort_order, a.label)
+                      from public.test_analytes a
+                      left join lateral (
+                        select ranges.lower_limit, ranges.upper_limit, ranges.unit
+                          from public.reference_ranges ranges
+                         where ranges.analyte_id = a.id and ranges.clinic_id = a.clinic_id and ranges.is_active = true
+                           and (ranges.sex is null or ranges.sex = p.sex)
+                           and (ranges.min_age_days is null or current_date - p.date_of_birth >= ranges.min_age_days)
+                           and (ranges.max_age_days is null or current_date - p.date_of_birth <= ranges.max_age_days)
+                         order by (ranges.sex is not null) desc, coalesce(ranges.min_age_days, 0) desc limit 1
+                      ) rr on true
+                     where a.test_id = ri.test_id and a.clinic_id = ri.clinic_id
+                       and a.configuration_version = ri.configuration_version
+                  ), '[]'::jsonb)
+                )) as tests
            from public.specimens s
            join public.test_requests r on r.id = s.request_id and r.clinic_id = s.clinic_id
            join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
@@ -244,7 +267,7 @@ export function createTechnologistRouter({ client }) {
       const result = await client.begin(async (tx) => {
         const [context] = await tx.unsafe(
           `select r.id as request_id, r.status as request_status, r.assigned_technologist_id,
-                  ri.id as item_id, ri.test_id, ri.status as item_status, p.date_of_birth, p.sex
+                  ri.id as item_id, ri.test_id, ri.configuration_version, ri.status as item_status, p.date_of_birth, p.sex
              from public.test_requests r
              join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
              join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
@@ -268,14 +291,14 @@ export function createTechnologistRouter({ client }) {
         const [missingSpecimenRequirement] = await tx.unsafe(
           `select sr.specimen_type
              from public.test_specimen_requirements sr
-            where sr.test_id = $1 and sr.clinic_id = $2 and sr.is_required = true
+            where sr.test_id = $1 and sr.clinic_id = $2 and sr.configuration_version = $6 and sr.is_required = true
               and not exists (
                 select 1 from public.specimen_request_items sri
                 join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
                 where sri.request_item_id = $3 and sri.request_id = $4 and sri.clinic_id = $2
                   and s.specimen_type = sr.specimen_type and s.id = any($5::uuid[]) and s.status = 'accepted'
               ) limit 1`,
-          [context.test_id, req.user.clinicId, context.item_id, context.request_id, specimenIds],
+          [context.test_id, req.user.clinicId, context.item_id, context.request_id, specimenIds, context.configuration_version],
         );
         if (missingSpecimenRequirement) throw Object.assign(new Error(`The required ${missingSpecimenRequirement.specimen_type} specimen must be accepted before result entry.`), { code: "SPECIMEN_NOT_ACCEPTED" });
         const analytes = await tx.unsafe(
@@ -291,8 +314,8 @@ export function createTechnologistRouter({ client }) {
                   and (r.max_age_days is null or current_date - $4::date <= r.max_age_days)
                 order by (r.sex is not null) desc, coalesce(r.min_age_days, 0) desc limit 1
              ) rr on true
-            where a.test_id = $1 and a.clinic_id = $2 order by a.sort_order, a.label`,
-          [context.test_id, req.user.clinicId, context.sex, context.date_of_birth],
+            where a.test_id = $1 and a.clinic_id = $2 and a.configuration_version = $5 order by a.sort_order, a.label`,
+          [context.test_id, req.user.clinicId, context.sex, context.date_of_birth, context.configuration_version],
         );
         if (!analytes.length) throw Object.assign(new Error("This test has no analyte/result fields configured."), { code: "TEST_RESULT_SETUP_MISSING" });
         const byId = new Map(analytes.map((analyte) => [analyte.id, analyte]));
@@ -394,8 +417,8 @@ export function createTechnologistRouter({ client }) {
         const [target] = await tx.unsafe(
           `select count(*)::integer as total from public.request_items ri
             where ri.request_id = $1 and ri.clinic_id = $2
-              and (($3 = 'processing' and ri.status <> 'cancelled')
-                or ($3 = 'correction' and ri.status in ('returned', 'for_recollection', 'drafted')))`,
+              and (($3 = 'processing' and ri.status not in ('cancelled', 'for_recollection'))
+                or ($3 = 'correction' and ri.status in ('returned', 'drafted')))` ,
           [request.id, req.user.clinicId, request.status],
         );
         const drafts = await tx.unsafe(
@@ -419,7 +442,8 @@ export function createTechnologistRouter({ client }) {
                         where btrim(coalesce(rows.value ->> columns.label, '')) = ''))
                   ))::integer as incomplete_structured_count
              from public.request_items ri
-             join public.test_analytes a on a.test_id = ri.test_id and a.clinic_id = ri.clinic_id and a.is_required = true
+             join public.test_analytes a on a.test_id = ri.test_id and a.clinic_id = ri.clinic_id
+                  and a.configuration_version = ri.configuration_version and a.is_required = true
              left join lateral (select id from public.result_submissions rs
                                  where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
                                  order by revision_number desc limit 1) latest on true

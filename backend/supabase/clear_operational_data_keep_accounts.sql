@@ -16,6 +16,7 @@ delete from public.specimen_request_items;
 delete from public.specimens;
 
 delete from public.invoices;
+delete from public.payment_refunds;
 delete from public.payments;
 delete from public.request_status_history;
 delete from public.request_items;
@@ -30,6 +31,7 @@ delete from public.reference_ranges;
 delete from public.test_analytes;
 delete from public.test_specimen_requirements;
 delete from public.test_category_memberships;
+delete from public.test_configuration_versions;
 delete from public.test_catalog;
 delete from public.test_categories;
 

@@ -46,22 +46,26 @@ export function TechnologistProvider({ children, onNavigate }) {
       const requestRows = (queueResponse.data ?? []).map((row) => {
         const requestSpecimens = rawSpecimens.filter((specimen) => specimen.requestNumber === row.requestNumber)
         const linkedTests = new Map()
-        requestSpecimens.forEach((specimen) => (specimen.tests ?? []).forEach((link) => {
-          const key = `${link.id}:${specimen.specimenType}`
-          if (linkedTests.has(key)) return
-          const catalogTest = catalogTests.find((test) => test.id === link.testId)
-          linkedTests.set(key, {
-            id: link.id, requestItemId: link.id, testId: link.testId, name: link.testName,
-            category: link.category ?? catalogTest?.categoryName ?? '—', specimenType: specimen.specimenType,
-            latestResult: link.latestResult,
-            fields: (catalogTest?.analytes ?? []).map((analyte) => ({
-              key: `${link.testId}:${analyte.key}`, analyteId: analyte.id, label: analyte.label,
-              valueType: analyte.valueType, options: analyte.options ?? [], unit: analyte.unit ?? '',
-              range: analyte.lowerLimit != null || analyte.upperLimit != null ? `${analyte.lowerLimit ?? '—'} - ${analyte.upperLimit ?? '—'}` : '—',
-              required: analyte.isRequired !== false,
-            })),
+        requestSpecimens.forEach((specimen) => {
+          if (['rejected', 'for_recollection'].includes(String(specimen.status ?? '').toLowerCase())) return
+          ;(specimen.tests ?? []).forEach((link) => {
+            const key = `${link.id}:${specimen.specimenType}`
+            if (linkedTests.has(key)) return
+            const catalogTest = catalogTests.find((test) => test.id === link.testId)
+            const analytes = link.analytes?.length ? link.analytes : catalogTest?.analytes ?? []
+            linkedTests.set(key, {
+              id: link.id, requestItemId: link.id, testId: link.testId, name: link.testName,
+              category: link.category ?? catalogTest?.categoryName ?? '—', specimenType: specimen.specimenType,
+              latestResult: link.latestResult,
+              fields: analytes.map((analyte) => ({
+                key: `${link.testId}:${analyte.key}`, analyteId: analyte.id, label: analyte.label,
+                valueType: analyte.valueType ?? analyte.value_type, options: analyte.options ?? [], unit: analyte.resultUnit ?? analyte.unit ?? '',
+                range: analyte.lowerLimit != null || analyte.upperLimit != null ? `${analyte.lowerLimit ?? '—'} - ${analyte.upperLimit ?? '—'}` : '—',
+                required: analyte.isRequired !== false,
+              })),
+            })
           })
-        }))
+        })
         const tests = [...linkedTests.values()]
         return {
           ...row, backendId: row.id, id: row.requestNumber, patient: row.patientName,

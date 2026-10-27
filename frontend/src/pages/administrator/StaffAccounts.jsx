@@ -103,6 +103,29 @@ export default function StaffAccounts({ currentUserId }) {
       setDialog({ type: 'view', person: result.data })
     } catch (error) { setDialog({ type: 'error', message: error.message }) }
   }
+  async function openAssignments(person) {
+    setDialog({ type: 'assignments-loading', person })
+    try {
+      const { data } = await api.staff.assignments(person.id)
+      setDialog({ type: 'assignments', person, data, selected: {} })
+    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+  }
+  async function reassignRequest(request) {
+    const toStaffId = dialog?.selected?.[request.id]
+    if (!toStaffId) return
+    try {
+      await api.administrator.reassignWork(request.id, {
+        role: dialog.data.role,
+        fromStaffId: dialog.person.id,
+        toStaffId,
+      })
+      const { data } = await api.staff.assignments(dialog.person.id)
+      setDialog((current) => ({ ...current, data, selected: {} }))
+      await refresh()
+    } catch (error) {
+      setDialog((current) => ({ ...current, error: error.message || 'Unable to reassign this work.' }))
+    }
+  }
   async function openEdit(person) {
     setDialog({ type: 'loading', title: `Loading ${displayName(person)}` })
     try {
@@ -255,7 +278,7 @@ export default function StaffAccounts({ currentUserId }) {
             <td className="admin-table__primary">{displayName(person)}<span className="admin-table__secondary">{person.email}</span></td>
             <td>{person.post}</td><td>{formatDateTime(person.lastSignIn)}</td>
             <td><span className={`admin-badge ${person.status === 'Active' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{person.status}</span></td>
-            <td><div className="staff-accounts__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openView(person)}>View</button><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openEdit(person)}>Edit</button>{person.id === currentUserId ? <span className="staff-accounts__own-account">Own account</span> : <button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>}{person.pendingActivation && person.id !== currentUserId && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</div></td>
+            <td><div className="staff-accounts__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openView(person)}>View</button><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openEdit(person)}>Edit</button>{['medical_technologist', 'pathologist'].includes(person.role) && <button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openAssignments(person)}>Work</button>}{person.id === currentUserId ? <span className="staff-accounts__own-account">Own account</span> : <button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>}{person.pendingActivation && person.id !== currentUserId && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</div></td>
           </tr>)}
           {staff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
@@ -344,6 +367,15 @@ export default function StaffAccounts({ currentUserId }) {
       {dialog?.type === 'loading' && <AdminDialog title={dialog.title} onClose={() => setDialog(null)} size="small"><p>Loading account details…</p></AdminDialog>}
       {dialog?.type === 'view' && <AdminDialog title="Staff account details" onClose={() => setDialog(null)} size="medium"><dl className="staff-accounts__details"><div><dt>Name</dt><dd>{displayName({ firstName: dialog.person.firstName, middleName: dialog.person.middleName, surname: dialog.person.lastName })}</dd></div><div><dt>Username</dt><dd>{dialog.person.username}</dd></div><div><dt>Role</dt><dd>{dialog.person.role.replaceAll('_', ' ')}</dd></div><div><dt>Email</dt><dd>{dialog.person.email}</dd></div><div><dt>Date of birth</dt><dd>{String(dialog.person.dateOfBirth ?? '').slice(0, 10) || 'Not provided'}</dd></div><div><dt>Contact number</dt><dd>{dialog.person.phone || 'Not provided'}</dd></div><div><dt>Country</dt><dd>{dialog.person.country || 'Not provided'}</dd></div><div><dt>City</dt><dd>{dialog.person.city || 'Not provided'}</dd></div><div><dt>House number</dt><dd>{dialog.person.houseNumber || 'Not provided'}</dd></div><div><dt>Street</dt><dd>{dialog.person.street || 'Not provided'}</dd></div><div><dt>Account status</dt><dd>{dialog.person.isActive ? 'Active' : 'Inactive'}</dd></div><div><dt>Last sign in</dt><dd>{formatDateTime(dialog.person.lastSignInAt)}</dd></div></dl><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button></div></AdminDialog>}
       {dialog?.type === 'updated' && <AdminDialog title="Account updated" onClose={() => setDialog(null)} size="small"><p>Staff account details were updated successfully.</p>{dialog.roleChanged && <p role="status">Role changed to <strong>{dialog.role.replaceAll('_', ' ')}</strong>. The new username is <strong>{dialog.username}</strong>; provide it to the account owner for their next sign-in.</p>}<div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Done</button></div></AdminDialog>}
+      {dialog?.type === 'assignments-loading' && <AdminDialog title={`Loading assigned work for ${displayName(dialog.person)}`} onClose={() => setDialog(null)} size="small"><p>Loading active requests…</p></AdminDialog>}
+      {dialog?.type === 'assignments' && <AdminDialog title={`Active work · ${displayName(dialog.person)}`} description="Transfer each active request to another active staff member of the same role. Transfers are recorded in the audit log." onClose={() => setDialog(null)} size="large">
+        {dialog.error && <p role="alert">{dialog.error}</p>}
+        {!dialog.data.assignments.length ? <p>This staff member has no active assigned requests.</p> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Request</th><th>Patient</th><th>Status</th><th>Transfer to</th><th>Action</th></tr></thead><tbody>
+          {dialog.data.assignments.map((request) => <tr key={request.id}><td>{request.requestNumber}</td><td>{request.patientName} · {request.pid}</td><td>{request.status.replaceAll('_', ' ')}</td><td><select aria-label={`Reassign ${request.requestNumber}`} value={dialog.selected[request.id] ?? ''} onChange={(event) => setDialog((current) => ({ ...current, selected: { ...current.selected, [request.id]: event.target.value } }))}><option value="">Select staff member</option>{dialog.data.reassignees.map((staff) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}</select></td><td><button className="admin-button admin-button--small" type="button" disabled={!dialog.selected[request.id]} onClick={() => reassignRequest(request)}>Transfer</button></td></tr>)}
+        </tbody></table></div>}
+        {!dialog.data.reassignees.length && dialog.data.assignments.length > 0 && <p role="status">No other active qualified staff are available to receive this work.</p>}
+        <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Close</button></div>
+      </AdminDialog>}
       {(dialog?.type === 'created' || dialog?.type === 'activation-reissued') && <AdminDialog title={dialog.type === 'created' ? 'Staff account created' : 'Activation code reissued'} onClose={() => setDialog(null)} size="small"><p>These one-time activation details are shown only now. The code expires in 24 hours and can only be used once.</p><p>Username: <strong>{dialog.username}</strong></p><p>Activation code: <strong>{dialog.activationCode}</strong></p><p className={`staff-accounts__email-status staff-accounts__email-status--${activationDelivery.tone}`} role={activationDelivery.tone === 'error' ? 'alert' : 'status'}>{activationDelivery.text}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => { setDialog(null); setPage(1) }}>Done</button></div></AdminDialog>}
       {dialog?.type === 'email-test' && <AdminDialog title="Test email delivery" description="Send a message through the same mail relay used for activation codes and receipts." onClose={() => setDialog(null)} size="small">
         <label className="admin-dialog__field" htmlFor="test-email-to">Recipient

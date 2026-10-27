@@ -145,6 +145,12 @@ ${testRows.join(",\n")}
       on category.clinic_id = target_clinic_id and category.name = seed.category_name
   on conflict (clinic_id, code) do nothing;
 
+  insert into public.test_configuration_versions (clinic_id, test_id, version_number)
+  select target_clinic_id, t.id, t.current_configuration_version
+    from public.test_catalog t
+   where t.clinic_id = target_clinic_id and t.code like 'STD-%'
+  on conflict (test_id, version_number) do nothing;
+
   with seed_memberships(test_code, category_name) as (
     values
 ${membershipRows.join(",\n")}\n  )
@@ -159,13 +165,14 @@ ${membershipRows.join(",\n")}\n  )
     values
 ${specimenRows.join(",\n")}\n  )
   insert into public.test_specimen_requirements
-    (clinic_id, test_id, specimen_type, collection_instructions, is_required)
-  select target_clinic_id, t.id, seed.specimen_type, seed.collection_instructions, true
+    (clinic_id, test_id, configuration_version, specimen_type, collection_instructions, is_required)
+  select target_clinic_id, t.id, t.current_configuration_version, seed.specimen_type, seed.collection_instructions, true
     from seed_specimens seed
     join public.test_catalog t on t.clinic_id = target_clinic_id and t.code = seed.test_code
    where not exists (select 1 from public.test_specimen_requirements existing
-                      where existing.test_id = t.id and existing.clinic_id = t.clinic_id)
-  on conflict (test_id, specimen_type) do nothing;
+                      where existing.test_id = t.id and existing.clinic_id = t.clinic_id
+                        and existing.configuration_version = t.current_configuration_version)
+  on conflict (test_id, configuration_version, specimen_type) do nothing;
 end
 $seed$;
 

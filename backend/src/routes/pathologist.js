@@ -123,7 +123,7 @@ export function createPathologistRouter({ client }) {
         if (!request) throw Object.assign(new Error("Request was not found in your assigned results."), { code: "REQUEST_NOT_FOUND" });
         if (request.status !== "for_validation") throw Object.assign(new Error("Only requests awaiting validation can be reviewed."), { code: "INVALID_REQUEST_STATUS" });
         const submissions = await tx.unsafe(
-          `select ri.id as item_id, rs.id as submission_id, rs.specimen_id, ri.test_id
+          `select ri.id as item_id, rs.id as submission_id, rs.specimen_id, ri.test_id, ri.configuration_version
              from public.request_items ri
              join lateral (select rs.* from public.result_submissions rs
                            where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
@@ -156,8 +156,9 @@ export function createPathologistRouter({ client }) {
             if (decision.requiresRetest) {
               const requirements = await tx.unsafe(
                 `select sr.specimen_type from public.test_specimen_requirements sr
-                  where sr.test_id = $1 and sr.clinic_id = $2 and sr.is_required = true order by sr.specimen_type`,
-                [submission.test_id, req.user.clinicId],
+                  where sr.test_id = $1 and sr.clinic_id = $2 and sr.configuration_version = $3
+                    and sr.is_required = true order by sr.specimen_type`,
+                [submission.test_id, req.user.clinicId, submission.configuration_version],
               );
               for (const requirement of requirements) {
                 const [oldSpecimen] = await tx.unsafe(

@@ -165,6 +165,11 @@ function getNumericChartRows(fields, values) {
   })
 }
 
+function getSpecimenTests(request, specimen) {
+  if (!request || !specimen) return []
+  return request.tests.filter((test) => test.specimenType === specimen.type && specimen.linkedItemIds.includes(test.requestItemId))
+}
+
 export default function ResultsInProgress() {
   const { requests, specimens, results, saveDraft, submitRequest, loadError } = useTechnologist()
   const [filter, setFilter] = useState('all')
@@ -202,9 +207,7 @@ export default function ResultsInProgress() {
   }, [visibleResults, specimens, results])
 
   const selectedResult = visibleResults.find((result) => result.specimenLabel === selectedLabel) ?? visibleResults[0]
-  const selectedTests = selectedResult
-    ? selectedResult.request.tests.filter((test) => test.specimenType === selectedResult.specimen.type)
-    : []
+  const selectedTests = selectedResult ? getSpecimenTests(selectedResult.request, selectedResult.specimen) : []
   const testsMissingFields = selectedResult?.request.tests.filter((test) => test.fields.length === 0) ?? []
   const hasMissingFields = testsMissingFields.length > 0
   const values = selectedResult
@@ -286,7 +289,7 @@ export default function ResultsInProgress() {
         ? values
         : draftValues[specimen.label] ?? specimenResult.values
       valuesBySpecimen[specimen.label] = specimenValues
-      const tests = selectedResult.request.tests.filter((test) => test.specimenType === specimen.type)
+      const tests = getSpecimenTests(selectedResult.request, specimen)
       tests.flatMap((test) => test.fields).forEach((field) => {
         if (!isFieldComplete(field, specimenValues[field.key])) missingResults.push(`${specimen.type}: ${field.label}`)
       })
@@ -367,7 +370,7 @@ export default function ResultsInProgress() {
                   <span className={`medtech-result-request-group__status${group.complete ? ' is-complete' : ''}`}>{group.complete ? 'Tests complete' : 'Tests in progress'}</span>
                 </div>
                 {group.items.map((result) => {
-              const tests = result.request.tests.filter((test) => test.specimenType === result.specimen.type)
+              const tests = getSpecimenTests(result.request, result.specimen)
               const testSummary = tests.slice(0, 2).map((test) => test.name).join(', ')
               const moreTests = tests.length > 2 ? ` +${tests.length - 2}` : ''
               return (

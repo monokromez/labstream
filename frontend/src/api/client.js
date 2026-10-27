@@ -84,7 +84,7 @@ export const api = {
     list: (filters) => request(`/api/patients${queryString(filters)}`),
   },
   cashier: {
-    dashboard: () => request('/api/cashier/dashboard'),
+    dashboard: (filters) => request(`/api/cashier/dashboard${queryString(filters)}`),
     registerPatient: (patient) => request('/api/cashier/patients', { method: 'POST', body: patient }),
     issuePatientPortalActivation: (patientId) => request(`/api/cashier/patients/${patientId}/portal-activation`, { method: 'POST', body: {} }),
     issuePatientPasswordReset: (patientId, identityVerified) => request(`/api/cashier/patients/${patientId}/password-reset`, { method: 'POST', body: { identityVerified } }),
@@ -96,6 +96,7 @@ export const api = {
     processPayment: (requestId) => request(`/api/cashier/requests/${requestId}/payment`, { method: 'POST', body: {} }),
     cancelRequest: (requestId, reason) => request(`/api/cashier/requests/${requestId}/cancel`, { method: 'PATCH', body: { reason } }),
     invoices: (filters) => request(`/api/cashier/invoices${queryString(filters)}`),
+    correctInvoice: (invoiceId, reason) => request(`/api/cashier/invoices/${invoiceId}/correct`, { method: 'POST', body: { reason } }),
     emailInvoiceReceipt: (invoiceId) => request(`/api/cashier/invoices/${invoiceId}/receipt-email`, { method: 'POST', body: {} }),
   },
   staff: {
@@ -105,6 +106,7 @@ export const api = {
     update: (staffId, staff) => request(`/api/admin/staff/${staffId}`, { method: 'PATCH', body: staff }),
     reissueActivation: (staffId) => request(`/api/admin/staff/${staffId}/activation`, { method: 'POST', body: {} }),
     setActive: (staffId, isActive) => request(`/api/admin/staff/${staffId}/status`, { method: 'PATCH', body: { isActive } }),
+    assignments: (staffId) => request(`/api/admin/staff/${staffId}/assignments`),
   },
   administrator: {
     dashboard: (filters) => request(`/api/admin/dashboard/summary${queryString(filters)}`),
@@ -113,11 +115,14 @@ export const api = {
     auditLogs: (filters) => request(`/api/admin/audit-logs${queryString(filters)}`),
     sendTestEmail: (to) => request('/api/admin/email-test', { method: 'POST', body: { to } }),
     catalog: (filters) => request(`/api/admin/catalog${queryString(filters)}`),
+    reassignWork: (requestId, assignment) => request(`/api/admin/requests/${requestId}/reassign`, { method: 'PATCH', body: assignment }),
     addCategory: (category) => request('/api/admin/categories', { method: 'POST', body: category }),
+    setCategoryActive: (categoryId, isActive) => request(`/api/admin/categories/${categoryId}/status`, { method: 'PATCH', body: { isActive } }),
     removeCategory: (categoryId, testActions) => request(`/api/admin/categories/${categoryId}`, { method: 'DELETE', body: { testActions } }),
     addTest: (test) => request('/api/admin/tests', { method: 'POST', body: test }),
-    testConfiguration: (testId) => request(`/api/admin/tests/${testId}/configuration`),
+    testConfiguration: (testId, version) => request(`/api/admin/tests/${testId}/configuration${queryString({ version })}`),
     updateTest: (testId, updates) => request(`/api/admin/tests/${testId}`, { method: 'PATCH', body: updates }),
+    setTestAvailable: (testId, isAvailable) => request(`/api/admin/tests/${testId}/status`, { method: 'PATCH', body: { isAvailable } }),
     removeTest: (testId) => request(`/api/admin/tests/${testId}`, { method: 'DELETE' }),
     referenceRanges: (filters) => request(`/api/admin/reference-ranges${queryString(filters)}`),
     addReferenceRange: (range) => request('/api/admin/reference-ranges', { method: 'POST', body: range }),
@@ -141,6 +146,7 @@ export const api = {
   },
   patient: {
     results: (filters) => request(`/api/patient/results${queryString(filters)}`),
+    updateProfile: (profile) => request('/api/patient/profile', { method: 'PATCH', body: profile }),
     downloadResultPdf: (requestId) => download(`/api/patient/results/${encodeURIComponent(requestId)}/pdf`),
     testHistory: (filters) => request(`/api/patient/test-history${queryString(filters)}`),
   },

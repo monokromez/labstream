@@ -2,15 +2,19 @@ import { useState } from 'react'
 import './CashierDashboard.css'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
+import SearchInput from '../../components/data/SearchInput.jsx'
 import { api } from '../../api/client.js'
 import useApiResource from '../../api/useApiResource.js'
-import { formatDateTime } from '../../utils/dateFormat.js'
 
 const ROWS_PER_PAGE = 10
 
 export default function CashierDashboard() {
   const [currentPage, setCurrentPage] = useState(1)
-  const { result, loading, error } = useApiResource(() => api.cashier.dashboard(), [])
+  const [search, setSearch] = useState('')
+  const { result, loading, error } = useApiResource(
+    () => api.cashier.dashboard({ page: currentPage, pageSize: ROWS_PER_PAGE, q: search }),
+    [currentPage, search],
+  )
   const report = result?.data
   const summaryData = report?.summary ?? {}
   const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' })
@@ -29,10 +33,7 @@ export default function CashierDashboard() {
     status: request.status.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
     requestedAt: request.requestedAt,
   }))
-  const visibleRequests = recentRequests.slice(
-    (currentPage - 1) * ROWS_PER_PAGE,
-    currentPage * ROWS_PER_PAGE,
-  )
+  const visibleRequests = recentRequests
 
   return (
     <section className="cashier-dashboard" aria-label="Cashier dashboard">
@@ -48,7 +49,8 @@ export default function CashierDashboard() {
       </div>
 
       <section className="cashier-dashboard__recent">
-        <header className="cashier-dashboard__table-heading"><div><h2>Recent Requests</h2><p>Latest patient requests and payment progress.</p></div><span>{recentRequests.length} entries</span></header>
+        <header className="cashier-dashboard__table-heading"><div><h2>Recent Requests</h2><p>Latest patient requests and payment progress.</p></div><span>{result?.pagination?.total ?? 0} entries</span></header>
+        <SearchInput className="cashier-dashboard__search" label="Search requests" placeholder="Request, patient, PID, or test" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1) }} />
 
         <div className="cashier-dashboard__table-wrap">
           <table className="cashier-dashboard__table">
@@ -87,9 +89,9 @@ export default function CashierDashboard() {
             </tbody>
           </table>
           <TablePagination
-            currentPage={currentPage}
+            currentPage={result?.pagination?.page ?? currentPage}
             pageSize={ROWS_PER_PAGE}
-            totalItems={recentRequests.length}
+            totalItems={result?.pagination?.total ?? 0}
             onPageChange={setCurrentPage}
           />
         </div>

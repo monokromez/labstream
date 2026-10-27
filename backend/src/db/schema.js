@@ -61,20 +61,25 @@ export const testCategories = pgTable("test_categories", {
 export const testCatalog = pgTable("test_catalog", {
   id: id(), clinicId: uuid("clinic_id").notNull(), categoryId: uuid("category_id").notNull(), code: varchar("code", { length: 40 }).notNull(),
   name: varchar("name", { length: 160 }).notNull(), description: text("description"), price: numeric("price", { precision: 10, scale: 2 }).notNull(),
-  turnaroundMinutes: integer("turnaround_minutes"), isAvailable: boolean("is_available").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
+  turnaroundMinutes: integer("turnaround_minutes"), isAvailable: boolean("is_available").notNull().default(true),
+  currentConfigurationVersion: integer("current_configuration_version").notNull().default(1), createdAt: createdAt(), updatedAt: updatedAt(),
+});
+export const testConfigurationVersions = pgTable("test_configuration_versions", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(),
+  versionNumber: integer("version_number").notNull(), createdBy: uuid("created_by"), createdAt: createdAt(),
 });
 export const testCategoryMemberships = pgTable("test_category_memberships", {
   clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), categoryId: uuid("category_id").notNull(),
   createdAt: createdAt(),
 });
 export const testSpecimenRequirements = pgTable("test_specimen_requirements", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), specimenType: varchar("specimen_type", { length: 100 }).notNull(),
+  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), configurationVersion: integer("configuration_version").notNull().default(1), specimenType: varchar("specimen_type", { length: 100 }).notNull(),
   collectionInstructions: text("collection_instructions"), minimumQuantity: numeric("minimum_quantity", { precision: 10, scale: 2 }),
   quantityUnit: varchar("quantity_unit", { length: 40 }), isRequired: boolean("is_required").notNull().default(true),
   createdAt: createdAt(), updatedAt: updatedAt(),
 });
 export const testAnalytes = pgTable("test_analytes", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), key: varchar("key", { length: 80 }).notNull(),
+  id: id(), clinicId: uuid("clinic_id").notNull(), testId: uuid("test_id").notNull(), configurationVersion: integer("configuration_version").notNull().default(1), key: varchar("key", { length: 80 }).notNull(),
   label: varchar("label", { length: 160 }).notNull(), valueType: resultValueType("value_type").notNull(),
   options: jsonb("options").notNull().default([]), unit: varchar("unit", { length: 40 }), sortOrder: integer("sort_order").notNull().default(0),
   isRequired: boolean("is_required").notNull().default(true), createdAt: createdAt(), updatedAt: updatedAt(),
@@ -98,7 +103,7 @@ export const testRequests = pgTable("test_requests", {
   cancellationReason: text("cancellation_reason"), createdAt: createdAt(), updatedAt: updatedAt(),
 }, (table) => [uniqueIndex("test_requests_queue_ticket_uidx").on(table.queueTicket)]);
 export const requestItems = pgTable("request_items", {
-  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), testId: uuid("test_id").notNull(),
+  id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), testId: uuid("test_id").notNull(), configurationVersion: integer("configuration_version").notNull().default(1),
   testCodeSnapshot: varchar("test_code_snapshot", { length: 40 }).notNull(), testNameSnapshot: varchar("test_name_snapshot", { length: 160 }).notNull(),
   categoryNameSnapshot: varchar("category_name_snapshot", { length: 120 }).notNull(), priceSnapshot: numeric("price_snapshot", { precision: 10, scale: 2 }).notNull(),
   status: requestItemStatus("status").notNull().default("awaiting_specimen"), createdAt: createdAt(), updatedAt: updatedAt(),
@@ -108,8 +113,14 @@ export const payments = pgTable("payments", {
   method: paymentMethod("method").notNull().default("cash"), recordedBy: uuid("recorded_by").notNull(), paidAt: timestamp("paid_at", { withTimezone: true }).notNull().defaultNow(),
   voidedAt: timestamp("voided_at", { withTimezone: true }), voidedBy: uuid("voided_by"), voidReason: text("void_reason"), createdAt: createdAt(),
 });
+export const paymentRefunds = pgTable("payment_refunds", {
+  id: id(), clinicId: uuid("clinic_id").notNull(), paymentId: uuid("payment_id").notNull(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(), reason: text("reason").notNull(),
+  recordedBy: uuid("recorded_by").notNull(), recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+});
 export const invoices = pgTable("invoices", {
   id: id(), clinicId: uuid("clinic_id").notNull(), paymentId: uuid("payment_id").notNull(), invoiceNumber: varchar("invoice_number", { length: 64 }).notNull(), issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  correctedAt: timestamp("corrected_at", { withTimezone: true }), correctedBy: uuid("corrected_by"), correctionReason: text("correction_reason"), correctedInvoiceId: uuid("corrected_invoice_id"),
 });
 export const specimens = pgTable("specimens", {
   id: id(), clinicId: uuid("clinic_id").notNull(), requestId: uuid("request_id").notNull(), specimenType: varchar("specimen_type", { length: 100 }).notNull(),

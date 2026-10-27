@@ -113,11 +113,26 @@ create table public.test_catalog (
   price numeric(10,2) not null check (price >= 0),
   turnaround_minutes integer check (turnaround_minutes is null or turnaround_minutes > 0),
   is_available boolean not null default true,
+  current_configuration_version integer not null default 1,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id), unique (clinic_id, code),
   foreign key (category_id, clinic_id) references public.test_categories(id, clinic_id) on delete restrict
 );
 create index test_catalog_category_idx on public.test_catalog(clinic_id, category_id, is_available);
+
+create table public.test_configuration_versions (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  test_id uuid not null,
+  version_number integer not null,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  unique (test_id, version_number),
+  unique (test_id, version_number, clinic_id),
+  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  foreign key (created_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  check (version_number > 0)
+);
 
 -- A canonical billable test may be browsed under multiple categories. The
 -- category_id above remains its primary category for historical snapshots.
@@ -136,12 +151,14 @@ create index test_category_memberships_category_idx on public.test_category_memb
 create table public.test_specimen_requirements (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  test_id uuid not null, specimen_type varchar(100) not null,
+  test_id uuid not null, configuration_version integer not null default 1, specimen_type varchar(100) not null,
   collection_instructions text, minimum_quantity numeric(10,2), quantity_unit varchar(40),
   is_required boolean not null default true,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (test_id, specimen_type),
+  unique (test_id, configuration_version, specimen_type),
   foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  foreign key (test_id, configuration_version, clinic_id)
+    references public.test_configuration_versions(test_id, version_number, clinic_id) on delete restrict,
   check (minimum_quantity is null or minimum_quantity > 0)
 );
 create index test_specimen_requirements_test_idx on public.test_specimen_requirements(clinic_id, test_id);
@@ -149,15 +166,17 @@ create index test_specimen_requirements_test_idx on public.test_specimen_require
 create table public.test_analytes (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  test_id uuid not null,
+  test_id uuid not null, configuration_version integer not null default 1,
   key varchar(80) not null, label varchar(160) not null,
   value_type public.result_value_type not null,
   options jsonb not null default '[]'::jsonb,
   unit varchar(40), sort_order integer not null default 0,
   is_required boolean not null default true,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
-  unique (id, clinic_id), unique (test_id, key),
+  unique (id, clinic_id), unique (test_id, configuration_version, key),
   foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  foreign key (test_id, configuration_version, clinic_id)
+    references public.test_configuration_versions(test_id, version_number, clinic_id) on delete restrict,
   check (jsonb_typeof(options) = 'array')
 );
 
@@ -237,7 +256,7 @@ create index test_requests_queue_order_idx
 create table public.request_items (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  request_id uuid not null, test_id uuid not null,
+  request_id uuid not null, test_id uuid not null, configuration_version integer not null default 1,
   test_code_snapshot varchar(40) not null, test_name_snapshot varchar(160) not null,
   category_name_snapshot varchar(120) not null,
   price_snapshot numeric(10,2) not null check (price_snapshot >= 0),
@@ -245,7 +264,9 @@ create table public.request_items (
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id), unique (id, request_id, clinic_id),
   foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
-  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict
+  foreign key (test_id, clinic_id) references public.test_catalog(id, clinic_id) on delete restrict,
+  foreign key (test_id, configuration_version, clinic_id)
+    references public.test_configuration_versions(test_id, version_number, clinic_id) on delete restrict
 );
 create index request_items_request_idx on public.request_items(request_id, status);
 
@@ -267,20 +288,42 @@ create table public.payments (
   recorded_by uuid not null, paid_at timestamptz not null default now(),
   voided_at timestamptz, voided_by uuid, void_reason text,
   created_at timestamptz not null default now(),
+  unique (id, clinic_id),
   foreign key (request_id, clinic_id) references public.test_requests(id, clinic_id) on delete restrict,
   foreign key (recorded_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
   foreign key (voided_by, clinic_id) references public.users(id, clinic_id) on delete restrict
 );
 create index payments_date_idx on public.payments(clinic_id, paid_at desc);
 
+create table public.payment_refunds (
+  id uuid primary key default gen_random_uuid(),
+  clinic_id uuid not null references public.clinics(id) on delete restrict,
+  payment_id uuid not null,
+  amount numeric(10,2) not null check (amount > 0),
+  reason text not null,
+  recorded_by uuid not null,
+  recorded_at timestamptz not null default now(),
+  foreign key (payment_id, clinic_id) references public.payments(id, clinic_id) on delete restrict,
+  foreign key (recorded_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  unique (payment_id)
+);
+
 create table public.invoices (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics(id) on delete restrict,
-  payment_id uuid not null unique references public.payments(id) on delete restrict,
+  payment_id uuid not null references public.payments(id) on delete restrict,
   invoice_number varchar(64) not null,
   issued_at timestamptz not null default now(),
+  corrected_at timestamptz,
+  corrected_by uuid,
+  correction_reason text,
+  corrected_invoice_id uuid,
+  unique (id, clinic_id),
+  foreign key (corrected_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (corrected_invoice_id, clinic_id) references public.invoices(id, clinic_id) on delete restrict,
   unique (clinic_id, invoice_number)
 );
+create index invoices_payment_idx on public.invoices(clinic_id, payment_id, issued_at desc);
 
 create table public.specimens (
   id uuid primary key default gen_random_uuid(),
@@ -488,6 +531,7 @@ alter table public.account_tokens enable row level security;
 alter table public.patients enable row level security;
 alter table public.test_categories enable row level security;
 alter table public.test_catalog enable row level security;
+alter table public.test_configuration_versions enable row level security;
 alter table public.test_category_memberships enable row level security;
 alter table public.test_specimen_requirements enable row level security;
 alter table public.test_analytes enable row level security;
@@ -495,6 +539,7 @@ alter table public.reference_ranges enable row level security;
 alter table public.test_requests enable row level security;
 alter table public.request_items enable row level security;
 alter table public.payments enable row level security;
+alter table public.payment_refunds enable row level security;
 alter table public.invoices enable row level security;
 alter table public.specimens enable row level security;
 alter table public.specimen_request_items enable row level security;

@@ -88,6 +88,10 @@ export function createCashierRouter({ client }) {
 
   router.get("/dashboard", allowRoles("cashier"), async (req, res, next) => {
     try {
+      const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
+      const query = String(req.query.q ?? "").trim();
+      if (query.length > 100) return res.status(400).json({ error: "INVALID_SEARCH", message: "Request search cannot exceed 100 characters." });
       const [summary] = await client.unsafe(
         `select count(*) filter (where r.requested_at::date = current_date)::integer as requests_today,
                 count(*) filter (where r.status = 'awaiting_payment')::integer as unpaid_requests,
@@ -97,6 +101,19 @@ export function createCashierRouter({ client }) {
            from public.test_requests r where r.clinic_id = $1`
         , [req.user.clinicId],
       );
+      const [count] = await client.unsafe(
+        `select count(*)::integer as total
+           from public.test_requests r
+           join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+          where r.clinic_id = $1 and ($2 = '' or r.request_number ilike '%' || $2 || '%'
+            or p.pid ilike '%' || $2 || '%' or p.first_name ilike '%' || $2 || '%'
+            or p.last_name ilike '%' || $2 || '%'
+            or exists (select 1 from public.request_items ri where ri.request_id = r.id and ri.clinic_id = r.clinic_id
+              and ri.test_name_snapshot ilike '%' || $2 || '%'))`,
+        [req.user.clinicId, query],
+      );
+      const totalPages = Math.ceil(count.total / pageSize);
+      const page = Math.min(requestedPage, Math.max(1, totalPages));
       const recent = await client.unsafe(
         `select r.id, r.request_number, r.status, r.total_amount, r.requested_at,
                 p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
@@ -104,11 +121,15 @@ export function createCashierRouter({ client }) {
                 exists(select 1 from public.payments pay where pay.request_id = r.id and pay.clinic_id = r.clinic_id and pay.voided_at is null) as is_paid
            from public.test_requests r join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            left join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
-          where r.clinic_id = $1
-          group by r.id, p.id order by r.requested_at desc limit 100`,
-        [req.user.clinicId],
+          where r.clinic_id = $1 and ($2 = '' or r.request_number ilike '%' || $2 || '%'
+            or p.pid ilike '%' || $2 || '%' or p.first_name ilike '%' || $2 || '%'
+            or p.last_name ilike '%' || $2 || '%'
+            or exists (select 1 from public.request_items match_item where match_item.request_id = r.id
+              and match_item.clinic_id = r.clinic_id and match_item.test_name_snapshot ilike '%' || $2 || '%'))
+          group by r.id, p.id order by r.requested_at desc limit $3 offset $4`,
+        [req.user.clinicId, query, pageSize, (page - 1) * pageSize],
       );
-      return res.json({ data: { summary, recent } });
+      return res.json({ data: { summary, recent }, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) { return next(error); }
   });
 
@@ -285,9 +306,11 @@ export function createCashierRouter({ client }) {
         );
         if (existing) throw Object.assign(new Error("This patient already has an active request. Complete or cancel it before creating another."), { code: "REQUEST_ACTIVE" });
         const tests = await tx.unsafe(
-          `select t.id, t.code, t.name, t.price, c.name as category_name,
+          `select t.id, t.code, t.name, t.price, t.current_configuration_version,
+                  c.name as category_name,
                   exists(select 1 from public.test_specimen_requirements sr
-                          where sr.test_id = t.id and sr.clinic_id = t.clinic_id and sr.is_required = true) as has_specimen
+                          where sr.test_id = t.id and sr.clinic_id = t.clinic_id
+                            and sr.configuration_version = t.current_configuration_version and sr.is_required = true) as has_specimen
              from public.test_catalog t
              join public.test_categories c on c.id = t.category_id and c.clinic_id = t.clinic_id
             where t.clinic_id = $1 and t.id = any($2::uuid[])
@@ -310,9 +333,9 @@ export function createCashierRouter({ client }) {
         for (const test of tests) {
           await tx.unsafe(
             `insert into public.request_items
-              (clinic_id, request_id, test_id, test_code_snapshot, test_name_snapshot, category_name_snapshot, price_snapshot)
-             values ($1, $2, $3, $4, $5, $6, $7)`,
-            [req.user.clinicId, created.id, test.id, test.code, test.name, test.category_name, test.price],
+              (clinic_id, request_id, test_id, configuration_version, test_code_snapshot, test_name_snapshot, category_name_snapshot, price_snapshot)
+             values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [req.user.clinicId, created.id, test.id, test.current_configuration_version, test.code, test.name, test.category_name, test.price],
           );
         }
         await tx.unsafe(
@@ -337,14 +360,24 @@ export function createCashierRouter({ client }) {
 
   router.get("/queue", allowRoles("cashier"), async (req, res, next) => {
     try {
-      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
-      const offset = (page - 1) * pageSize;
+      const query = String(req.query.q ?? "").trim();
+      if (query.length > 100) return res.status(400).json({ error: "INVALID_SEARCH", message: "Queue search cannot exceed 100 characters." });
       const [count] = await client.unsafe(
-        `select count(*)::integer as total from public.test_requests r
-          where r.clinic_id = $1 and r.status = 'awaiting_payment'`,
-        [req.user.clinicId],
+        `select count(*)::integer as total, coalesce(sum(r.total_amount), 0)::numeric as amount_due
+           from public.test_requests r
+           join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+          where r.clinic_id = $1 and r.status = 'awaiting_payment'
+            and ($2 = '' or r.request_number ilike '%' || $2 || '%' or p.pid ilike '%' || $2 || '%'
+              or p.first_name ilike '%' || $2 || '%' or p.last_name ilike '%' || $2 || '%'
+              or exists (select 1 from public.request_items match_item where match_item.request_id = r.id
+                and match_item.clinic_id = r.clinic_id and match_item.test_name_snapshot ilike '%' || $2 || '%'))`,
+        [req.user.clinicId, query],
       );
+      const totalPages = Math.ceil(count.total / pageSize);
+      const page = Math.min(requestedPage, Math.max(1, totalPages));
+      const offset = (page - 1) * pageSize;
       const data = await client.unsafe(
         `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.queue_called_at, r.priority, r.total_amount, r.requested_at,
                 p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
@@ -357,11 +390,22 @@ export function createCashierRouter({ client }) {
            join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
           where r.clinic_id = $1 and r.status = 'awaiting_payment'
+            and ($4 = '' or r.request_number ilike '%' || $4 || '%' or p.pid ilike '%' || $4 || '%'
+              or p.first_name ilike '%' || $4 || '%' or p.last_name ilike '%' || $4 || '%'
+              or exists (select 1 from public.request_items match_item where match_item.request_id = r.id
+                and match_item.clinic_id = r.clinic_id and match_item.test_name_snapshot ilike '%' || $4 || '%'))
           group by r.id, p.id order by r.requested_at
           limit $2 offset $3`,
-        [req.user.clinicId, pageSize, offset],
+        [req.user.clinicId, pageSize, offset, query],
       );
-      return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
+      const [currentCall] = await client.unsafe(
+        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.queue_called_at, r.priority, r.total_amount,
+                p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name
+           from public.test_requests r join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+          where r.clinic_id = $1 and r.status = 'awaiting_payment' and r.queue_called_at is not null limit 1`,
+        [req.user.clinicId],
+      );
+      return res.json({ data, currentCall: currentCall ?? null, summary: { total: count.total, amountDue: count.amount_due }, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
       return next(error);
     }
@@ -462,7 +506,8 @@ export function createCashierRouter({ client }) {
         const requirements = await tx.unsafe(
           `select sr.specimen_type, string_agg(distinct sr.collection_instructions, E'\n') as instructions
              from public.request_items ri
-             join public.test_specimen_requirements sr on sr.test_id = ri.test_id and sr.clinic_id = ri.clinic_id and sr.is_required = true
+             join public.test_specimen_requirements sr on sr.test_id = ri.test_id and sr.clinic_id = ri.clinic_id
+                  and sr.configuration_version = ri.configuration_version and sr.is_required = true
             where ri.request_id = $1 and ri.clinic_id = $2
             group by sr.specimen_type order by sr.specimen_type`,
           [request.id, req.user.clinicId],
@@ -478,6 +523,7 @@ export function createCashierRouter({ client }) {
              select ri.clinic_id, ri.request_id, $3, ri.id
                from public.request_items ri
                join public.test_specimen_requirements sr on sr.test_id = ri.test_id and sr.clinic_id = ri.clinic_id
+                    and sr.configuration_version = ri.configuration_version
               where ri.request_id = $1 and ri.clinic_id = $2 and sr.specimen_type = $4 and sr.is_required = true
              on conflict do nothing`,
             [request.id, req.user.clinicId, specimen.id, requirement.specimen_type],
@@ -536,13 +582,40 @@ export function createCashierRouter({ client }) {
     try {
       const reason = String(req.body?.reason ?? "").trim();
       if (!reason) return res.status(400).json({ error: "CANCELLATION_REASON_REQUIRED" });
-      const updated = await client.begin(async (tx) => {
+      if (reason.length > 500) return res.status(400).json({ error: "CANCELLATION_REASON_TOO_LONG" });
+      const result = await client.begin(async (tx) => {
         const [request] = await tx.unsafe(
           `select id, status from public.test_requests where id = $1 and clinic_id = $2 for update`,
           [req.params.id, req.user.clinicId],
         );
         if (!request) throw Object.assign(new Error("Request was not found."), { code: "REQUEST_NOT_FOUND" });
-        if (request.status !== "awaiting_payment") throw Object.assign(new Error("Only unpaid requests can be cancelled. Paid requests require a separate void/refund workflow."), { code: "CANNOT_CANCEL_PAID_REQUEST" });
+        let paymentId = null;
+        let refundAmount = 0;
+        if (request.status === "paid") {
+          const [payment] = await tx.unsafe(
+            `select id, amount from public.payments
+              where request_id = $1 and clinic_id = $2 and voided_at is null
+              order by paid_at desc limit 1 for update`,
+            [request.id, req.user.clinicId],
+          );
+          if (!payment) throw Object.assign(new Error("This paid request has no active payment to refund or void."), { code: "NO_ACTIVE_PAYMENT" });
+          paymentId = payment.id;
+          refundAmount = Number(payment.amount);
+          if (refundAmount > 0) {
+            await tx.unsafe(
+              `insert into public.payment_refunds (clinic_id, payment_id, amount, reason, recorded_by)
+               values ($1, $2, $3, $4, $5)`,
+              [req.user.clinicId, payment.id, payment.amount, reason, req.user.sub],
+            );
+          }
+          await tx.unsafe(
+            `update public.payments set voided_at = now(), voided_by = $1, void_reason = $2
+              where id = $3 and clinic_id = $4`,
+            [req.user.sub, reason, payment.id, req.user.clinicId],
+          );
+        } else if (request.status !== "awaiting_payment") {
+          throw Object.assign(new Error("Only unpaid requests or paid requests that have not entered specimen processing can be cancelled."), { code: "CANNOT_CANCEL_REQUEST" });
+        }
         await tx.unsafe(
           `update public.test_requests set status = 'cancelled', cancelled_at = now(), cancellation_reason = $1, updated_at = now()
             where id = $2 and clinic_id = $3`,
@@ -554,19 +627,20 @@ export function createCashierRouter({ client }) {
         );
         await tx.unsafe(
           `insert into public.request_status_history (clinic_id, request_id, old_status, new_status, changed_by, note)
-           values ($1, $2, 'awaiting_payment', 'cancelled', $3, $4)`,
-          [req.user.clinicId, request.id, req.user.sub, reason],
+           values ($1, $2, $3, 'cancelled', $4, $5)`,
+          [req.user.clinicId, request.id, request.status, req.user.sub, reason],
         );
         await tx.unsafe(
           `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'request.cancelled', 'test_request', $3, jsonb_build_object('reason', $4::text))`,
-          [req.user.clinicId, req.user.sub, request.id, reason],
+           values ($1, $2, 'request.cancelled', 'test_request', $3,
+             jsonb_build_object('reason', $4::text, 'paymentVoided', $5::boolean, 'refundRecorded', $6::numeric))`,
+          [req.user.clinicId, req.user.sub, request.id, reason, request.status === "paid", refundAmount],
         );
-        return request.id;
+        return { requestId: request.id, paymentId, refundAmount };
       });
-      return res.json({ data: { requestId: updated, status: "cancelled" } });
+      return res.json({ data: { ...result, status: "cancelled", externalRefundRequired: result.refundAmount > 0 } });
     } catch (error) {
-      if (["REQUEST_NOT_FOUND", "CANNOT_CANCEL_PAID_REQUEST"].includes(error.code)) return res.status(error.code === "REQUEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      if (["REQUEST_NOT_FOUND", "CANNOT_CANCEL_REQUEST", "NO_ACTIVE_PAYMENT"].includes(error.code)) return res.status(error.code === "REQUEST_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });
@@ -579,26 +653,36 @@ export function createCashierRouter({ client }) {
       const date = String(req.query.date ?? "");
       const query = String(req.query.q ?? '').trim();
       const period = String(req.query.period ?? '');
+      const state = String(req.query.state ?? "all");
       if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "INVALID_DATE_FILTER" });
       if (period && !['today', '7days', 'month'].includes(period)) return res.status(400).json({ error: 'INVALID_PERIOD_FILTER' });
+      if (!["all", "issued", "corrected", "voided"].includes(state)) return res.status(400).json({ error: "INVALID_INVOICE_STATE" });
       const [count] = await client.unsafe(
         `select count(*)::integer as total
            from public.invoices i join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
            join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
            join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
           where i.clinic_id = $1
-            and ($2::date is null or p.paid_at::date = $2::date) and p.voided_at is null
+            and ($2::date is null or p.paid_at::date = $2::date)
             and ($3 = '' or r.request_number ilike '%' || $3 || '%' or pt.pid ilike '%' || $3 || '%'
               or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%' or i.invoice_number ilike '%' || $3 || '%')
             and ($4 = '' or ($4 = 'today' and p.paid_at::date = current_date)
               or ($4 = '7days' and p.paid_at >= current_date - interval '6 days')
-              or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))`,
-        [req.user.clinicId, date || null, query, period],
+              or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))
+            and ($5 = 'all' or ($5 = 'voided' and p.voided_at is not null)
+              or ($5 = 'corrected' and i.corrected_at is not null)
+              or ($5 = 'issued' and p.voided_at is null and i.corrected_at is null))`,
+        [req.user.clinicId, date || null, query, period, state],
       );
       const data = await client.unsafe(
-        `select i.id, i.invoice_number, i.issued_at, p.amount, p.paid_at, p.method,
-                r.id as request_id, r.request_number, pt.pid,
+        `select i.id, i.invoice_number, i.issued_at, i.corrected_at, i.correction_reason,
+                corrected.invoice_number as corrected_invoice_number,
+                p.amount, p.paid_at, p.method, p.voided_at, p.void_reason,
+                r.id as request_id, r.request_number, r.status as request_status, pt.pid,
                 concat_ws(' ', pt.first_name, pt.middle_name, pt.last_name) as patient_name,
+                coalesce(refund.amount, 0) as refunded_amount,
+                case when p.voided_at is not null then 'voided'
+                     when i.corrected_at is not null then 'corrected' else 'issued' end as invoice_state,
                 coalesce((select jsonb_agg(jsonb_build_object(
                   'id', ri.id, 'name', ri.test_name_snapshot, 'price', ri.price_snapshot
                 ) order by ri.created_at) from public.request_items ri
@@ -606,18 +690,68 @@ export function createCashierRouter({ client }) {
            from public.invoices i join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
            join public.test_requests r on r.id = p.request_id and r.clinic_id = p.clinic_id
            join public.patients pt on pt.id = r.patient_id and pt.clinic_id = r.clinic_id
+           left join public.invoices corrected on corrected.id = i.corrected_invoice_id and corrected.clinic_id = i.clinic_id
+           left join public.payment_refunds refund on refund.payment_id = p.id and refund.clinic_id = p.clinic_id
           where i.clinic_id = $1
-            and ($2::date is null or p.paid_at::date = $2::date) and p.voided_at is null
+            and ($2::date is null or p.paid_at::date = $2::date)
             and ($3 = '' or r.request_number ilike '%' || $3 || '%' or pt.pid ilike '%' || $3 || '%'
               or pt.first_name ilike '%' || $3 || '%' or pt.last_name ilike '%' || $3 || '%' or i.invoice_number ilike '%' || $3 || '%')
             and ($4 = '' or ($4 = 'today' and p.paid_at::date = current_date)
               or ($4 = '7days' and p.paid_at >= current_date - interval '6 days')
               or ($4 = 'month' and p.paid_at >= date_trunc('month', current_date)))
-          order by p.paid_at desc limit $5 offset $6`,
-        [req.user.clinicId, date || null, query, period, pageSize, offset],
+            and ($5 = 'all' or ($5 = 'voided' and p.voided_at is not null)
+              or ($5 = 'corrected' and i.corrected_at is not null)
+              or ($5 = 'issued' and p.voided_at is null and i.corrected_at is null))
+          order by p.paid_at desc, i.issued_at desc limit $6 offset $7`,
+        [req.user.clinicId, date || null, query, period, state, pageSize, offset],
       );
       return res.json({ data, pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) } });
     } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post("/invoices/:id/correct", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      const reason = String(req.body?.reason ?? "").trim();
+      if (!reason) return res.status(400).json({ error: "CORRECTION_REASON_REQUIRED" });
+      if (reason.length > 500) return res.status(400).json({ error: "CORRECTION_REASON_TOO_LONG" });
+      const corrected = await client.begin(async (tx) => {
+        const [invoice] = await tx.unsafe(
+          `select i.id, i.invoice_number, i.payment_id, i.corrected_at, p.voided_at
+             from public.invoices i
+             join public.payments p on p.id = i.payment_id and p.clinic_id = i.clinic_id
+            where i.id = $1 and i.clinic_id = $2 for update of i, p`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!invoice) throw Object.assign(new Error("Invoice was not found."), { code: "INVOICE_NOT_FOUND" });
+        if (invoice.corrected_at || invoice.voided_at) {
+          throw Object.assign(new Error("Only an active, uncorrected invoice can be corrected."), { code: "INVOICE_NOT_CORRECTABLE" });
+        }
+        const [replacement] = await tx.unsafe(
+          `insert into public.invoices (clinic_id, payment_id, invoice_number)
+           values ($1, $2, $3) returning id, invoice_number, issued_at`,
+          [req.user.clinicId, invoice.payment_id, code("INV")],
+        );
+        await tx.unsafe(
+          `update public.invoices set corrected_at = now(), corrected_by = $1,
+                  correction_reason = $2, corrected_invoice_id = $3
+            where id = $4 and clinic_id = $5`,
+          [req.user.sub, reason, replacement.id, invoice.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'invoice.corrected', 'invoice', $3,
+             jsonb_build_object('replacementInvoiceId', $4::uuid, 'reason', $5::text))`,
+          [req.user.clinicId, req.user.sub, invoice.id, replacement.id, reason],
+        );
+        return { originalInvoiceId: invoice.id, originalInvoiceNumber: invoice.invoice_number, replacement };
+      });
+      return res.status(201).json({ data: corrected });
+    } catch (error) {
+      if (["INVOICE_NOT_FOUND", "INVOICE_NOT_CORRECTABLE"].includes(error.code)) {
+        return res.status(error.code === "INVOICE_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      }
       return next(error);
     }
   });
@@ -628,7 +762,7 @@ export function createCashierRouter({ client }) {
         return res.status(404).json({ error: "INVOICE_NOT_FOUND", message: "This invoice was not found in this laboratory." });
       }
       const [invoice] = await client.unsafe(
-        `select i.id, i.invoice_number, p.amount, p.paid_at, p.method, p.voided_at,
+        `select i.id, i.invoice_number, i.corrected_at, p.amount, p.paid_at, p.method, p.voided_at,
                 r.request_number, pt.email as patient_email,
                 concat_ws(' ', pt.first_name, pt.middle_name, pt.last_name) as patient_name,
                 c.name as clinic_name
@@ -642,6 +776,7 @@ export function createCashierRouter({ client }) {
       );
       if (!invoice) return res.status(404).json({ error: "INVOICE_NOT_FOUND", message: "This invoice was not found in this laboratory." });
       if (invoice.voided_at) return res.status(409).json({ error: "INVOICE_VOIDED", message: "A receipt cannot be emailed for a voided payment." });
+      if (invoice.corrected_at) return res.status(409).json({ error: "INVOICE_CORRECTED", message: "Email the replacement invoice instead." });
       const emailDelivery = await emailService.sendPaymentReceiptEmail({
         to: invoice.patient_email,
         name: invoice.patient_name,

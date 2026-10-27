@@ -79,6 +79,40 @@ export function createStaffRouter({ client }) {
     }
   });
 
+  router.get("/:id/assignments", async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
+      const [person] = await client.unsafe(
+        `select id, role from public.users
+          where id = $1 and clinic_id = $2 and role in ('medical_technologist', 'pathologist')`,
+        [req.params.id, req.user.clinicId],
+      );
+      if (!person) return res.status(404).json({ error: "STAFF_NOT_FOUND" });
+      const assignmentColumn = person.role === "medical_technologist" ? "assigned_technologist_id" : "assigned_pathologist_id";
+      const assignments = await client.unsafe(
+        `select r.id, r.request_number, r.status, r.requested_at,
+                p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name
+           from public.test_requests r
+           join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
+          where r.clinic_id = $1 and r.${assignmentColumn} = $2
+            and r.status = any($3::public.request_status[])
+          order by r.requested_at`,
+        [req.user.clinicId, person.id, ACTIVE_REQUEST_STATUSES],
+      );
+      const reassignees = await client.unsafe(
+        `select u.id, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as name
+           from public.users u
+           join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
+          where u.clinic_id = $1 and u.role = $2::public.user_role and u.is_active = true and u.id <> $3
+          order by p.last_name, p.first_name`,
+        [req.user.clinicId, person.role, person.id],
+      );
+      return res.json({ data: { role: person.role, assignments, reassignees } });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.patch("/:id", async (req, res, next) => {
     try {
       if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });

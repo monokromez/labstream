@@ -50,6 +50,7 @@ function formatTurnaround(minutes) {
 export default function TestCatalog() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All categories')
+  const [availabilityFilter, setAvailabilityFilter] = useState('all')
   const [dialog, setDialog] = useState(null)
   const [view, setView] = useState('test')
   const [form, setForm] = useState(emptyTest)
@@ -58,8 +59,8 @@ export default function TestCatalog() {
   const [page, setPage] = useState(1)
   const selectedCategoryId = categoryFilter === 'All categories' ? '' : categoryFilter
   const { result: catalogResult, error: loadError, refresh } = useApiResource(
-    () => api.administrator.catalog({ page, pageSize: PAGE_SIZE, q: search, categoryId: selectedCategoryId }),
-    [page, search, selectedCategoryId],
+    () => api.administrator.catalog({ page, pageSize: PAGE_SIZE, q: search, categoryId: selectedCategoryId, availability: availabilityFilter }),
+    [page, search, selectedCategoryId, availabilityFilter],
   )
   const rawCatalog = catalogResult?.data ?? { categories: [], tests: [] }
   const categoryRecords = (rawCatalog.categories ?? []).map((category) => ({ ...category, isActive: category.isActive ?? category.is_active ?? true }))
@@ -133,9 +134,9 @@ export default function TestCatalog() {
     })
   }
 
-  async function viewConfiguration(test) {
+  async function viewConfiguration(test, version) {
     try {
-      const res = await api.administrator.testConfiguration(test.id)
+      const res = await api.administrator.testConfiguration(test.id, version)
       setDialog({ type: 'view-config', test, config: res.data })
     } catch (error) {
       setSaveNotice(error.message || 'Unable to load test configuration.')
@@ -277,6 +278,24 @@ export default function TestCatalog() {
     catch (error) { setSaveNotice(error.message || 'Unable to deactivate test.') }
   }
 
+  async function toggleTestAvailability(test) {
+    try {
+      await api.administrator.setTestAvailable(test.id, !test.isAvailable)
+      await refresh()
+    } catch (error) {
+      setSaveNotice(error.message || 'Unable to update test availability.')
+    }
+  }
+
+  async function toggleCategoryAvailability(category) {
+    try {
+      await api.administrator.setCategoryActive(category.id, !category.isActive)
+      await refresh()
+    } catch (error) {
+      setSaveNotice(error.message || 'Unable to update category availability.')
+    }
+  }
+
   async function openRemoveCategory(category) {
     setDialog({ type: 'loading-category', category: category.name })
     try {
@@ -354,7 +373,8 @@ export default function TestCatalog() {
       <div className="admin-page__controls-row">
         <div className="admin-toolbar" role="search">
           <SearchInput className="admin-toolbar__search" label="Search test catalog" visibleLabel="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
-          <label className="admin-toolbar__field">Filter by category<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option value="All categories">All categories</option>{categoryRecords.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <label className="admin-toolbar__field">Filter by category<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option value="All categories">All categories</option>{categoryRecords.map((category) => <option key={category.id} value={category.id}>{category.name}{category.isActive ? '' : ' (Archived)'}</option>)}</select></label>
+          <label className="admin-toolbar__field">Availability<select value={availabilityFilter} onChange={(event) => { setAvailabilityFilter(event.target.value); setPage(1) }}><option value="all">All tests</option><option value="active">Available</option><option value="inactive">Archived / unavailable</option></select></label>
         </div>
       </div>
       <section className="test-catalog__table-card" aria-labelledby="test-catalog-table-title">
@@ -362,7 +382,7 @@ export default function TestCatalog() {
         <div className="admin-table-wrap"><table className="admin-table">
           <thead><tr><th>Test</th><th>Category</th><th>Price</th><th>TAT</th><th>Availability</th><th>Actions</th></tr></thead>
           <tbody>
-            {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => viewConfiguration(test)}>Params ({test.analyteCount ?? 1})</button><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'delete', test })}>Delete</button></td></tr>)}
+            {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => viewConfiguration(test)}>Params ({test.analyteCount ?? 1})</button><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className={`admin-button admin-button--small ${test.isAvailable ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => toggleTestAvailability(test)}>{test.isAvailable ? 'Archive' : 'Restore'}</button></td></tr>)}
             {pageRows.length === 0 && <tr><td className="admin-empty" colSpan="6">{catalogResult ? 'No tests match your filters.' : 'Loading test catalog…'}</td></tr>}
           </tbody>
         </table></div>
@@ -455,7 +475,7 @@ export default function TestCatalog() {
                 ))}
               </div>
             </section>
-        </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<LimitedInput value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{categoryRecords.map((category) => <li key={category.id}><span>{category.name} <small>({category.testCount ?? category.test_count ?? 0} tests)</small></span><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => openRemoveCategory(category)}>Remove</button></li>)}</ul></div></div>}
+        </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<LimitedInput value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{categoryRecords.map((category) => <li key={category.id}><span>{category.name} <small>({category.testCount ?? category.test_count ?? 0} tests) · {category.isActive ? 'Active' : 'Archived'}</small></span><button className={`admin-button admin-button--small ${category.isActive ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => toggleCategoryAvailability(category)}>{category.isActive ? 'Archive' : 'Restore'}</button></li>)}</ul></div></div>}
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button>{view === 'test' ? <button className="admin-button" type="submit" form="test-form" onClick={(event) => {
           if (!canReviewTest) {
             event.preventDefault()
@@ -478,6 +498,7 @@ export default function TestCatalog() {
 
       {dialog?.type === 'view-config' && <AdminDialog title={dialog.test.name} description={`Category: ${dialog.test.category} · ₱${Number(dialog.test.price).toFixed(2)}`} onClose={() => setDialog(null)} size="large" footer={<button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button>}>
         <section className="test-catalog__config-view">
+          <label className="admin-dialog__field">Configuration version<select value={dialog.config.configurationVersion} onChange={(event) => viewConfiguration(dialog.test, Number(event.target.value))}>{Array.from({ length: dialog.config.test.currentConfigurationVersion }, (_, index) => index + 1).map((version) => <option key={version} value={version}>Version {version}{version === dialog.config.test.currentConfigurationVersion ? ' · current' : ''}</option>)}</select></label>
           {dialog.config.test.description && <aside className="test-catalog__setup-guidance"><h4>Standard Setup Guidance</h4><p>{dialog.config.test.description}</p></aside>}
           <div>
             <h4>Specimen Requirements</h4>

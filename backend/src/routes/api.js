@@ -26,12 +26,14 @@ export function createApiRouter({ client }) {
                     select r.lower_limit, r.upper_limit, r.unit from public.reference_ranges r
                      where r.analyte_id = a.id and r.clinic_id = a.clinic_id and r.is_active = true
                      order by r.sex nulls first, r.min_age_days nulls first limit 1
-                  ) rr on true where a.test_id = t.id and a.clinic_id = t.clinic_id), '[]'::jsonb) as analytes,
+                  ) rr on true where a.test_id = t.id and a.clinic_id = t.clinic_id
+                    and a.configuration_version = t.current_configuration_version), '[]'::jsonb) as analytes,
                 coalesce((select jsonb_agg(jsonb_build_object(
                   'specimenType', sr.specimen_type, 'collectionInstructions', sr.collection_instructions,
                   'isRequired', sr.is_required
                 ) order by sr.specimen_type) from public.test_specimen_requirements sr
-                  where sr.test_id = t.id and sr.clinic_id = t.clinic_id), '[]'::jsonb) as specimens
+                  where sr.test_id = t.id and sr.clinic_id = t.clinic_id
+                    and sr.configuration_version = t.current_configuration_version), '[]'::jsonb) as specimens
            from public.test_catalog t
            join public.test_categories c
              on c.id = t.category_id and c.clinic_id = t.clinic_id
