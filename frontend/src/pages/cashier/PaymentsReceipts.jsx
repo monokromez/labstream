@@ -241,12 +241,13 @@ export default function PaymentsReceipts() {
             {dialog.type === 'receipt' && dialog.transaction.invoiceState === 'issued' && !dialog.transaction.voidedAt && (
               <div className='payments-receipts__correction-actions'>
                 {dialog.transaction.requestStatus === 'paid' && <p>Cancellation records the full refund in Labstream; it does not move cash or initiate a bank transfer.</p>}
-                <label className='payments-receipts__filter'>Reason
-                  <textarea maxLength={500} required value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder='Enter a reason for correction or cancellation' />
+                <label className='payments-receipts__reason'>Reason
+                  <textarea maxLength={500} required value={actionReason} onChange={(event) => setActionReason(event.target.value)} placeholder='Explain the invoice correction or request cancellation' />
                 </label>
-                <div>
-                  <button className='payments-receipts__dialog-secondary' type='button' disabled={actionBusy || !actionReason.trim()} onClick={correctInvoice}>{actionBusy ? 'Saving…' : 'Correct invoice'}</button>
-                  {dialog.transaction.requestStatus === 'paid' && <button className='payments-receipts__dialog-secondary' type='button' disabled={actionBusy || !actionReason.trim()} onClick={cancelAndRefund}>Cancel request & record refund</button>}
+                <p className='payments-receipts__correction-note'>Reissue is for correcting an invoice document or clerical error. The replacement keeps the same request and paid amount; it does not change tests, charges, or move money.</p>
+                <div className='payments-receipts__correction-buttons'>
+                  <button className='payments-receipts__dialog-secondary' type='button' disabled={actionBusy || !actionReason.trim()} onClick={correctInvoice}>{actionBusy ? 'Saving…' : 'Reissue corrected invoice'}</button>
+                  {dialog.transaction.requestStatus === 'paid' && <button className='payments-receipts__dialog-danger' type='button' disabled={actionBusy || !actionReason.trim()} onClick={cancelAndRefund}>{actionBusy ? 'Saving…' : 'Cancel request & record refund'}</button>}
                 </div>
               </div>
             )}

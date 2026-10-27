@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
@@ -13,7 +13,6 @@ export default function CashierQueue() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const [active, setActive] = useState(null)
-  const [details, setDetails] = useState(null)
   const [notice, setNotice] = useState('')
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
@@ -147,7 +146,6 @@ export default function CashierQueue() {
                 <td>
                   <div className="cashier-queue__row-actions">
                     <button className="cashier-queue__action" type="button" onClick={() => callPatient(item)}>{isServing ? 'Called' : 'Call to Counter'}</button>
-                    <button className="cashier-queue__action" type="button" onClick={() => setDetails(item)}>Details</button>
                     <button className="cashier-queue__action" type="button" onClick={() => { setCancelTarget(item); setCancelReason('') }}>Cancel</button>
                     <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={() => setActive(item)}>
                       {item.fee === 0 ? 'Confirm' : 'Process'}
@@ -161,12 +159,6 @@ export default function CashierQueue() {
         </tbody></table></div>
         <TablePagination currentPage={result?.pagination?.page ?? page} pageSize={10} totalItems={result?.pagination?.total ?? 0} onPageChange={setPage} />
       </section>
-
-      {details && <div className="cashier-queue__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetails(null) }}><section className="cashier-queue__dialog" role="dialog" aria-modal="true" aria-labelledby="cashier-queue-details-title">
-        <h2 id="cashier-queue-details-title">Request details</h2><p>Queue #{details.queueNumber} · {details.requestNumber} · {details.patientName} · {details.pid}</p>
-        <div className="cashier-queue__payment-details"><span>Requested tests</span><strong>{details.tests.map((test) => test.name).join(', ')}</strong>{details.tests.map((test) => <Fragment key={test.id}><span>{test.name}</span><strong>{currency.format(test.price)}</strong></Fragment>)}<span>Total due</span><strong>{currency.format(details.fee)}</strong></div>
-        <footer><button type="button" onClick={() => setDetails(null)}>Close</button><button className="cashier-queue__action--positive" type="button" onClick={() => { setActive(details); setDetails(null) }}>{details.fee === 0 ? 'Confirm request' : 'Process payment'}</button></footer>
-      </section></div>}
 
       {active && <div className="cashier-queue__backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setActive(null) }}><section className="cashier-queue__dialog" role="dialog" aria-modal="true" aria-labelledby="cashier-queue-confirm-title">
         <h2 id="cashier-queue-confirm-title">{active.fee === 0 ? 'Confirm zero-fee request' : 'Confirm cash payment'}</h2><p>Confirm {active.fee === 0 ? 'waiver / zero-fee request' : 'cash received'} for <strong>{active.requestNumber}</strong> from <strong>{active.patientName}</strong>.</p>

@@ -171,13 +171,88 @@ export function createCashierRouter({ client }) {
     }
   });
 
+  router.patch("/patients/:id/archive", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      if (typeof req.body?.archived !== "boolean") return res.status(400).json({ error: "INVALID_PATIENT_ARCHIVE_STATE" });
+      const reason = String(req.body?.reason ?? "").trim();
+      if (req.body.archived && !reason) return res.status(400).json({ error: "ARCHIVE_REASON_REQUIRED" });
+      if (reason.length > 500) return res.status(400).json({ error: "ARCHIVE_REASON_TOO_LONG" });
+      const result = await client.begin(async (tx) => {
+        const [patient] = await tx.unsafe(
+          `select p.id, p.pid, p.archived_at, p.archive_reason, p.archived_portal_user_was_active,
+                  p.portal_user_id, u.is_active as portal_user_active
+             from public.patients p
+             left join public.users u on u.id = p.portal_user_id and u.clinic_id = p.clinic_id
+            where p.id = $1 and p.clinic_id = $2 for update of p`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!patient) throw Object.assign(new Error("Patient was not found."), { code: "PATIENT_NOT_FOUND" });
+        if (req.body.archived && patient.archived_at) throw Object.assign(new Error("This patient is already archived."), { code: "PATIENT_ALREADY_ARCHIVED" });
+        if (!req.body.archived && !patient.archived_at) throw Object.assign(new Error("This patient is not archived."), { code: "PATIENT_NOT_ARCHIVED" });
+        if (req.body.archived) {
+          const [activeRequest] = await tx.unsafe(
+            `select id from public.test_requests
+              where patient_id = $1 and clinic_id = $2 and status = any($3::public.request_status[])
+              limit 1 for update`,
+            [patient.id, req.user.clinicId, ACTIVE_REQUEST_STATUSES],
+          );
+          if (activeRequest) throw Object.assign(new Error("Complete or cancel this patient's active request before archiving the patient."), { code: "PATIENT_HAS_ACTIVE_REQUEST" });
+          await tx.unsafe(
+            `update public.patients set archived_at = now(), archived_by = $1, archive_reason = $2,
+                    archived_portal_user_was_active = $3, updated_at = now()
+              where id = $4 and clinic_id = $5`,
+            [req.user.sub, reason, patient.portal_user_active ?? null, patient.id, req.user.clinicId],
+          );
+          if (patient.portal_user_id) {
+            await tx.unsafe(
+              `update public.users set is_active = false, updated_at = now()
+                where id = $1 and clinic_id = $2`,
+              [patient.portal_user_id, req.user.clinicId],
+            );
+            await tx.unsafe(
+              `update public.account_tokens set consumed_at = now()
+                where user_id = $1 and clinic_id = $2 and consumed_at is null`,
+              [patient.portal_user_id, req.user.clinicId],
+            );
+          }
+        } else {
+          await tx.unsafe(
+            `update public.patients set archived_at = null, archived_by = null, archive_reason = null,
+                    archived_portal_user_was_active = null, updated_at = now()
+              where id = $1 and clinic_id = $2`,
+            [patient.id, req.user.clinicId],
+          );
+          if (patient.portal_user_id && patient.archived_portal_user_was_active === true) {
+            await tx.unsafe(
+              `update public.users set is_active = true, updated_at = now()
+                where id = $1 and clinic_id = $2 and is_active = false`,
+              [patient.portal_user_id, req.user.clinicId],
+            );
+          }
+        }
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, $3, 'patient', $4, jsonb_build_object('pid', $5::text, 'reason', $6::text))`,
+          [req.user.clinicId, req.user.sub, req.body.archived ? "patient.archived" : "patient.restored",
+            patient.id, patient.pid, req.body.archived ? reason : null],
+        );
+        return { id: patient.id, pid: patient.pid, archived: req.body.archived };
+      });
+      return res.json({ data: result });
+    } catch (error) {
+      const known = ["PATIENT_NOT_FOUND", "PATIENT_ALREADY_ARCHIVED", "PATIENT_NOT_ARCHIVED", "PATIENT_HAS_ACTIVE_REQUEST"];
+      if (known.includes(error.code)) return res.status(error.code === "PATIENT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      return next(error);
+    }
+  });
+
   router.post("/patients/:id/portal-activation", allowRoles("cashier"), async (req, res, next) => {
     try {
       const activation = createOneTimeCode();
       const data = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
           `select id, pid, email, portal_user_id, first_name, middle_name, last_name
-             from public.patients where id = $1 and clinic_id = $2 for update`,
+             from public.patients where id = $1 and clinic_id = $2 and archived_at is null for update`,
           [req.params.id, req.user.clinicId],
         );
         if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });
@@ -248,7 +323,7 @@ export function createCashierRouter({ client }) {
                   u.is_active
              from public.patients p
              left join public.users u on u.id = p.portal_user_id and u.clinic_id = p.clinic_id
-            where p.id = $1 and p.clinic_id = $2 for update of p`,
+            where p.id = $1 and p.clinic_id = $2 and p.archived_at is null for update of p`,
           [req.params.id, req.user.clinicId],
         );
         if (!record) throw Object.assign(new Error("Patient was not found."), { code: "PATIENT_NOT_FOUND" });
@@ -294,7 +369,7 @@ export function createCashierRouter({ client }) {
       }
       const request = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
-          `select id from public.patients where id = $1 and clinic_id = $2 for update`,
+          `select id from public.patients where id = $1 and clinic_id = $2 and archived_at is null for update`,
           [patientId, req.user.clinicId],
         );
         if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });

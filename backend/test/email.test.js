@@ -219,40 +219,6 @@ test("classifies authentication and sender failures without leaking secrets", as
   assert.equal(senderResult.reason, "MAIL_SENDER_REJECTED");
 });
 
-test("sends an administrator test email through the relay", async () => {
-  const messages = [];
-  const service = createEmailService({
-    env: mailEnvironment,
-    createTransporter: () => ({ sendMail: async (message) => messages.push(message) }),
-  });
-
-  const result = await service.sendTestEmail({ to: "admin@labstream-mail.com", name: "Admin" });
-
-  assert.equal(result.status, "sent");
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].to, "admin@labstream-mail.com");
-  assert.match(messages[0].subject, /test email/i);
-  assert.match(messages[0].html, /relay is configured correctly/i);
-});
-
-test("skips placeholder recipients instead of reporting a successful send", async () => {
-  let transportCreated = false;
-  const service = createEmailService({
-    env: mailEnvironment,
-    createTransporter() {
-      transportCreated = true;
-      return { sendMail: async () => {} };
-    },
-  });
-
-  const result = await service.sendTestEmail({ to: "admin@labstream-demo.test", name: "Admin" });
-
-  assert.equal(result.status, "skipped");
-  assert.equal(result.reason, "NO_DELIVERABLE_RECIPIENT");
-  assert.match(result.message, /placeholder/i);
-  assert.equal(transportCreated, false);
-});
-
 test("returns the relay message id so a provider log can be matched", async () => {
   const service = createEmailService({
     env: mailEnvironment,

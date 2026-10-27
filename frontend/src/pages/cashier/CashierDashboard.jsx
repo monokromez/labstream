@@ -30,7 +30,9 @@ export default function CashierDashboard() {
     tests: (request.tests ?? []).join(', '),
     amount: currency.format(Number(request.totalAmount ?? 0)),
     payment: request.isPaid ? 'Paid' : 'Unpaid',
-    status: request.status.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    status: request.status === 'paid'
+      ? 'Awaiting specimens'
+      : request.status.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
     requestedAt: request.requestedAt,
   }))
   const visibleRequests = recentRequests
@@ -49,7 +51,7 @@ export default function CashierDashboard() {
       </div>
 
       <section className="cashier-dashboard__recent">
-        <header className="cashier-dashboard__table-heading"><div><h2>Recent Requests</h2><p>Latest patient requests and payment progress.</p></div><span>{result?.pagination?.total ?? 0} entries</span></header>
+        <header className="cashier-dashboard__table-heading"><div><h2>Recent Requests</h2><p>Payment shows whether money was recorded; workflow shows the request’s laboratory progress.</p></div><span>{result?.pagination?.total ?? 0} entries</span></header>
         <SearchInput className="cashier-dashboard__search" label="Search requests" placeholder="Request, patient, PID, or test" value={search} onChange={(event) => { setSearch(event.target.value); setCurrentPage(1) }} />
 
         <div className="cashier-dashboard__table-wrap">
@@ -60,8 +62,8 @@ export default function CashierDashboard() {
                 <th scope="col">Patient</th>
                 <th scope="col">Tests</th>
                 <th scope="col">Amount</th>
-                <th scope="col">Payment</th>
-                <th scope="col">Status</th>
+                <th scope="col">Payment status</th>
+                <th scope="col">Workflow status</th>
               </tr>
             </thead>
             <tbody>

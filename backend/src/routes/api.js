@@ -64,6 +64,8 @@ export function createApiRouter({ client }) {
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
       const offset = (page - 1) * pageSize;
       const query = String(req.query.q ?? "").trim();
+      const archiveStatus = req.user.role === "patient" ? "active" : String(req.query.status ?? "active");
+      if (!["active", "archived", "all"].includes(archiveStatus)) return res.status(400).json({ error: "INVALID_PATIENT_STATUS_FILTER" });
       const [count] = await client.unsafe(
         `select count(*)::integer as total
            from public.patients p
@@ -73,20 +75,22 @@ export function createApiRouter({ client }) {
               or p.first_name ilike '%' || $4 || '%'
               or p.middle_name ilike '%' || $4 || '%'
               or p.last_name ilike '%' || $4 || '%'
-              or p.phone ilike '%' || $4 || '%')`,
-        [req.user.clinicId, patientScope, req.user.sub, query],
+              or p.phone ilike '%' || $4 || '%')
+            and ($5 = 'all' or ($5 = 'active' and p.archived_at is null) or ($5 = 'archived' and p.archived_at is not null))`,
+        [req.user.clinicId, patientScope, req.user.sub, query, archiveStatus],
       );
       const patients = await client.unsafe(
         `select p.id, p.pid, p.first_name, p.middle_name, p.last_name,
                 p.date_of_birth, p.sex, p.email, p.phone, p.country, p.city,
                 p.house_number, p.street, p.valid_id_type, p.valid_id_number,
-                p.created_at,
+                p.created_at, p.archived_at, p.archive_reason,
+                (p.archived_at is not null) as is_archived,
                 (p.portal_user_id is not null) as has_portal_account,
                 exists(select 1 from public.users portal where portal.id = p.portal_user_id
                   and portal.clinic_id = p.clinic_id and portal.role = 'patient' and portal.is_active = true) as portal_active,
                 exists(select 1 from public.test_requests active_request
                   where active_request.patient_id = p.id and active_request.clinic_id = p.clinic_id
-                    and active_request.status = any($5::public.request_status[])) as has_active_request,
+                    and active_request.status = any($6::public.request_status[])) as has_active_request,
                 coalesce((select max(r.requested_at) from public.test_requests r
                   where r.patient_id = p.id and r.clinic_id = p.clinic_id
                     and r.status <> 'cancelled'), p.created_at) as previous_visit
@@ -98,9 +102,10 @@ export function createApiRouter({ client }) {
               or p.middle_name ilike '%' || $4 || '%'
               or p.last_name ilike '%' || $4 || '%'
               or p.phone ilike '%' || $4 || '%')
+            and ($5 = 'all' or ($5 = 'active' and p.archived_at is null) or ($5 = 'archived' and p.archived_at is not null))
           order by p.last_name, p.first_name
-          limit $6 offset $7`,
-        [req.user.clinicId, patientScope, req.user.sub, query, ACTIVE_REQUEST_STATUSES, pageSize, offset],
+          limit $7 offset $8`,
+        [req.user.clinicId, patientScope, req.user.sub, query, archiveStatus, ACTIVE_REQUEST_STATUSES, pageSize, offset],
       );
       return res.json({
         data: patients,

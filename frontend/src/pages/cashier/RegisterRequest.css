@@ -275,6 +275,77 @@
   color: var(--surface);
 }
 
+.register-request__action-button--archive {
+  background: var(--surface);
+  color: var(--error, #b42318);
+}
+
+.register-request__action-button--archive:hover,
+.register-request__action-button--archive:focus-visible {
+  background: var(--error, #b42318);
+  color: var(--surface);
+}
+
+.register-request__patient-status {
+  display: inline-flex;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #e8f5ef;
+  color: #17613c;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.register-request__patient-status--archived {
+  background: #f1f2f4;
+  color: #596273;
+}
+
+.register-request__archive-reason {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-lightbg);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.register-request__archive-reason textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 5rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.register-request__modal-danger {
+  min-height: 2.625rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #b42318;
+  border-radius: 0.25rem;
+  background: #b42318;
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.register-request__modal-danger:hover:not(:disabled) {
+  border-color: #8f1c13;
+  background: #8f1c13;
+}
+
+.register-request__modal-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .register-request__action-button--details:hover,
 .register-request__action-button--details:focus-visible {
   background: var(--primary);

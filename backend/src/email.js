@@ -258,17 +258,6 @@ export function createEmailService({
       });
     },
 
-    sendTestEmail({ to, name }) {
-      return deliver("admin_email_test", {
-        to,
-        subject: "Labstream test email",
-        text: "This is a Labstream test email. If you received it, the mail relay is configured correctly and activation, payment receipt, and result-release emails should be delivered.",
-        html: emailFrame(name || "Administrator", `<p>This is a Labstream test email.</p>
-          <p>If you received it, the mail relay is configured correctly and activation, payment receipt, and result-release emails should be delivered.</p>
-          <p>If this message does not arrive, check the junk folder before changing the SMTP settings.</p>`),
-      });
-    },
-
     sendPaymentReceiptEmail({ to, name, requestNumber, invoiceNumber, amount, paidAt, paymentMethod, clinicName }) {
       const formattedAmount = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(amount));
       const paidDate = new Date(paidAt).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" });

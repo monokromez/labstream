@@ -52,6 +52,8 @@ export const patients = pgTable("patients", {
   country: varchar("country", { length: 100 }).notNull(), city: varchar("city", { length: 120 }).notNull(),
   houseNumber: varchar("house_number", { length: 80 }), street: varchar("street", { length: 160 }),
   validIdType: varchar("valid_id_type", { length: 100 }).notNull(), validIdNumber: varchar("valid_id_number", { length: 120 }).notNull(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }), archivedBy: uuid("archived_by"),
+  archiveReason: text("archive_reason"), archivedPortalUserWasActive: boolean("archived_portal_user_was_active"),
   registeredBy: uuid("registered_by").notNull(), createdAt: createdAt(), updatedAt: updatedAt(),
 });
 export const testCategories = pgTable("test_categories", {

@@ -50,7 +50,6 @@ export default function StaffAccounts({ currentUserId }) {
     lastSignIn: person.lastSignInAt,
   }))
   const [dialog, setDialog] = useState(null)
-  const [emailTest, setEmailTest] = useState({ to: '', sending: false, status: null, mail: null })
   const [form, setForm] = useState(emptyForm)
   const [touched, setTouched] = useState({})
   const staffErrors = getStaffFormErrors({
@@ -226,30 +225,6 @@ export default function StaffAccounts({ currentUserId }) {
       setDialog({ type: 'activation-reissued', username: person.username, activationCode: result.activation.code, email: person.email, emailDelivery: result.emailDelivery })
     } catch (error) { setDialog({ type: 'error', message: error.message }) }
   }
-  function openEmailTest() {
-    setEmailTest({ to: '', sending: false, status: null, mail: null })
-    setDialog({ type: 'email-test' })
-  }
-  async function sendTestEmail() {
-    if (emailTest.sending) return
-    setEmailTest((current) => ({ ...current, sending: true, status: { tone: 'info', text: 'Sending a test email…' } }))
-    try {
-      const response = await api.administrator.sendTestEmail(emailTest.to.trim())
-      const delivery = response.mail?.configured === false
-        ? { tone: 'error', text: 'Email is not configured on the server. Add MAIL_HOST, MAIL_PORT, MAIL_FROM_ADDRESS, and SMTP credentials to the host environment, then redeploy.' }
-        : describeEmailDelivery(response.emailDelivery, {
-          sent: `Test email accepted by the mail server for ${response.data?.to ?? 'the administrator'}. If it is not in the inbox within a minute, check the junk folder.`,
-          skipped: 'No recipient address was available, so no test email was sent.',
-        })
-      if (delivery.tone === 'success' && response.emailDelivery?.messageId) {
-        delivery.text += ` Relay reference: ${response.emailDelivery.messageId}`
-      }
-      setEmailTest((current) => ({ ...current, sending: false, status: delivery, mail: response.mail ?? null }))
-    } catch (error) {
-      setEmailTest((current) => ({ ...current, sending: false, status: { tone: 'error', text: error.message || 'Unable to send the test email.' } }))
-    }
-  }
-
   const activationDelivery = dialog?.type === 'created' || dialog?.type === 'activation-reissued'
     ? (dialog.emailDelivery
       ? describeEmailDelivery(dialog.emailDelivery, {
@@ -270,7 +245,7 @@ export default function StaffAccounts({ currentUserId }) {
         </div>
       </div>
       <section className="admin-list-card" aria-labelledby="staff-table-title">
-      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div className="staff-accounts__heading-actions"><span>{staffResult?.pagination?.total ?? 0} staff members</span><button className="admin-button admin-button--secondary" type="button" onClick={openEmailTest}>Test email</button><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
+      <header className="admin-list-card__heading"><div><h2 id="staff-table-title">STAFF ACCOUNTS</h2><p>Manage staff roles, sign-in activity, and access status.</p></div><div className="staff-accounts__heading-actions"><span>{staffResult?.pagination?.total ?? 0} staff members</span><button className="admin-button" type="button" onClick={openAdd}><PlusIcon /> STAFF MEMBER</button></div></header>
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Name</th><th>Post</th><th>Last sign in</th><th>Account status</th><th><span className="visually-hidden">Account action</span></th></tr></thead>
         <tbody>
@@ -377,18 +352,6 @@ export default function StaffAccounts({ currentUserId }) {
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Close</button></div>
       </AdminDialog>}
       {(dialog?.type === 'created' || dialog?.type === 'activation-reissued') && <AdminDialog title={dialog.type === 'created' ? 'Staff account created' : 'Activation code reissued'} onClose={() => setDialog(null)} size="small"><p>These one-time activation details are shown only now. The code expires in 24 hours and can only be used once.</p><p>Username: <strong>{dialog.username}</strong></p><p>Activation code: <strong>{dialog.activationCode}</strong></p><p className={`staff-accounts__email-status staff-accounts__email-status--${activationDelivery.tone}`} role={activationDelivery.tone === 'error' ? 'alert' : 'status'}>{activationDelivery.text}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => { setDialog(null); setPage(1) }}>Done</button></div></AdminDialog>}
-      {dialog?.type === 'email-test' && <AdminDialog title="Test email delivery" description="Send a message through the same mail relay used for activation codes and receipts." onClose={() => setDialog(null)} size="small">
-        <label className="admin-dialog__field" htmlFor="test-email-to">Recipient
-          <input id="test-email-to" type="email" maxLength={254} autoComplete="email" placeholder="Leave blank to use your account email" value={emailTest.to} onChange={(event) => setEmailTest((current) => ({ ...current, to: event.target.value }))} />
-          <span className="admin-dialog__field-hint">Activation codes, receipts, and result notices use this same SMTP connection.</span>
-        </label>
-        {emailTest.status && <p className={`staff-accounts__email-status staff-accounts__email-status--${emailTest.status.tone}`} role={emailTest.status.tone === 'error' ? 'alert' : 'status'}>{emailTest.status.text}</p>}
-        {emailTest.mail?.blockedPort && <p className="staff-accounts__email-hint" role="note">The server is configured on SMTP port {emailTest.mail.port}, which Render and other hosts block. Set <code>MAIL_PORT={emailTest.mail.fallbackPort ?? 2525}</code> in the host environment, then redeploy.</p>}
-        <div className="admin-dialog__footer">
-          <button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Close</button>
-          <button className="admin-button" type="button" disabled={emailTest.sending} onClick={sendTestEmail}>{emailTest.sending ? 'Sending…' : 'Send test email'}</button>
-        </div>
-      </AdminDialog>}
       {dialog?.type === 'error' && <AdminDialog title="Unable to complete action" onClose={() => setDialog(null)} size="small"><p role="alert">{dialog.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button></div></AdminDialog>}
       {dialog?.type === 'status' && <AdminDialog title={`${dialog.person.status === 'Active' ? 'Deactivate' : 'Activate'} account?`} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Confirm {dialog.person.status === 'Active' ? 'deactivating' : 'activating'} <strong>{displayName(dialog.person)}</strong>’s staff account?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className={`admin-button ${dialog.person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={commitStatus}>Confirm</button></div></AdminDialog>}
     </section>

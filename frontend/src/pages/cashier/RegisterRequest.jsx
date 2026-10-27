@@ -64,6 +64,7 @@ export default function RegisterRequest() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sexFilter, setSexFilter] = useState('all')
   const [previousVisitFilter, setPreviousVisitFilter] = useState('')
+  const [patientStatusFilter, setPatientStatusFilter] = useState('active')
   const [patientCountry, setPatientCountry] = useState('')
   const [patientCountryCode, setPatientCountryCode] = useState('')
   const [patientCity, setPatientCity] = useState('')
@@ -92,8 +93,11 @@ export default function RegisterRequest() {
   const [portalReset, setPortalReset] = useState(null)
   const [identityVerified, setIdentityVerified] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [patientStatusTarget, setPatientStatusTarget] = useState(null)
+  const [patientArchiveReason, setPatientArchiveReason] = useState('')
+  const [patientStatusSubmitting, setPatientStatusSubmitting] = useState(false)
   const { result: patientResult, refresh: refreshPatients, error: patientLoadError } = useApiResource(
-    () => api.patients.list({ page: 1, pageSize: 100, q: searchQuery }), [searchQuery],
+    () => api.patients.list({ page: 1, pageSize: 100, q: searchQuery, status: patientStatusFilter }), [searchQuery, patientStatusFilter],
   )
   const patients = (patientResult?.data ?? []).map((patient) => ({
     ...patient,
@@ -103,6 +107,8 @@ export default function RegisterRequest() {
     hasActiveRequest: patient.hasActiveRequest,
     hasPortalAccount: patient.hasPortalAccount,
     portalActive: patient.portalActive,
+    isArchived: Boolean(patient.isArchived ?? patient.is_archived),
+    archiveReason: patient.archiveReason ?? patient.archive_reason,
   }))
   const { categories: testCategories, loading: testCatalogLoading, error: testCatalogError } = useTestCatalog({ availableOnly: true })
   const requestTestCategories = testCategories
@@ -152,10 +158,10 @@ export default function RegisterRequest() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, sexFilter, previousVisitFilter])
+  }, [searchQuery, sexFilter, previousVisitFilter, patientStatusFilter])
 
   const openPatientModal = (type, patient = null) => {
-    if (type === 'request' && patient?.hasActiveRequest) return
+    if (type === 'request' && (patient?.hasActiveRequest || patient?.isArchived)) return
     setActionError('')
     setSelectedPatient(patient)
     setSelectedTestIds([])
@@ -219,6 +225,24 @@ export default function RegisterRequest() {
   }
 
   const patientHasActiveRequest = (patient) => Boolean(patient?.hasActiveRequest)
+
+  const updatePatientArchiveStatus = async () => {
+    if (!patientStatusTarget || patientStatusSubmitting) return
+    const archived = !patientStatusTarget.patient.isArchived
+    if (archived && !patientArchiveReason.trim()) return
+    setPatientStatusSubmitting(true)
+    setActionError('')
+    try {
+      await api.cashier.setPatientArchived(patientStatusTarget.patient.id, archived, patientArchiveReason.trim())
+      setPatientStatusTarget(null)
+      setPatientArchiveReason('')
+      await refreshPatients()
+    } catch (error) {
+      setActionError(error.message || `Unable to ${archived ? 'archive' : 'restore'} this patient.`)
+    } finally {
+      setPatientStatusSubmitting(false)
+    }
+  }
 
   const handleRegisterPatient = (event) => {
     event.preventDefault()
@@ -348,6 +372,14 @@ export default function RegisterRequest() {
               <option value='female'>Female</option>
             </select>
           </label>
+          <label className='register-request__field' htmlFor='filter-patient-status'>
+            <span>Patient status</span>
+            <select id='filter-patient-status' value={patientStatusFilter} onChange={(event) => setPatientStatusFilter(event.target.value)}>
+              <option value='active'>Active</option>
+              <option value='archived'>Archived</option>
+              <option value='all'>All</option>
+            </select>
+          </label>
           <label className='register-request__field register-request__field--date' htmlFor='filter-previous-visit'>
             <span>Previous visit</span>
             <span
@@ -378,7 +410,7 @@ export default function RegisterRequest() {
         <div className='register-request__registry-heading'>
           <div>
             <h2 id='patient-registry-title'>Patients</h2>
-            <p>Select an existing patient to continue with their test request.</p>
+            <p>Archived patients remain available in history and can be restored when appropriate.</p>
           </div>
           <div className='register-request__registry-actions'>
             <span className='register-request__count'>{filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}</span>
@@ -396,6 +428,7 @@ export default function RegisterRequest() {
                 <th scope='col'>Name</th>
                 <th scope='col'>Contact number</th>
                 <th scope='col'>Previous visit</th>
+                <th scope='col'>Status</th>
                 <th scope='col'>Actions</th>
               </tr>
             </thead>
@@ -406,6 +439,7 @@ export default function RegisterRequest() {
                   <td className='register-request__patient-name'>{getPatientNameWithMiddleInitial(patient)}</td>
                   <td>{patient.contact}</td>
                   <td>{formatDate(patient.previousVisitDate)}</td>
+                  <td><span className={`register-request__patient-status${patient.isArchived ? ' register-request__patient-status--archived' : ''}`}>{patient.isArchived ? 'Archived' : 'Active'}</span></td>
                   <td>
                     <div className='register-request__row-actions'>
                       <button className='register-request__action-button register-request__action-button--details' type='button' onClick={() => openPatientModal('details', patient)}>
@@ -414,12 +448,25 @@ export default function RegisterRequest() {
                       <button
                         className='register-request__action-button register-request__action-button--request'
                         type='button'
-                        disabled={patientHasActiveRequest(patient)}
-                        title={patientHasActiveRequest(patient) ? 'This patient has an active request. Complete or cancel it before creating another.' : undefined}
-                        aria-label={patientHasActiveRequest(patient) ? `Request unavailable for ${getPatientName(patient)}: an active request is in progress` : `Create request for ${getPatientName(patient)}`}
+                        disabled={patient.isArchived || patientHasActiveRequest(patient)}
+                        title={patient.isArchived ? 'Restore this patient before creating a request.' : patientHasActiveRequest(patient) ? 'This patient has an active request. Complete or cancel it before creating another.' : undefined}
+                        aria-label={patient.isArchived ? `Request unavailable for archived patient ${getPatientName(patient)}` : patientHasActiveRequest(patient) ? `Request unavailable for ${getPatientName(patient)}: an active request is in progress` : `Create request for ${getPatientName(patient)}`}
                         onClick={() => openPatientModal('request', patient)}
                       >
-                        {patientHasActiveRequest(patient) ? 'Request In Progress' : 'Request'}
+                        {patient.isArchived ? 'Archived' : patientHasActiveRequest(patient) ? 'Request In Progress' : 'Request'}
+                      </button>
+                      <button
+                        className={`register-request__action-button ${patient.isArchived ? 'register-request__action-button--request' : 'register-request__action-button--archive'}`}
+                        type='button'
+                        disabled={!patient.isArchived && patientHasActiveRequest(patient)}
+                        title={!patient.isArchived && patientHasActiveRequest(patient) ? 'Complete or cancel the active request before archiving this patient.' : undefined}
+                        onClick={() => {
+                          setActionError('')
+                          setPatientArchiveReason('')
+                          setPatientStatusTarget({ patient })
+                        }}
+                      >
+                        {patient.isArchived ? 'Restore' : 'Archive'}
                       </button>
                     </div>
                   </td>
@@ -427,7 +474,7 @@ export default function RegisterRequest() {
               ))}
               {filteredPatients.length === 0 && (
                 <tr>
-                  <td className='register-request__empty' colSpan='5'>No patients match the current search or filters.</td>
+                  <td className='register-request__empty' colSpan='6'>No patients match the current search or filters.</td>
                 </tr>
               )}
             </tbody>
@@ -493,6 +540,9 @@ export default function RegisterRequest() {
                   <div className='register-request__details-row register-request__details-row--full'>
                     <div><dt>Previous visit</dt><dd>{selectedPatient.previousVisitDate ? formatDate(selectedPatient.previousVisitDate) : 'No previous visit'}</dd></div>
                   </div>
+                  {selectedPatient.isArchived && <div className='register-request__details-row register-request__details-row--full'>
+                    <div><dt>Record status</dt><dd>Archived{selectedPatient.archiveReason ? ` — ${selectedPatient.archiveReason}` : ''}</dd></div>
+                  </div>}
                   <div className='register-request__details-row register-request__details-row--full'>
                     <div><dt>Email</dt><dd>{selectedPatient.email || '—'}</dd></div>
                   </div>
@@ -664,8 +714,8 @@ export default function RegisterRequest() {
                   {requestSubmitted ? 'Done' : `Review Request · ${selectedTestIds.length} ${selectedTestIds.length === 1 ? 'test' : 'tests'}`}
                 </button>
               )}
-              {activeModal === 'details' && selectedPatient && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setShowPortalConfirm(true) }}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
-              {activeModal === 'details' && selectedPatient && selectedPatient.portalActive && !portalReset && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setIdentityVerified(false); setShowPortalConfirm(true) }}>Reset Portal Password</button>}
+              {activeModal === 'details' && selectedPatient && !selectedPatient.isArchived && !portalActivation && !selectedPatient.portalActive && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setShowPortalConfirm(true) }}>{selectedPatient.hasPortalAccount ? 'Reissue Portal Activation' : 'Issue Portal Activation'}</button>}
+              {activeModal === 'details' && selectedPatient && !selectedPatient.isArchived && selectedPatient.portalActive && !portalReset && <button className='register-request__modal-primary' type='button' onClick={() => { setActionError(''); setIdentityVerified(false); setShowPortalConfirm(true) }}>Reset Portal Password</button>}
               {activeModal === 'add' && !showRequestPrompt && (
                 <button className='register-request__modal-primary' type='submit' form='new-patient-form'>Register Patient</button>
               )}
@@ -720,6 +770,31 @@ export default function RegisterRequest() {
             <div className='register-request__confirm-actions'>
               <button className='register-request__modal-secondary' type='button' disabled={portalSubmitting} onClick={() => setShowPortalConfirm(false)}>Cancel</button>
               <button className='register-request__modal-primary' type='button' disabled={portalSubmitting || (selectedPatient.portalActive && !identityVerified)} onClick={selectedPatient.portalActive ? issuePatientPasswordReset : issuePortalActivation}>{portalSubmitting ? 'Issuing…' : selectedPatient.portalActive ? 'Issue Reset Code' : 'Issue Activation Code'}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {patientStatusTarget && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-patient-archive-title'>
+            <h2 id='confirm-patient-archive-title'>{patientStatusTarget.patient.isArchived ? 'Restore patient record?' : 'Archive patient record?'}</h2>
+            <p>
+              {patientStatusTarget.patient.isArchived
+                ? <>Restore <strong>{getPatientName(patientStatusTarget.patient)}</strong> ({patientStatusTarget.patient.pid}) to the active patient registry? Existing clinical records will remain available.</>
+                : <>Archive <strong>{getPatientName(patientStatusTarget.patient)}</strong> ({patientStatusTarget.patient.pid})? The patient will no longer appear in active searches or be able to sign in to the portal. Clinical and billing history will be retained.</>}
+            </p>
+            {!patientStatusTarget.patient.isArchived && (
+              <label className='register-request__archive-reason' htmlFor='patient-archive-reason'>Reason for archiving
+                <textarea id='patient-archive-reason' value={patientArchiveReason} maxLength={500} required onChange={(event) => setPatientArchiveReason(event.target.value)} />
+              </label>
+            )}
+            {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' disabled={patientStatusSubmitting} onClick={() => setPatientStatusTarget(null)}>Cancel</button>
+              <button className={patientStatusTarget.patient.isArchived ? 'register-request__modal-primary' : 'register-request__modal-danger'} type='button' disabled={patientStatusSubmitting || (!patientStatusTarget.patient.isArchived && !patientArchiveReason.trim())} onClick={updatePatientArchiveStatus}>
+                {patientStatusSubmitting ? 'Saving…' : patientStatusTarget.patient.isArchived ? 'Confirm restore' : 'Confirm archive'}
+              </button>
             </div>
           </section>
         </div>

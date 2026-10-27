@@ -89,10 +89,15 @@ create table public.patients (
   house_number varchar(80), street varchar(160),
   valid_id_type varchar(100) not null, valid_id_number varchar(120) not null,
   registered_by uuid not null,
+  archived_at timestamptz, archived_by uuid, archive_reason text,
+  archived_portal_user_was_active boolean,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id), unique (clinic_id, pid),
   foreign key (portal_user_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
-  foreign key (registered_by, clinic_id) references public.users(id, clinic_id) on delete restrict
+  foreign key (registered_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (archived_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  check ((archived_at is null and archived_by is null and archive_reason is null and archived_portal_user_was_active is null)
+      or (archived_at is not null and archived_by is not null and archive_reason is not null))
 );
 create index patients_name_idx on public.patients(clinic_id, last_name, first_name);
 
