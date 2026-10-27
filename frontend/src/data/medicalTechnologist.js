@@ -11,3 +11,9 @@ export const rejectionReasons = [
   'Wrong container',
   'Other',
 ]
+
+export const labelRejectionReason = 'Wrong or missing label'
+
+export function isLabelRejection(reason = '') {
+  return reason === labelRejectionReason || reason.startsWith(`${labelRejectionReason}:`)
+}

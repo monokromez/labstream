@@ -122,6 +122,38 @@ function createDraftApp({ requestStatus = "specimen_collection" } = {}) {
   return { app, writes };
 }
 
+function createSpecimenDecisionApp({ specimenStatus = "expected", requestStatus = "processing", rejectionReason = null, notes = null } = {}) {
+  process.env.AUTH_TOKEN_SECRET = secret;
+  const writes = [];
+  const execute = async (statement, parameters = []) => {
+    const query = normalize(statement);
+    const user = authenticatedUser(query);
+    if (user) return user;
+    if (query.startsWith("select s.id, s.request_id, s.specimen_type, s.attempt_number, s.status, r.status as request_status")) {
+      return [{ id: specimenId, request_id: requestId, specimen_type: "Saliva", attempt_number: 1, status: specimenStatus, request_status: requestStatus }];
+    }
+    if (query.startsWith("select s.id, s.request_id, s.status, s.rejection_reason, s.notes, r.status as request_status")) {
+      return [{ id: specimenId, request_id: requestId, status: specimenStatus, rejection_reason: rejectionReason, notes, request_status: requestStatus }];
+    }
+    if (query.startsWith("select ri.id from public.specimen_request_items sri")) return [{ id: itemId }];
+    if (query.startsWith("insert into public.specimens")) {
+      writes.push({ query, parameters });
+      return [{ id: "550e8400-e29b-41d4-a716-446655440099", attempt_number: 2, status: "expected" }];
+    }
+    if (query.startsWith("update ") || query.startsWith("insert ")) {
+      writes.push({ query, parameters });
+      return [{ id: specimenId, status: "received", rejection_reason: null, notes: "Label corrected" }];
+    }
+    throw new Error(`Unexpected test SQL: ${query}`);
+  };
+  const client = { unsafe: execute, begin: (callback) => callback({ unsafe: execute }) };
+  const app = express();
+  app.use(express.json());
+  app.use("/technologist", createTechnologistRouter({ client }));
+  app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
+  return { app, writes };
+}
+
 async function postJson(app, path, body = {}) {
   const server = createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -213,4 +245,67 @@ test("submitting the last outstanding test sends the request for validation", as
   assert.equal(payload.data.partial, false);
   assert.equal(payload.data.assignedPathologistId, pathologistId);
   assert.ok(writes.some((write) => write.query.includes("status = 'for_validation'")));
+});
+
+test("rejecting a specimen for a label problem does not create a replacement", async () => {
+  const { app, writes } = createSpecimenDecisionApp({ requestStatus: "processing" });
+  const response = await postJson(app, `/technologist/specimens/${specimenId}/reject`, { reason: "Wrong or missing label: wrong" });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.relabelRequired, true);
+  assert.equal(payload.data.replacement, null);
+  assert.ok(!writes.some((write) => write.query.includes("insert into public.specimens")));
+  const statusWrite = writes.find((write) => write.query.includes("update public.test_requests set status"));
+  assert.equal(statusWrite.parameters[2], true);
+});
+
+test("rejecting a specimen for a sample problem creates the next attempt", async () => {
+  const { app, writes } = createSpecimenDecisionApp({ requestStatus: "processing" });
+  const response = await postJson(app, `/technologist/specimens/${specimenId}/reject`, { reason: "Hemolyzed sample" });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.relabelRequired, false);
+  assert.ok(payload.data.replacement);
+  assert.ok(writes.some((write) => write.query.includes("insert into public.specimens")));
+  const statusWrite = writes.find((write) => write.query.includes("update public.test_requests set status"));
+  assert.equal(statusWrite.parameters[2], false);
+});
+
+test("a label-rejected specimen reopens as received after relabeling", async () => {
+  const { app, writes } = createSpecimenDecisionApp({
+    specimenStatus: "rejected", requestStatus: "processing", rejectionReason: "Wrong or missing label: wrong",
+  });
+  const response = await postJson(app, `/technologist/specimens/${specimenId}/relabel`, {
+    correctedLabel: "PID-2026-480155", notes: "Relabeled with the patient's PID",
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.status, "received");
+  assert.ok(writes.some((write) => write.query.includes("specimen.relabeled")));
+  assert.ok(writes.some((write) => write.query.includes("set status = 'received'")));
+});
+
+test("a specimen rejected for a sample problem cannot be relabeled", async () => {
+  const { app, writes } = createSpecimenDecisionApp({
+    specimenStatus: "rejected", requestStatus: "processing", rejectionReason: "Hemolyzed sample",
+  });
+  const response = await postJson(app, `/technologist/specimens/${specimenId}/relabel`, {});
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "NOT_LABEL_REJECTION");
+  assert.equal(writes.length, 0);
+});
+
+test("only a rejected specimen can be reopened for a label correction", async () => {
+  const { app, writes } = createSpecimenDecisionApp({ specimenStatus: "received", requestStatus: "processing" });
+  const response = await postJson(app, `/technologist/specimens/${specimenId}/relabel`, {});
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "INVALID_SPECIMEN_STATUS");
+  assert.equal(writes.length, 0);
 });

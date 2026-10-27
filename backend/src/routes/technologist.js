@@ -2,6 +2,11 @@ import { Router } from "express";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 
 const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "correction"];
+const LABEL_REJECTION_REASON = "Wrong or missing label";
+
+function isLabelRejection(reason) {
+  return reason === LABEL_REJECTION_REASON || reason.startsWith(`${LABEL_REJECTION_REASON}:`);
+}
 
 export function createTechnologistRouter({ client }) {
   const router = Router();
@@ -258,35 +263,111 @@ export function createTechnologistRouter({ client }) {
             where id = $2 and clinic_id = $3 returning id, status, rejection_reason`,
           [reason, specimen.id, req.user.clinicId],
         );
-        const [replacement] = await tx.unsafe(
-          `insert into public.specimens (clinic_id, request_id, specimen_type, attempt_number, replaces_specimen_id, status, notes)
-           select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'expected', $5
-             from public.specimens where request_id = $2 and clinic_id = $1 and specimen_type = $3
-           returning id, attempt_number, status`,
-          [req.user.clinicId, specimen.request_id, specimen.specimen_type, specimen.id, `Recollection: ${reason}`],
-        );
-        for (const item of items) {
-          await tx.unsafe(
-            `insert into public.specimen_request_items (clinic_id, request_id, specimen_id, request_item_id)
-             values ($1, $2, $3, $4) on conflict do nothing`,
-            [req.user.clinicId, specimen.request_id, replacement.id, item.id],
+        const relabelRequired = isLabelRejection(reason);
+        let replacement = null;
+        if (!relabelRequired) {
+          [replacement] = await tx.unsafe(
+            `insert into public.specimens (clinic_id, request_id, specimen_type, attempt_number, replaces_specimen_id, status, notes)
+             select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'expected', $5
+               from public.specimens where request_id = $2 and clinic_id = $1 and specimen_type = $3
+             returning id, attempt_number, status`,
+            [req.user.clinicId, specimen.request_id, specimen.specimen_type, specimen.id, `Recollection: ${reason}`],
           );
+        }
+        for (const item of items) {
+          if (replacement) {
+            await tx.unsafe(
+              `insert into public.specimen_request_items (clinic_id, request_id, specimen_id, request_item_id)
+               values ($1, $2, $3, $4) on conflict do nothing`,
+              [req.user.clinicId, specimen.request_id, replacement.id, item.id],
+            );
+          }
           await tx.unsafe(`update public.request_items set status = 'for_recollection', updated_at = now() where id = $1 and clinic_id = $2`, [item.id, req.user.clinicId]);
         }
         await tx.unsafe(
-          `update public.test_requests set status = case when status = 'correction' then 'correction'::public.request_status else 'specimen_collection'::public.request_status end, updated_at = now() where id = $1 and clinic_id = $2`,
-          [specimen.request_id, req.user.clinicId],
+          `update public.test_requests set status = case
+             when status = 'correction' then 'correction'::public.request_status
+             when $3::boolean then 'processing'::public.request_status
+             else 'specimen_collection'::public.request_status end, updated_at = now()
+            where id = $1 and clinic_id = $2`,
+          [specimen.request_id, req.user.clinicId, relabelRequired],
         );
         await tx.unsafe(
           `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-           values ($1, $2, 'specimen.rejected', 'specimen', $3, jsonb_build_object('reason', $4::text, 'replacementId', $5::uuid))`,
-          [req.user.clinicId, req.user.sub, specimen.id, reason, replacement.id],
+           values ($1, $2, 'specimen.rejected', 'specimen', $3, jsonb_build_object('reason', $4::text, 'replacementId', $5::uuid, 'relabelRequired', $6::boolean))`,
+          [req.user.clinicId, req.user.sub, specimen.id, reason, replacement?.id ?? null, relabelRequired],
         );
-        return { rejected: updated, replacement, affectedTestCount: items.length };
+        return { rejected: updated, replacement, affectedTestCount: items.length, relabelRequired };
       });
       return res.json({ data });
     } catch (error) {
       if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS", "SPECIMEN_HAS_NO_TESTS", "REQUEST_NOT_ACTIVE"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      return next(error);
+    }
+  });
+
+  router.post("/specimens/:id/relabel", async (req, res, next) => {
+    try {
+      const correctedLabel = String(req.body?.correctedLabel ?? "").trim();
+      const notes = String(req.body?.notes ?? "").trim();
+      if (correctedLabel.length > 80 || notes.length > 500) return res.status(400).json({ error: "INVALID_RELABEL" });
+      const data = await client.begin(async (tx) => {
+        const [specimen] = await tx.unsafe(
+          `select s.id, s.request_id, s.status, s.rejection_reason, s.notes, r.status as request_status
+             from public.specimens s join public.test_requests r on r.id = s.request_id and r.clinic_id = s.clinic_id
+            where s.id = $1 and s.clinic_id = $2 and r.assigned_technologist_id = $3 for update of s, r`,
+          [req.params.id, req.user.clinicId, req.user.sub],
+        );
+        if (!specimen) throw Object.assign(new Error("Specimen was not found in your work queue."), { code: "SPECIMEN_NOT_FOUND" });
+        if (!ACTIVE_REQUEST_STATUSES.includes(specimen.request_status)) {
+          throw Object.assign(
+            new Error(`This request is ${specimen.request_status.replaceAll("_", " ")}, so its specimens can no longer be processed.`),
+            { code: "REQUEST_NOT_ACTIVE" },
+          );
+        }
+        if (specimen.status !== "rejected") throw Object.assign(new Error("Only a rejected specimen can be reopened for a label correction."), { code: "INVALID_SPECIMEN_STATUS" });
+        if (!isLabelRejection(specimen.rejection_reason ?? "")) {
+          throw Object.assign(
+            new Error("This specimen was rejected for a sample problem, so a new sample is required instead of a label correction."),
+            { code: "NOT_LABEL_REJECTION" },
+          );
+        }
+        const correctionNote = [
+          specimen.notes,
+          `Label corrected${correctedLabel ? `: ${correctedLabel}` : ""}${notes ? ` — ${notes}` : ""}`,
+        ].filter(Boolean).join(" | ");
+        const [updated] = await tx.unsafe(
+          `update public.specimens
+              set status = 'received', rejected_at = null, rejection_reason = null,
+                  received_at = coalesce(received_at, now()), received_by = coalesce(received_by, $1),
+                  notes = $2, updated_at = now()
+            where id = $3 and clinic_id = $4
+            returning id, status, received_at, notes`,
+          [req.user.sub, correctionNote, specimen.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `update public.request_items ri set status = 'specimen_received', updated_at = now()
+            where ri.id in (select request_item_id from public.specimen_request_items where specimen_id = $1 and clinic_id = $2)
+              and ri.status = 'for_recollection'`,
+          [specimen.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `update public.test_requests set status = 'processing', updated_at = now()
+            where id = $1 and clinic_id = $2 and status in ('paid', 'specimen_collection')`,
+          [specimen.request_id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'specimen.relabeled', 'specimen', $3,
+             jsonb_build_object('originalReason', $4::text, 'correctedLabel', $5::text, 'notes', $6::text))`,
+          [req.user.clinicId, req.user.sub, specimen.id, specimen.rejection_reason, correctedLabel || null, notes || null],
+        );
+        return updated;
+      });
+      return res.json({ data });
+    } catch (error) {
+      const codes = ["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS", "NOT_LABEL_REJECTION", "REQUEST_NOT_ACTIVE"];
+      if (codes.includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });

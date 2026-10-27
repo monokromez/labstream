@@ -3,6 +3,7 @@ import TechnologistContext from './TechnologistState.js'
 import { getRequestStatus } from './technologistWorkflow.js'
 import { api, subscribeToClinicChanges } from '../../api/client.js'
 import useTestCatalog from '../../data/useTestCatalog.js'
+import { isLabelRejection } from '../../data/medicalTechnologist.js'
 
 const statusLabels = { expected: 'Expected', received: 'Received', accepted: 'Accepted', rejected: 'Rejected', for_recollection: 'For Recollection' }
 
@@ -136,10 +137,22 @@ export function TechnologistProvider({ children, onNavigate }) {
     const specimen = findSpecimen(label)
     if (!specimen) return
     try {
-      await api.technologist.rejectSpecimen(specimen.id, notes.trim() ? `${reason}: ${notes.trim()}` : reason)
+      const rejection = notes.trim() ? `${reason}: ${notes.trim()}` : reason
+      await api.technologist.rejectSpecimen(specimen.id, rejection)
       await refresh()
-      setNotice(`${label} rejected. A new specimen is expected for recollection.`)
+      setNotice(isLabelRejection(reason)
+        ? `${label} rejected. Relabel the tube, then use Correct label to reopen it.`
+        : `${label} rejected. A new specimen is expected for recollection.`)
     } catch (error) { setNotice(error.message || 'Unable to reject this specimen.') }
+  }, [findSpecimen, refresh])
+  const relabelSpecimen = useCallback(async (label, correctedLabel, notes) => {
+    const specimen = findSpecimen(label)
+    if (!specimen) return
+    try {
+      await api.technologist.relabelSpecimen(specimen.id, { correctedLabel, notes })
+      await refresh()
+      setNotice(`${label} reopened as received. Accept it once the corrected label is on the tube.`)
+    } catch (error) { setNotice(error.message || 'Unable to reopen this specimen.') }
   }, [findSpecimen, refresh])
 
   const saveDraft = useCallback(async (specimenLabel, values, { quiet = false } = {}) => {
@@ -192,10 +205,10 @@ export function TechnologistProvider({ children, onNavigate }) {
 
   const value = useMemo(() => ({
     requests, specimens, results, notice, loadError, specimenSearch, setSpecimenSearch,
-    acceptSpecimen, rejectSpecimen, saveDraft, submitRequest,
+    acceptSpecimen, rejectSpecimen, relabelSpecimen, saveDraft, submitRequest,
     getRequestStatus: (request) => getRequestStatus(request, specimens, results),
     goToSpecimens: (requestId) => { setSpecimenSearch(requestId); onNavigate?.('specimens') },
-  }), [requests, specimens, results, notice, loadError, specimenSearch, acceptSpecimen, rejectSpecimen, saveDraft, submitRequest, onNavigate])
+  }), [requests, specimens, results, notice, loadError, specimenSearch, acceptSpecimen, rejectSpecimen, relabelSpecimen, saveDraft, submitRequest, onNavigate])
 
   return <TechnologistContext.Provider value={value}>{children}<div className="medtech-toast" role="status" aria-live="polite" aria-atomic="true">{notice}</div></TechnologistContext.Provider>
 }

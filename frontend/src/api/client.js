@@ -138,6 +138,7 @@ export const api = {
     receiveSpecimen: (specimenId) => request(`/api/technologist/specimens/${specimenId}/receive`, { method: 'POST', body: {} }),
     acceptSpecimen: (specimenId) => request(`/api/technologist/specimens/${specimenId}/accept`, { method: 'POST', body: {} }),
     rejectSpecimen: (specimenId, reason) => request(`/api/technologist/specimens/${specimenId}/reject`, { method: 'POST', body: { reason } }),
+    relabelSpecimen: (specimenId, correction) => request(`/api/technologist/specimens/${specimenId}/relabel`, { method: 'POST', body: correction }),
     saveDraft: (requestId, itemId, values) => request(`/api/technologist/requests/${requestId}/items/${itemId}/draft`, { method: 'POST', body: values }),
     submitResults: (requestId) => request(`/api/technologist/requests/${requestId}/submit-results`, { method: 'POST', body: {} }),
   },

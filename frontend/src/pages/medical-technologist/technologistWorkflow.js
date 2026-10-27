@@ -1,6 +1,10 @@
+import { isLabelRejection } from '../../data/medicalTechnologist.js'
+
 export function getRequestStatus(request, specimens, results) {
   const requestSpecimens = specimens.filter((specimen) => specimen.requestId === request.id)
   const activeSpecimens = requestSpecimens.filter((specimen) => !['Rejected', 'For Recollection'].includes(specimen.status))
+
+  if (requestSpecimens.some((specimen) => specimen.status === 'Rejected' && isLabelRejection(specimen.reason))) return 'For Recollection'
 
   if (requestSpecimens.some((specimen) => specimen.status === 'For Recollection'
     || (specimen.recollectionOf && ['Expected', 'Received'].includes(specimen.status)))) return 'For Recollection'

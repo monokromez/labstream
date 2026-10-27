@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
-import { LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
-import { rejectionReasons } from '../../data/medicalTechnologist.js'
+import { LimitedInput, LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
+import { rejectionReasons, isLabelRejection } from '../../data/medicalTechnologist.js'
 import useTechnologist from './useTechnologist.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
@@ -24,12 +24,14 @@ function formatDateTime(value) {
 }
 
 export default function Specimens() {
-  const { requests, specimens, specimenSearch, setSpecimenSearch, acceptSpecimen, rejectSpecimen, loadError } = useTechnologist()
+  const { requests, specimens, specimenSearch, setSpecimenSearch, acceptSpecimen, rejectSpecimen, relabelSpecimen, loadError } = useTechnologist()
   const [status, setStatus] = useState('All')
   const [specimenType, setSpecimenType] = useState('All types')
   const [activeSpecimen, setActiveSpecimen] = useState(null)
   const [reason, setReason] = useState('')
   const [notes, setNotes] = useState('')
+  const [correctedLabel, setCorrectedLabel] = useState('')
+  const [relabelNotes, setRelabelNotes] = useState('')
   const [error, setError] = useState('')
   const [confirmReject, setConfirmReject] = useState(false)
 
@@ -43,6 +45,7 @@ export default function Specimens() {
     }),
   [specimens, requests, status, specimenSearch, specimenType])
   const specimenTypes = [...new Set(specimens.map((specimen) => specimen.type))].sort()
+  const recollectionCount = specimens.filter((item) => item.status === 'For Recollection' || (item.recollectionOf && item.status === 'Expected')).length
   const { currentPage, pageSize, setCurrentPage, visibleItems: pageSpecimens } = useTablePagination(visibleSpecimens)
 
   function closeDialog() {
@@ -50,6 +53,8 @@ export default function Specimens() {
     setError('')
     setReason('')
     setNotes('')
+    setCorrectedLabel('')
+    setRelabelNotes('')
     setConfirmReject(false)
   }
 
@@ -59,6 +64,19 @@ export default function Specimens() {
     setError('')
     setConfirmReject(false)
     setActiveSpecimen({ ...specimen, action: 'reject' })
+  }
+
+  function openRelabelDialog(specimen) {
+    setCorrectedLabel('')
+    setRelabelNotes('')
+    setError('')
+    setActiveSpecimen({ ...specimen, action: 'relabel' })
+  }
+
+  function submitRelabel(event) {
+    event.preventDefault()
+    relabelSpecimen(activeSpecimen.label, correctedLabel.trim(), relabelNotes.trim())
+    closeDialog()
   }
 
   function submitReject(event) {
@@ -86,7 +104,7 @@ export default function Specimens() {
         <SummaryCard title="Expected" value={String(specimens.filter((item) => item.status === 'Expected').length).padStart(2, '0')} helperText="Awaiting collection" />
         <SummaryCard title="Received" value={String(specimens.filter((item) => item.status === 'Received').length).padStart(2, '0')} helperText="Needs quality check" />
         <SummaryCard title="Accepted" value={String(specimens.filter((item) => item.status === 'Accepted').length).padStart(2, '0')} helperText="Ready for processing" />
-        <SummaryCard title="For recollection" value={String(specimens.filter((item) => item.status === 'For Recollection').length).padStart(2, '0')} helperText="New specimen needed" />
+        <SummaryCard title="For recollection" value={String(recollectionCount).padStart(2, '0')} helperText="New specimen needed" />
       </div>
       <section className="medtech-panel" aria-labelledby="specimens-title">
         <div className="medtech-panel__heading">
@@ -160,6 +178,13 @@ export default function Specimens() {
                         </div>
                       )}
                       {specimen.status === 'Accepted' && <span className="medtech-table__note">Sent to Results in Progress</span>}
+                      {specimen.status === 'Rejected' && isLabelRejection(specimen.reason) && (
+                        <div className="medtech-inline-actions">
+                          <button className="medtech-button medtech-button--secondary medtech-button--small" type="button" onClick={() => openRelabelDialog(specimen)}>
+                            Correct label
+                          </button>
+                        </div>
+                      )}
                       {['Rejected', 'For Recollection'].includes(specimen.status) && <span className="medtech-table__note">{specimen.reason}</span>}
                       {specimen.recollectionOf && specimen.status === 'Expected' && <span className="medtech-table__note">Waiting for a new sample. {specimen.reason}</span>}
                     </td>
@@ -222,7 +247,9 @@ export default function Specimens() {
                 }}
               />
             </label>
-            <p className="medtech-form__notice">A rejected specimen cannot be processed. A new specimen will be expected from the patient for recollection.</p>
+            <p className="medtech-form__notice">{reason === 'Wrong or missing label'
+              ? 'You can correct a wrong or missing label on the same tube. After rejecting, use Correct label to reopen the specimen and accept it — no new sample is needed.'
+              : 'A rejected specimen cannot be processed. A new specimen will be expected from the patient for recollection.'}</p>
             {error && <p className="medtech-form__error" id="rejection-error" role="alert">{error}</p>}
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
@@ -236,12 +263,34 @@ export default function Specimens() {
         <TechnologistDialog title="Confirm specimen rejection?" onClose={() => setConfirmReject(false)}>
           <div className="medtech-dialog__body">
             <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type}</p>
-            <p className="medtech-form__notice">Reject this specimen for <strong>{reason}</strong>? A new specimen will be expected for recollection.</p>
+            <p className="medtech-form__notice">Reject this specimen for <strong>{reason}</strong>? {reason === 'Wrong or missing label'
+              ? 'You can relabel the same tube and reopen it afterwards.'
+              : 'A new specimen will be expected for recollection.'}</p>
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={() => setConfirmReject(false)}>Back to Details</button>
               <button className="medtech-button medtech-button--danger" type="button" onClick={confirmSpecimenRejection}>Confirm Rejection</button>
             </div>
           </div>
+        </TechnologistDialog>
+      )}
+      {activeSpecimen?.action === 'relabel' && (
+        <TechnologistDialog title="Correct specimen label" onClose={closeDialog}>
+          <form className="medtech-dialog__body medtech-form" onSubmit={submitRelabel}>
+            <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {activeSpecimen.patient || requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">Relabel the same tube, then confirm. The specimen reopens as Received so you can accept it; no new sample is created.</p>
+            <label className="medtech-form__field" htmlFor="corrected-label">
+              <span>Corrected label <small>Optional</small></span>
+              <LimitedInput id="corrected-label" value={correctedLabel} maxLength={80} placeholder="e.g., PID-2026-480155 and patient name" onChange={(event) => setCorrectedLabel(event.target.value)} />
+            </label>
+            <label className="medtech-form__field" htmlFor="relabel-notes">
+              <span>What was corrected? <small>Optional</small></span>
+              <LimitedTextarea id="relabel-notes" rows="3" value={relabelNotes} maxLength={500} onChange={(event) => setRelabelNotes(event.target.value)} />
+            </label>
+            <div className="medtech-dialog__actions">
+              <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
+              <button className="medtech-button medtech-button--positive" type="submit">Reopen specimen</button>
+            </div>
+          </form>
         </TechnologistDialog>
       )}
     </section>
