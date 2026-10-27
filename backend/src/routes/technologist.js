@@ -672,7 +672,7 @@ export function createTechnologistRouter({ client }) {
                      or (a.value_type = 'structured' and (rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
                        or exists (select 1 from jsonb_array_elements(rv.structured_value) as rows(value)
                          where exists (select 1 from jsonb_array_elements_text(a.options) as columns(label)
-                           where btrim(coalesce(rows.value ->> columns.label, '')) = ''))))
+                            where btrim(coalesce(rows.value ->> columns.label, '')) = '')))))
                 )
               )`,
           [request.id, req.user.clinicId],
