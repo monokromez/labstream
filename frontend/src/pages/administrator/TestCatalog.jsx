@@ -278,18 +278,32 @@ export default function TestCatalog() {
     catch (error) { setSaveNotice(error.message || 'Unable to deactivate test.') }
   }
 
-  async function toggleTestAvailability(test) {
+  async function requestTestAvailability(test) {
+    setSaveNotice('')
+    setDialog({ type: 'confirm-test-availability', test })
+  }
+
+  async function confirmTestAvailability() {
+    const test = dialog.test
     try {
       await api.administrator.setTestAvailable(test.id, !test.isAvailable)
+      setDialog(null)
       await refresh()
     } catch (error) {
       setSaveNotice(error.message || 'Unable to update test availability.')
     }
   }
 
-  async function toggleCategoryAvailability(category) {
+  async function requestCategoryAvailability(category) {
+    setSaveNotice('')
+    setDialog({ type: 'confirm-category-availability', category })
+  }
+
+  async function confirmCategoryAvailability() {
+    const category = dialog.category
     try {
       await api.administrator.setCategoryActive(category.id, !category.isActive)
+      setDialog(null)
       await refresh()
     } catch (error) {
       setSaveNotice(error.message || 'Unable to update category availability.')
@@ -382,7 +396,7 @@ export default function TestCatalog() {
         <div className="admin-table-wrap"><table className="admin-table">
           <thead><tr><th>Test</th><th>Category</th><th>Price</th><th>TAT</th><th>Availability</th><th>Actions</th></tr></thead>
           <tbody>
-            {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => viewConfiguration(test)}>Params ({test.analyteCount ?? 1})</button><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className={`admin-button admin-button--small ${test.isAvailable ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => toggleTestAvailability(test)}>{test.isAvailable ? 'Archive' : 'Restore'}</button></td></tr>)}
+            {pageRows.map((test) => <tr key={test.id}><td className="admin-table__primary">{test.name}</td><td>{test.category}</td><td>₱{Number(test.price).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td><td>{test.turnaround}</td><td><span className={`admin-badge ${test.availability === 'Available' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{test.availability}</span></td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => viewConfiguration(test)}>Params ({test.analyteCount ?? 1})</button><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => editTest(test)}>Edit</button><button className={`admin-button admin-button--small ${test.isAvailable ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => requestTestAvailability(test)}>{test.isAvailable ? 'Archive' : 'Restore'}</button></td></tr>)}
             {pageRows.length === 0 && <tr><td className="admin-empty" colSpan="6">{catalogResult ? 'No tests match your filters.' : 'Loading test catalog…'}</td></tr>}
           </tbody>
         </table></div>
@@ -475,7 +489,7 @@ export default function TestCatalog() {
                 ))}
               </div>
             </section>
-        </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<LimitedInput value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{categoryRecords.map((category) => <li key={category.id}><span>{category.name} <small>({category.testCount ?? category.test_count ?? 0} tests) · {category.isActive ? 'Active' : 'Archived'}</small></span><button className={`admin-button admin-button--small ${category.isActive ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => toggleCategoryAvailability(category)}>{category.isActive ? 'Archive' : 'Restore'}</button></li>)}</ul></div></div>}
+        </form> : <div className="admin-dialog__form admin-dialog__form--category"><label className="admin-dialog__field admin-dialog__span">Category name<LimitedInput value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder="e.g. Serology" /></label><div className="admin-dialog__span"><p className="admin-dialog__note">Existing categories</p><ul className="test-catalog__category-list">{categoryRecords.map((category) => <li key={category.id}><span>{category.name} <small>({category.testCount ?? category.test_count ?? 0} tests) · {category.isActive ? 'Active' : 'Archived'}</small></span><button className={`admin-button admin-button--small ${category.isActive ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => requestCategoryAvailability(category)}>{category.isActive ? 'Archive' : 'Restore'}</button></li>)}</ul></div></div>}
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button>{view === 'test' ? <button className="admin-button" type="submit" form="test-form" onClick={(event) => {
           if (!canReviewTest) {
             event.preventDefault()
@@ -493,6 +507,40 @@ export default function TestCatalog() {
         <p className="admin-dialog__confirm">Add at least one result parameter and give it a label before reviewing this test. Parameters define what laboratory staff will record for the test.</p>
         <div className="admin-dialog__footer">
           <button className="admin-button" type="button" onClick={() => setDialog({ type: 'manage', editingId: dialog.editingId })}>Back to parameters</button>
+        </div>
+      </AdminDialog>}
+
+      {dialog?.type === 'confirm-test-availability' && <AdminDialog
+        title={`${dialog.test.isAvailable ? 'Archive' : 'Restore'} test?`}
+        onClose={() => { setSaveNotice(''); setDialog(null) }}
+        size="small"
+      >
+        <p className="admin-dialog__confirm">
+          {dialog.test.isAvailable
+            ? <>Archive <strong>{dialog.test.name}</strong>? Cashiers will no longer be able to add it to new requests. Past requests and released results keep this test.</>
+            : <>Restore <strong>{dialog.test.name}</strong> to the catalog so it can be requested again?</>}
+        </p>
+        {saveNotice && <p className="admin-dialog__note" role="alert">{saveNotice}</p>}
+        <div className="admin-dialog__footer">
+          <button className="admin-button admin-button--secondary" type="button" onClick={() => { setSaveNotice(''); setDialog(null) }}>Cancel</button>
+          <button className={`admin-button ${dialog.test.isAvailable ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={confirmTestAvailability}>Confirm</button>
+        </div>
+      </AdminDialog>}
+
+      {dialog?.type === 'confirm-category-availability' && <AdminDialog
+        title={`${dialog.category.isActive ? 'Archive' : 'Restore'} category?`}
+        onClose={() => { setSaveNotice(''); setDialog(null) }}
+        size="small"
+      >
+        <p className="admin-dialog__confirm">
+          {dialog.category.isActive
+            ? <>Archive <strong>{dialog.category.name}</strong>? It will stop appearing in the catalog filters and cannot be picked for new tests. Existing tests keep their category.</>
+            : <>Restore <strong>{dialog.category.name}</strong> so it can be used again?</>}
+        </p>
+        {saveNotice && <p className="admin-dialog__note" role="alert">{saveNotice}</p>}
+        <div className="admin-dialog__footer">
+          <button className="admin-button admin-button--secondary" type="button" onClick={() => { setSaveNotice(''); setDialog(null) }}>Cancel</button>
+          <button className={`admin-button ${dialog.category.isActive ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={confirmCategoryAvailability}>Confirm</button>
         </div>
       </AdminDialog>}
 

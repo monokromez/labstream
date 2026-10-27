@@ -353,7 +353,7 @@ export default function RegisterRequest() {
 
   return (
     <section className='register-request' aria-label='Find a patient'>
-      {(actionError || patientLoadError) && <p className='register-request__modal-note' role='alert'>{actionError || patientLoadError}</p>}
+      {(patientLoadError) && <p className='register-request__modal-note' role='alert'>{patientLoadError}</p>}
       <div className='register-request__toolbar'>
         <SearchInput
           className='register-request__search'
@@ -420,6 +420,8 @@ export default function RegisterRequest() {
           </div>
         </div>
 
+        {actionError && <p className='register-request__registry-notice' role='alert'>{actionError}</p>}
+
         <div className='register-request__table-wrap'>
           <table className='register-request__table'>
             <thead>
@@ -458,10 +460,13 @@ export default function RegisterRequest() {
                       <button
                         className={`register-request__action-button ${patient.isArchived ? 'register-request__action-button--request' : 'register-request__action-button--archive'}`}
                         type='button'
-                        disabled={!patient.isArchived && patientHasActiveRequest(patient)}
                         title={!patient.isArchived && patientHasActiveRequest(patient) ? 'Complete or cancel the active request before archiving this patient.' : undefined}
                         onClick={() => {
                           setActionError('')
+                          if (!patient.isArchived && patientHasActiveRequest(patient)) {
+                            setActionError(`Cannot archive ${getPatientName(patient)} yet: this patient still has an active request. Complete or cancel that request first.`)
+                            return
+                          }
                           setPatientArchiveReason('')
                           setPatientStatusTarget({ patient })
                         }}

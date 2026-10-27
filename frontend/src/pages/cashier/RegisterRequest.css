@@ -150,6 +150,17 @@
   font-size: 0.875rem;
 }
 
+.register-request__registry-notice {
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: #fef3f2;
+  color: var(--error, #b42318);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .register-request__registry-actions {
   display: flex;
   align-items: center;
