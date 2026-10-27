@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSameOrigin } from "../auth/middleware.js";
 
+const ACTIVE_REQUEST_STATUSES = ["paid", "specimen_collection", "processing", "correction"];
+
 export function createTechnologistRouter({ client }) {
   const router = Router();
   router.use(createRequireAuth(client), requirePasswordSetupComplete, requireSameOrigin, allowRoles("medical_technologist"));
@@ -26,7 +28,7 @@ export function createTechnologistRouter({ client }) {
           where r.clinic_id = $1 and r.assigned_technologist_id = $2
             and r.status = any($3::public.request_status[])
           group by r.id, p.id, receipt.receipt_number order by r.priority desc, r.paid_at`,
-        [req.user.clinicId, req.user.sub, ["paid", "specimen_collection", "processing", "correction"]],
+        [req.user.clinicId, req.user.sub, ACTIVE_REQUEST_STATUSES],
       );
       return res.json({ data });
     } catch (error) {
@@ -73,8 +75,9 @@ export function createTechnologistRouter({ client }) {
           where s.clinic_id = $1 and r.assigned_technologist_id = $2
             and ($3 = '' or s.status::text = $3)
             and s.status in ('expected', 'received', 'accepted', 'rejected', 'for_recollection')
+            and r.status = any($4::public.request_status[])
           group by s.id, r.id, p.id order by s.created_at, s.attempt_number`,
-        [req.user.clinicId, req.user.sub, status],
+        [req.user.clinicId, req.user.sub, status, ACTIVE_REQUEST_STATUSES],
       );
       for (const specimen of data) {
         specimen.tests = await Promise.all(specimen.tests.map(async (test) => {
@@ -121,6 +124,12 @@ export function createTechnologistRouter({ client }) {
           [req.params.id, req.user.clinicId, req.user.sub],
         );
         if (!specimen) throw Object.assign(new Error("Specimen was not found in your work queue."), { code: "SPECIMEN_NOT_FOUND" });
+        if (!ACTIVE_REQUEST_STATUSES.includes(specimen.request_status)) {
+          throw Object.assign(
+            new Error(`This request is ${specimen.request_status.replaceAll("_", " ")}, so its specimens can no longer be processed.`),
+            { code: "REQUEST_NOT_ACTIVE" },
+          );
+        }
         if (!["expected", "for_recollection"].includes(specimen.status)) throw Object.assign(new Error("Only expected specimens can be marked received."), { code: "INVALID_SPECIMEN_STATUS" });
         const [updated] = await tx.unsafe(
           `update public.specimens set status = 'received', received_at = now(), received_by = $1, updated_at = now()
@@ -147,7 +156,7 @@ export function createTechnologistRouter({ client }) {
       });
       return res.json({ data });
     } catch (error) {
-      if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS", "REQUEST_NOT_ACTIVE"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });
@@ -156,12 +165,18 @@ export function createTechnologistRouter({ client }) {
     try {
       const data = await client.begin(async (tx) => {
         const [specimen] = await tx.unsafe(
-          `select s.id, s.request_id, s.status
+          `select s.id, s.request_id, s.status, r.status as request_status
              from public.specimens s join public.test_requests r on r.id = s.request_id and r.clinic_id = s.clinic_id
             where s.id = $1 and s.clinic_id = $2 and r.assigned_technologist_id = $3 for update of s, r`,
           [req.params.id, req.user.clinicId, req.user.sub],
         );
         if (!specimen) throw Object.assign(new Error("Specimen was not found in your work queue."), { code: "SPECIMEN_NOT_FOUND" });
+        if (!ACTIVE_REQUEST_STATUSES.includes(specimen.request_status)) {
+          throw Object.assign(
+            new Error(`This request is ${specimen.request_status.replaceAll("_", " ")}, so its specimens can no longer be processed.`),
+            { code: "REQUEST_NOT_ACTIVE" },
+          );
+        }
         if (!["expected", "for_recollection", "received"].includes(specimen.status)) throw Object.assign(new Error("Only expected or received specimens can be accepted."), { code: "INVALID_SPECIMEN_STATUS" });
         if (specimen.status !== "received") {
           await tx.unsafe(
@@ -196,7 +211,7 @@ export function createTechnologistRouter({ client }) {
       });
       return res.json({ data });
     } catch (error) {
-      if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS", "REQUEST_NOT_ACTIVE"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });
@@ -207,12 +222,18 @@ export function createTechnologistRouter({ client }) {
       if (!reason) return res.status(400).json({ error: "REJECTION_REASON_REQUIRED" });
       const data = await client.begin(async (tx) => {
         const [specimen] = await tx.unsafe(
-          `select s.id, s.request_id, s.specimen_type, s.attempt_number, s.status
+          `select s.id, s.request_id, s.specimen_type, s.attempt_number, s.status, r.status as request_status
              from public.specimens s join public.test_requests r on r.id = s.request_id and r.clinic_id = s.clinic_id
             where s.id = $1 and s.clinic_id = $2 and r.assigned_technologist_id = $3 for update of s, r`,
           [req.params.id, req.user.clinicId, req.user.sub],
         );
         if (!specimen) throw Object.assign(new Error("Specimen was not found in your work queue."), { code: "SPECIMEN_NOT_FOUND" });
+        if (!ACTIVE_REQUEST_STATUSES.includes(specimen.request_status)) {
+          throw Object.assign(
+            new Error(`This request is ${specimen.request_status.replaceAll("_", " ")}, so its specimens can no longer be processed.`),
+            { code: "REQUEST_NOT_ACTIVE" },
+          );
+        }
         if (!["expected", "received"].includes(specimen.status)) throw Object.assign(new Error("Only an expected or received specimen can be rejected."), { code: "INVALID_SPECIMEN_STATUS" });
         const items = await tx.unsafe(
           `select ri.id from public.specimen_request_items sri
@@ -254,7 +275,7 @@ export function createTechnologistRouter({ client }) {
       });
       return res.json({ data });
     } catch (error) {
-      if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS", "SPECIMEN_HAS_NO_TESTS"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      if (["SPECIMEN_NOT_FOUND", "INVALID_SPECIMEN_STATUS", "SPECIMEN_HAS_NO_TESTS", "REQUEST_NOT_ACTIVE"].includes(error.code)) return res.status(error.code === "SPECIMEN_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
       return next(error);
     }
   });

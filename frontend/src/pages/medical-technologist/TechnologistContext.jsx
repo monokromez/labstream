@@ -86,6 +86,7 @@ export function TechnologistProvider({ children, onNavigate }) {
         const label = specimenLabels.get(row.id)
         return {
         ...row, label, recollectionOf: specimenLabels.get(row.replacesSpecimenId) ?? '', requestId: row.requestNumber, type: row.specimenType,
+        patient: row.patientName ?? '', patientId: row.pid,
         status: statusLabels[row.status] ?? row.status, collectedAt: row.receivedAt,
         reason: row.rejectionReason ?? row.notes ?? '',
         linkedItemIds: (row.tests ?? []).map((test) => test.id),

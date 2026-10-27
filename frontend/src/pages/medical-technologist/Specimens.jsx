@@ -38,7 +38,7 @@ export default function Specimens() {
     .filter((specimen) => specimenType === 'All types' || specimen.type === specimenType)
     .filter((specimen) => {
       const request = requests.find((item) => item.id === specimen.requestId)
-      const searchText = `${specimen.label} ${specimen.requestId} ${request?.patient ?? ''}`.toLowerCase()
+      const searchText = `${specimen.label} ${specimen.requestId} ${specimen.patient || request?.patient || ''}`.toLowerCase()
       return searchText.includes(specimenSearch.trim().toLowerCase())
     }),
   [specimens, requests, status, specimenSearch, specimenType])
@@ -144,7 +144,7 @@ export default function Specimens() {
                       {specimen.recollectionOf && <span className="medtech-table__note">Recollection of {specimen.recollectionOf}</span>}
                     </td>
                     <td className="medtech-table__request-id">{specimen.requestId}</td>
-                    <td>{request?.patient ?? '—'}</td>
+                    <td>{specimen.patient || request?.patient || '—'}</td>
                     <td>{specimen.type}</td>
                     <td>{formatDateTime(specimen.collectedAt)}</td>
                     <td><TechnologistStatusBadge status={specimen.status} /></td>
@@ -175,7 +175,7 @@ export default function Specimens() {
       {activeSpecimen?.action === 'accept' && (
         <TechnologistDialog title="Accept specimen?" onClose={closeDialog}>
           <div className="medtech-dialog__body">
-            <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
+            <p className="medtech-dialog__context">{activeSpecimen.label} · {activeSpecimen.type} · {activeSpecimen.patient || requests.find((request) => request.id === activeSpecimen.requestId)?.patient}</p>
             <p className="medtech-form__notice medtech-form__notice--quiet">Accepting records this specimen as received, confirms it passed the quality check, and sends it to result entry.</p>
             <div className="medtech-dialog__actions">
               <button className="medtech-button medtech-button--secondary" type="button" onClick={closeDialog}>Cancel</button>
