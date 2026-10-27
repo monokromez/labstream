@@ -27,14 +27,6 @@ export default function CashierQueue() {
   const invoices = invoicesResult?.data ?? []
   const rows = transactions
 
-  async function callPatient(item) {
-    try {
-      await api.cashier.callQueueItem(item.id)
-      await refresh()
-      setNotice(`Marked ${item.patientName} (${item.queueNumber}) as called to the cashier counter.`)
-    } catch (requestError) { setNotice(requestError.message || 'Unable to call this patient.') }
-  }
-
   async function processPayment() {
     if (!active) return
     try {
@@ -82,35 +74,26 @@ export default function CashierQueue() {
       </div>
 
       <section className="cashier-queue__table-card" aria-labelledby="cashier-queue-title">
-        <header className="cashier-queue__heading"><div><h2 id="cashier-queue-title">Patient Queue</h2><p>Mark patients as called to the counter, then confirm cash received to assign requests to the laboratory. This does not place a phone call.</p></div><span>{result?.pagination?.total ?? 0} {result?.pagination?.total === 1 ? 'patient' : 'patients'}</span></header>
-        <div className="cashier-queue__table-scroll"><table className="cashier-queue__table"><thead><tr><th>Queue #</th><th>Request</th><th>Patient</th><th>Tests</th><th>Amount due</th><th>Status</th><th>Action</th></tr></thead><tbody>
-          {rows.map((item) => {
-            const isServing = Boolean(item.queueCalledAt)
-            return (
-              <tr key={item.id} style={isServing ? { background: '#f0fdf4' } : undefined}>
-                <td className="cashier-queue__primary"><strong>{item.queueNumber}</strong></td>
-                <td>{item.requestNumber}</td>
-                <td><strong>{item.patientName}</strong><small>{item.pid}</small></td>
-                <td>{item.tests.map((test) => test.name).join(', ')}</td>
-                <td className="cashier-queue__primary">{currency.format(item.fee)}</td>
-                <td>
-                  <span className={`cashier-queue__status cashier-queue__status--${isServing ? 'serving' : 'waiting'}`}>
-                    {isServing ? 'Now Calling' : 'Waiting'}
-                  </span>
-                </td>
-                <td>
-                  <div className="cashier-queue__row-actions">
-                    <button className="cashier-queue__action" type="button" onClick={() => callPatient(item)}>{isServing ? 'Called' : 'Call to Counter'}</button>
-                    <button className="cashier-queue__action" type="button" onClick={() => { setCancelTarget(item); setCancelReason('') }}>Cancel</button>
-                    <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={() => setActive(item)}>
-                      {item.fee === 0 ? 'Confirm' : 'Process'}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-          {!rows.length && <tr><td colSpan="7" className="cashier-queue__empty">No patients waiting in queue.</td></tr>}
+        <header className="cashier-queue__heading"><div><h2 id="cashier-queue-title">Patient Queue</h2><p>Review patients awaiting payment, then confirm cash received to assign requests to the laboratory.</p></div><span>{result?.pagination?.total ?? 0} {result?.pagination?.total === 1 ? 'patient' : 'patients'}</span></header>
+        <div className="cashier-queue__table-scroll"><table className="cashier-queue__table"><thead><tr><th>Queue #</th><th>Request</th><th>Patient</th><th>Tests</th><th>Amount due</th><th>Action</th></tr></thead><tbody>
+          {rows.map((item) => (
+            <tr key={item.id}>
+              <td className="cashier-queue__primary"><strong>{item.queueNumber}</strong></td>
+              <td>{item.requestNumber}</td>
+              <td><strong>{item.patientName}</strong><small>{item.pid}</small></td>
+              <td>{item.tests.map((test) => test.name).join(', ')}</td>
+              <td className="cashier-queue__primary">{currency.format(item.fee)}</td>
+              <td>
+                <div className="cashier-queue__row-actions">
+                  <button className="cashier-queue__action" type="button" onClick={() => { setCancelTarget(item); setCancelReason('') }}>Cancel</button>
+                  <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={() => setActive(item)}>
+                    {item.fee === 0 ? 'Confirm' : 'Process'}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {!rows.length && <tr><td colSpan="6" className="cashier-queue__empty">No patients waiting in queue.</td></tr>}
         </tbody></table></div>
         <TablePagination currentPage={result?.pagination?.page ?? page} pageSize={10} totalItems={result?.pagination?.total ?? 0} onPageChange={setPage} />
       </section>

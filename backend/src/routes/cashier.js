@@ -514,7 +514,7 @@ export function createCashierRouter({ client }) {
       const page = Math.min(requestedPage, Math.max(1, totalPages));
       const offset = (page - 1) * pageSize;
       const data = await client.unsafe(
-        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.queue_called_at, r.priority, r.total_amount, r.requested_at,
+        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.priority, r.total_amount, r.requested_at,
                 p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 count(ri.id)::integer as test_count,
                 jsonb_agg(jsonb_build_object(
@@ -533,64 +533,10 @@ export function createCashierRouter({ client }) {
           limit $2 offset $3`,
         [req.user.clinicId, pageSize, offset, query],
       );
-      const [currentCall] = await client.unsafe(
-        `select r.id, r.request_number, r.queue_ticket::text as queue_ticket, r.queue_called_at, r.priority, r.total_amount,
-                p.pid, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name
-           from public.test_requests r join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
-          where r.clinic_id = $1 and r.status = 'awaiting_payment' and r.queue_called_at is not null limit 1`,
-        [req.user.clinicId],
-      );
-      return res.json({ data, currentCall: currentCall ?? null, summary: { total: count.total, amountDue: count.amount_due }, pagination: { page, pageSize, total: count.total, totalPages } });
+      return res.json({ data, summary: { total: count.total, amountDue: count.amount_due }, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) {
       return next(error);
     }
-  });
-
-  router.post("/queue/:id/call", allowRoles("cashier"), async (req, res, next) => {
-    try {
-      const called = await client.begin(async (tx) => {
-        await tx.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [req.user.clinicId]);
-        const [target] = await tx.unsafe(
-          `select id, request_number, queue_ticket::text as queue_ticket from public.test_requests
-            where id = $1 and clinic_id = $2 and status = 'awaiting_payment' for update`,
-          [req.params.id, req.user.clinicId],
-        );
-        if (!target) throw Object.assign(new Error("Request was not found in the payment queue."), { code: "QUEUE_REQUEST_NOT_FOUND" });
-        await tx.unsafe(`update public.test_requests set queue_called_at = null, queue_called_by = null where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is not null`, [req.user.clinicId]);
-        await tx.unsafe(`update public.test_requests set queue_called_at = now(), queue_called_by = $1 where id = $2 and clinic_id = $3`, [req.user.sub, target.id, req.user.clinicId]);
-        await tx.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'cashier.queue_called','test_request',$3)`, [req.user.clinicId, req.user.sub, target.id]);
-        return target;
-      });
-      return res.json({ data: called });
-    } catch (error) {
-      if (error.code === "QUEUE_REQUEST_NOT_FOUND") return res.status(404).json({ error: error.code, message: error.message });
-      return next(error);
-    }
-  });
-
-  router.post("/queue/call-next", allowRoles("cashier"), async (req, res, next) => {
-    try {
-      const called = await client.begin(async (tx) => {
-        await tx.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [req.user.clinicId]);
-        const [target] = await tx.unsafe(`select id, request_number, queue_ticket::text as queue_ticket from public.test_requests where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is null order by requested_at, queue_ticket limit 1 for update skip locked`, [req.user.clinicId]);
-        if (!target) return null;
-        await tx.unsafe(`update public.test_requests set queue_called_at = null, queue_called_by = null where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is not null`, [req.user.clinicId]);
-        await tx.unsafe(`update public.test_requests set queue_called_at = now(), queue_called_by = $1 where id = $2 and clinic_id = $3`, [req.user.sub, target.id, req.user.clinicId]);
-        await tx.unsafe(`insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,'cashier.queue_called','test_request',$3)`, [req.user.clinicId, req.user.sub, target.id]);
-        return target;
-      });
-      return called ? res.json({ data: called }) : res.status(404).json({ error: "QUEUE_EMPTY", message: "No waiting requests are available to call." });
-    } catch (error) { return next(error); }
-  });
-
-  router.delete("/queue/call", allowRoles("cashier"), async (req, res, next) => {
-    try {
-      await client.begin(async (tx) => {
-        await tx.unsafe(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [req.user.clinicId]);
-        await tx.unsafe(`update public.test_requests set queue_called_at = null, queue_called_by = null where clinic_id = $1 and status = 'awaiting_payment' and queue_called_at is not null`, [req.user.clinicId]);
-      });
-      return res.json({ data: { dismissed: true } });
-    } catch (error) { return next(error); }
   });
 
   router.post("/requests/:id/payment", allowRoles("cashier"), async (req, res, next) => {

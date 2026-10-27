@@ -176,8 +176,8 @@ async function generatePdf() {
       ['frontend/src/pages/administrator/Reports.jsx', 'Surfaced Revenue & TAT indicators in summary, performance table, and Excel export.'],
       ['frontend/src/pages/administrator/TestCatalog.jsx', 'Built dynamic multi-analyte parameter builder and parameter inspection modal.'],
       ['frontend/src/pages/administrator/TestCatalog.css', 'Added styling for parameter cards, grids, and configuration views.'],
-      ['frontend/src/pages/cashier/CashierQueue.jsx', 'Integrated queue numbers, "Call Next" action, and "Now Calling" status banner.'],
-      ['frontend/src/pages/cashier/CashierQueue.css', 'Styled gradient calling banner, queue badges, and status pills.'],
+      ['frontend/src/pages/cashier/CashierQueue.jsx', 'Integrated queue numbers and the patient payment queue table.'],
+      ['frontend/src/pages/cashier/CashierQueue.css', 'Styled queue badges, table rows, and payment dialogs.'],
       ['frontend/src/pages/patient/MyResults.jsx', 'Added Diagnostic Laboratory Report view with printable layout and release notice.'],
       ['frontend/src/pages/patient/MyResults.css', 'Configured @media print rules to isolate diagnostic report for clean PDF export.'],
     ];

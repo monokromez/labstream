@@ -18,10 +18,6 @@
 .cashier-queue__table tbody tr:hover { background: #f5fbfa; }
 .cashier-queue__table td small { display: block; margin-top: .2rem; color: var(--text-muted-lightbg); }
 .cashier-queue__primary { font-weight: 700; color: var(--primary) !important; }
-.cashier-queue__status { display: inline-flex; padding: .28rem .55rem; border-radius: .3rem; font-size: .75rem; font-weight: 700; }
-.cashier-queue__status--waiting { background: #fff2cc; color: #7a5200; }
-.cashier-queue__status--serving { background: #dcecff; color: #164b80; }
-.cashier-queue__status--completed { background: #d9f3e8; color: #126142; }
 .cashier-queue__action { padding: .45rem .7rem; border: 1px solid var(--border); border-radius: .35rem; background: white; color: var(--text-lightbg); font: inherit; font-size: .8rem; font-weight: 700; cursor: pointer; }
 .cashier-queue__row-actions { display: flex; align-items: center; gap: .4rem; }
 .cashier-queue__action--positive { border-color: #087f70; background: #087f70; color: white; }
