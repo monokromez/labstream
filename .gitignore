@@ -3,3 +3,12 @@
 **/.env
 **/.env.*
 !**/.env.example
+
+# AGENTS
+.impeccable
+.agent
+.agents
+.claude
+.codex
+.cursor
+.gemini

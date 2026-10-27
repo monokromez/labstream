@@ -1,9 +1,33 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client.js'
-import { LimitedInput } from '../components/forms/LimitedInput.jsx'
+import { CharacterCount, LimitedInput } from '../components/forms/LimitedInput.jsx'
 import './Login.css'
 
-export default function Login({ onAuthenticated, mustChangePassword = false, sessionUser }) {
+function PasswordInput({ maxLength, value, ...props }) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div className="login-page__password-field">
+      <input {...props} type={visible ? 'text' : 'password'} value={value} maxLength={maxLength} />
+      <button
+        className="login-page__password-toggle"
+        type="button"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-pressed={visible}
+        onClick={() => setVisible((current) => !current)}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+          {visible && <path d="m4 4 16 16" />}
+        </svg>
+      </button>
+      <CharacterCount value={value} limit={maxLength} />
+    </div>
+  )
+}
+
+export default function Login({ onAuthenticated, mustChangePassword = false, sessionUser, connectionMessage = '' }) {
   const [mode, setMode] = useState(mustChangePassword ? 'password' : 'login')
   const [form, setForm] = useState({ identifier: '', password: '', activationCode: '', resetCode: '', newPassword: '', currentPassword: '' })
   const [busy, setBusy] = useState(false)
@@ -49,13 +73,21 @@ export default function Login({ onAuthenticated, mustChangePassword = false, ses
         <p className="login-page__intro">{mode === 'login' ? 'Use your account credentials.' : mode === 'activate' ? 'Enter the one-time code provided by the laboratory, then choose a password.' : mode === 'reset' ? 'Ask an administrator (staff accounts) or a cashier (patients) to verify your identity and issue a one-time reset code.' : `Choose a new password for ${sessionUser?.username ?? 'your account'}.`}</p>
         <form className="login-page__form" onSubmit={submit}>
           {mode !== 'password' && <label>{mode === 'reset' ? 'Username or patient PID' : 'Username or PID'}<LimitedInput name="identifier" value={form.identifier} onChange={update} required autoComplete="username" maxLength={80} /></label>}
-          {mode === 'login' && <label>Password<LimitedInput name="password" type="password" value={form.password} onChange={update} required autoComplete="current-password" maxLength={128} /></label>}
+          {mode === 'login' && <label>Password<PasswordInput name="password" value={form.password} onChange={update} required autoComplete="current-password" maxLength={128} /></label>}
           {mode === 'activate' && <label>Activation code<LimitedInput name="activationCode" value={form.activationCode} onChange={update} required autoComplete="one-time-code" maxLength={64} /></label>}
           {mode === 'reset' && <label>Reset code<LimitedInput name="resetCode" value={form.resetCode} onChange={update} required autoComplete="one-time-code" maxLength={64} /></label>}
-          {mode === 'password' && <label>Current password<LimitedInput name="currentPassword" type="password" value={form.currentPassword} onChange={update} required autoComplete="current-password" maxLength={128} /></label>}
-          {(mode === 'activate' || mode === 'reset' || mode === 'password') && <label>New password<LimitedInput name="newPassword" type="password" value={form.newPassword} onChange={update} required minLength={12} autoComplete="new-password" maxLength={128} /><small>Use at least 12 characters.</small></label>}
-          {error && <p className="login-page__error" role="alert">{error}</p>}
+          {mode === 'password' && <label>Current password<PasswordInput name="currentPassword" value={form.currentPassword} onChange={update} required autoComplete="current-password" maxLength={128} /></label>}
+          {(mode === 'activate' || mode === 'reset' || mode === 'password') && <label>New password<PasswordInput name="newPassword" value={form.newPassword} onChange={update} required minLength={12} autoComplete="new-password" maxLength={128} /><small>Use at least 12 characters.</small></label>}
           <button className="login-page__submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign In' : mode === 'activate' ? 'Activate Account' : mode === 'reset' ? 'Reset Password' : 'Update Password'}</button>
+          {(error || connectionMessage) && (
+            <p className="login-page__error" role="alert">
+              <svg aria-hidden="true" viewBox="0 0 20 20">
+                <circle cx="10" cy="10" r="8" />
+                <path d="M10 6v4m0 4h.01" />
+              </svg>
+              <span>{error || connectionMessage}</span>
+            </p>
+          )}
         </form>
         {!mustChangePassword && <div className="login-page__mode-switch">{mode === 'login' ? <><button type="button" onClick={() => { setMode('activate'); setError('') }}>Have an activation code?</button><button type="button" onClick={() => { setMode('reset'); setError('') }}>Forgot password?</button></> : mode === 'activate' || mode === 'reset' ? <button type="button" onClick={() => { setMode('login'); setError('') }}>Back to sign in</button> : null}</div>}
       </section>

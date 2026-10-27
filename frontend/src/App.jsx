@@ -74,8 +74,12 @@ export default function App() {
 
   if (!ready) return <main className="login-page"><p>Connecting to Labstream…</p></main>
   if (!user || mustChangePassword) return <>
-    {connectionMessage && !user && <p className="login-page__connection-error" role="status">{connectionMessage}</p>}
-    <Login onAuthenticated={handleAuthenticated} mustChangePassword={mustChangePassword} sessionUser={user} />
+    <Login
+      onAuthenticated={handleAuthenticated}
+      mustChangePassword={mustChangePassword}
+      sessionUser={user}
+      connectionMessage={!user ? connectionMessage : ''}
+    />
   </>
 
   return <AppShell role={user.role} userId={user.id} userName={user.displayName ?? user.username ?? 'User'} onLogout={handleLogout} />

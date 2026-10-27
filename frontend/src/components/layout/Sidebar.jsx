@@ -158,14 +158,42 @@ export function getRoleNavigation(role = 'cashier') {
   return roleNavigation[role] ?? roleNavigation.cashier
 }
 
-export default function Sidebar({ role = 'cashier', userName = 'User', activeItem, onSelect, onLogout }) {
+export default function Sidebar({
+  role = 'cashier',
+  userName = 'User',
+  activeItem,
+  isMobile = false,
+  mobileMenuOpen = false,
+  closeButtonRef,
+  onClose,
+  onSelect,
+  onLogout,
+}) {
   const currentRole = roleNavigation[role] ? role : 'cashier'
   const navigationItems = getRoleNavigation(currentRole)
   const currentRoleLabel = roleLabels[currentRole]
   const selected = activeItem ?? navigationItems[0].id
 
   return (
-    <aside className={`app-sidebar app-sidebar--${currentRole}`}>
+    <aside
+      id="app-navigation"
+      className={`app-sidebar app-sidebar--${currentRole}${mobileMenuOpen ? ' app-sidebar--open' : ''}`}
+      aria-hidden={isMobile ? !mobileMenuOpen : undefined}
+      inert={isMobile && !mobileMenuOpen}
+      onKeyDown={(event) => {
+        if (!isMobile || !mobileMenuOpen || event.key !== 'Tab') return
+        const focusable = event.currentTarget.querySelectorAll('button:not([disabled]), a[href]:not(.app-sidebar__brand)')
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (event.shiftKey && event.target === first) {
+          event.preventDefault()
+          last?.focus()
+        } else if (!event.shiftKey && event.target === last) {
+          event.preventDefault()
+          first?.focus()
+        }
+      }}
+    >
       <a className="app-sidebar__brand" href="#dashboard" aria-label="Labstream home">
         <img className="app-sidebar__brand-icon" src={labstreamIcon} alt="" />
         <span>Labstream</span>
@@ -175,6 +203,14 @@ export default function Sidebar({ role = 'cashier', userName = 'User', activeIte
         <span className="app-sidebar__eyebrow">{currentRoleLabel}</span>
         <span className="app-sidebar__user-name">{userName}</span>
       </div>
+
+      <button
+        ref={closeButtonRef}
+        className="app-sidebar__close"
+        type="button"
+        aria-label="Close navigation menu"
+        onClick={onClose}
+      />
 
       <nav className="app-sidebar__nav" aria-label={`${currentRoleLabel} navigation`}>
         {navigationItems.map((item) => (
@@ -186,6 +222,7 @@ export default function Sidebar({ role = 'cashier', userName = 'User', activeIte
             onClick={(event) => {
               event.preventDefault()
               onSelect?.(item.id)
+              onClose?.()
             }}
           >
             <span

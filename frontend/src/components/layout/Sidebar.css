@@ -143,74 +143,98 @@
 
 .app-sidebar__logout:hover { background: var(--error); color: #fff; }
 .app-sidebar__logout:focus-visible { outline: 2px solid var(--text-darkbg); outline-offset: 2px; }
+.app-sidebar__close { display: none; }
 
 @media (max-width: 760px) {
   .app-sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    height: auto;
-    min-height: 0;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    height: 100vh;
+    height: 100dvh;
     width: 100%;
-    padding: 0.65rem 0.75rem;
+    max-width: none;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.25rem 1rem;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 360ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 360ms;
+  }
+
+  .app-sidebar--open {
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
   }
 
   .app-sidebar__brand {
-    min-height: 2.5rem;
-    margin: 0 0.35rem 0.6rem;
-    font-size: 1.5rem;
-  }
-
-  .app-sidebar__brand-icon {
-    width: 1.9rem;
-    height: 1.9rem;
-    flex-basis: 1.9rem;
-  }
-
-  .app-sidebar__brand span {
-    height: 1.9rem;
-  }
-
-  .app-sidebar__heading {
-    padding: 0.6rem 0.5rem 0.6rem;
-  }
-
-  .app-sidebar__nav {
-    display: flex;
-    gap: 0.4rem;
-    overflow-x: auto;
-    padding: 0.1rem 0.1rem 0.4rem;
-    scrollbar-width: thin;
-  }
-
-  .app-sidebar--medical_technologist .app-sidebar__heading {
     display: none;
   }
 
-  .app-sidebar--medical_technologist .app-sidebar__nav {
-    gap: 0.25rem;
-    overflow-x: hidden;
+  .app-sidebar__heading {
+    gap: 0.3rem;
+    margin: 0;
+    border: 0;
+    padding: 0.25rem 3.5rem 1.25rem 0.5rem;
   }
 
-  .app-sidebar--medical_technologist .app-sidebar__link {
-    min-width: 0;
-    min-height: 2.6rem;
-    flex: 1 1 0;
-    justify-content: center;
-    gap: 0.35rem;
-    padding: 0.45rem 0.3rem;
-    font-size: 0.72rem;
-    white-space: normal;
-  }
-
-  .app-sidebar--medical_technologist .app-sidebar__link .app-sidebar__icon {
-    width: 1rem;
-    height: 1rem;
-    flex-basis: 1rem;
+  .app-sidebar__nav {
+    display: grid;
+    gap: 0.4rem;
+    overflow: visible;
+    padding: 0;
   }
 
   .app-sidebar__link {
+    min-height: 2.875rem;
     flex: 0 0 auto;
-    white-space: nowrap;
+    padding: 0.7rem 0.75rem;
+    font-size: 0.95rem;
+  }
+
+  .app-sidebar__logout {
+    min-height: 2.875rem;
+  }
+
+  .app-sidebar__close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    place-items: center;
+    border: 1px solid rgb(209 250 229 / 28%);
+    border-radius: 0.65rem;
+    background: transparent;
+    color: var(--text-darkbg);
+    cursor: pointer;
+  }
+
+  .app-sidebar__close::before,
+  .app-sidebar__close::after {
+    position: absolute;
+    width: 1.1rem;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    content: "";
+  }
+
+  .app-sidebar__close::before { transform: rotate(45deg); }
+  .app-sidebar__close::after { transform: rotate(-45deg); }
+  .app-sidebar__close:hover { background: rgb(255 255 255 / 9%); }
+  .app-sidebar__close:focus-visible { outline: 2px solid var(--text-darkbg); outline-offset: 2px; }
+
+  .app-sidebar__logout {
+    margin-top: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar {
+    transition: none;
   }
 }
