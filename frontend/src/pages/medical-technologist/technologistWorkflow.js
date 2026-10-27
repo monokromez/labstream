@@ -1,5 +1,21 @@
 import { isLabelRejection } from '../../data/medicalTechnologist.js'
 
+export function getReplacementChain(specimenId, specimens) {
+  const chain = []
+  const seen = new Set([specimenId])
+  let current = specimens.find((specimen) => specimen.replacesSpecimenId === specimenId)
+  while (current && !seen.has(current.id)) {
+    chain.push(current)
+    seen.add(current.id)
+    current = specimens.find((specimen) => specimen.replacesSpecimenId === current.id)
+  }
+  return chain
+}
+
+export function getAcceptedReplacement(specimenId, specimens) {
+  return getReplacementChain(specimenId, specimens).find((specimen) => specimen.status === 'Accepted') ?? null
+}
+
 export function getRequestStatus(request, specimens, results) {
   const requestSpecimens = specimens.filter((specimen) => specimen.requestId === request.id)
   const activeSpecimens = requestSpecimens.filter((specimen) => !['Rejected', 'For Recollection'].includes(specimen.status))

@@ -3,6 +3,7 @@ import SearchInput from '../../components/data/SearchInput.jsx'
 import { LimitedInput, LimitedTextarea } from '../../components/forms/LimitedInput.jsx'
 import { rejectionReasons, isLabelRejection, parseRejectionReason } from '../../data/medicalTechnologist.js'
 import useTechnologist from './useTechnologist.js'
+import { getAcceptedReplacement } from './technologistWorkflow.js'
 import TechnologistDialog from './TechnologistDialog.jsx'
 import TechnologistStatusBadge from './TechnologistStatusBadge.jsx'
 import SummaryCard from '../../components/reports/SummaryCard.jsx'
@@ -50,6 +51,7 @@ export default function Specimens() {
   const detailRequest = activeSpecimen ? requests.find((request) => request.id === activeSpecimen.requestId) : null
   const detailReason = parseRejectionReason(activeSpecimen)
   const detailReplacement = activeSpecimen ? specimens.find((item) => item.replacesSpecimenId === activeSpecimen.id) : null
+  const detailAcceptedReplacement = activeSpecimen ? getAcceptedReplacement(activeSpecimen.id, specimens) : null
   const detailOriginal = activeSpecimen?.replacesSpecimenId ? specimens.find((item) => item.id === activeSpecimen.replacesSpecimenId) : null
   const detailTests = (activeSpecimen?.tests ?? []).map((test) => test.testName).filter(Boolean)
   const isReplacementAttempt = Boolean(activeSpecimen?.replacesSpecimenId)
@@ -162,6 +164,7 @@ export default function Specimens() {
             <tbody>
               {pageSpecimens.map((specimen) => {
                 const request = requests.find((item) => item.id === specimen.requestId)
+                const acceptedReplacement = specimen.status === 'Rejected' ? getAcceptedReplacement(specimen.id, specimens) : null
                 return (
                   <tr key={specimen.label}>
                     <td>
@@ -187,13 +190,15 @@ export default function Specimens() {
                       {specimen.status === 'Accepted' && <span className="medtech-table__note">Sent to Results in Progress</span>}
                       {specimen.status === 'Rejected' && (
                         <button
-                          className="medtech-reason-button"
+                          className={`medtech-reason-button${acceptedReplacement ? ' is-resolved' : ''}`}
                           type="button"
                           title={specimen.reason || 'Rejected specimen'}
                           onClick={() => openSpecimenDetails(specimen)}
                         >
                           <span className="medtech-reason-button__reason">{parseRejectionReason(specimen).reason || 'Rejected'}</span>
-                          <span className="medtech-reason-button__hint">View details and fix</span>
+                          <span className="medtech-reason-button__hint">
+                            {acceptedReplacement ? `Replaced by ${acceptedReplacement.label}` : 'View details and fix'}
+                          </span>
                         </button>
                       )}
                       {(specimen.status === 'For Recollection' || (specimen.recollectionOf && specimen.status === 'Expected')) && (
@@ -328,7 +333,7 @@ export default function Specimens() {
             </section>
 
             <section className="medtech-detail-section">
-              <h3>{isReplacementAttempt ? 'What to do next' : 'How to fix this'}</h3>
+              <h3>{isReplacementAttempt ? 'What to do next' : detailAcceptedReplacement ? 'Resolution' : 'How to fix this'}</h3>
               {isReplacementAttempt ? (
                 <p className="medtech-form__notice">
                   This attempt replaces {detailOriginal ? detailOriginal.label : 'a rejected specimen'}.
@@ -357,6 +362,11 @@ export default function Specimens() {
                     </div>
                   </form>
                 </>
+              ) : detailAcceptedReplacement ? (
+                <p className="medtech-form__notice">
+                  This rejection was resolved by {detailAcceptedReplacement.label}, which was accepted.
+                  No further action is needed for this specimen.
+                </p>
               ) : (
                 <p className="medtech-form__notice">
                   This sample cannot be used, so a new sample is required. The patient returns to the collection area

@@ -272,6 +272,15 @@
   border-color: var(--error);
 }
 
+.medtech-reason-button.is-resolved {
+  border-left-color: var(--primary);
+}
+
+.medtech-reason-button.is-resolved:hover,
+.medtech-reason-button.is-resolved:focus-visible {
+  border-color: var(--primary);
+}
+
 .medtech-reason-button__reason {
   overflow: hidden;
   font-size: 0.74rem;
