@@ -1,6 +1,40 @@
 import { Router } from "express";
 import PDFDocument from "pdfkit";
+import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { allowRoles, createRequireAuth, requirePasswordSetupComplete } from "../auth/middleware.js";
+
+const patientNamePattern = /^[\p{L}\p{M}]+(?:[ '\u2019.-][\p{L}\p{M}]+)*$/u;
+
+export function validatePatientProfile(body) {
+  const errors = {};
+  for (const field of ["firstName", "middleName", "lastName"]) {
+    const value = body[field] ?? "";
+    if (typeof value !== "string") {
+      errors[field] = "Enter a valid name.";
+    } else if (field === "middleName" && !value) {
+      continue;
+    } else if (value !== value.trim() || value.length > 50
+      || (field !== "middleName" && value.length < 2)
+      || !patientNamePattern.test(value)) {
+      errors[field] = field === "middleName"
+        ? "Enter a valid middle name or initial (up to 50 characters)."
+        : "Names must be valid and between 2 and 50 characters.";
+    }
+  }
+  if (body.email != null && body.email !== "") {
+    if (typeof body.email !== "string" || body.email.length > 254
+      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+      errors.email = "Enter a valid email address (up to 254 characters).";
+    }
+  }
+  if (typeof body.phone !== "string" || body.phone.length > 32) {
+    errors.phone = "Enter a valid phone number.";
+  } else {
+    const phone = parsePhoneNumberFromString(body.phone.trim());
+    if (!phone?.isValid()) errors.phone = "Enter a valid international phone number.";
+  }
+  return errors;
+}
 
 export function createPatientRouter({ client }) {
   const router = Router();
@@ -12,7 +46,7 @@ export function createPatientRouter({ client }) {
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
       const offset = (page - 1) * pageSize;
       const [patient] = await client.unsafe(
-        `select p.id, p.pid, p.first_name, p.middle_name, p.last_name, p.date_of_birth, p.sex,
+        `select p.id, p.pid, p.first_name, p.middle_name, p.last_name, p.date_of_birth, p.sex, p.email, p.phone,
                 c.name as clinic_name
            from public.patients p join public.clinics c on c.id = p.clinic_id
           where p.portal_user_id = $1 and p.clinic_id = $2`,
@@ -76,6 +110,11 @@ export function createPatientRouter({ client }) {
         patient: {
           pid: patient.pid,
           name: [patient.first_name, patient.middle_name, patient.last_name].filter(Boolean).join(" "),
+          firstName: patient.first_name,
+          middleName: patient.middle_name ?? "",
+          lastName: patient.last_name,
+          email: patient.email,
+          phone: patient.phone,
           dateOfBirth: patient.date_of_birth,
           sex: patient.sex,
         },
@@ -84,6 +123,58 @@ export function createPatientRouter({ client }) {
         pagination: { page, pageSize, total: count.total, totalPages: Math.ceil(count.total / pageSize) },
       });
     } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.patch("/profile", async (req, res, next) => {
+    try {
+      const body = req.body ?? {};
+      const validationErrors = validatePatientProfile(body);
+      if (Object.keys(validationErrors).length) {
+        return res.status(400).json({
+          error: "INVALID_PATIENT_PROFILE",
+          message: "Correct the profile details and try again.",
+          fields: validationErrors,
+        });
+      }
+      const phone = parsePhoneNumberFromString(body.phone.trim()).number;
+      const email = body.email?.trim()?.toLowerCase() || null;
+      const updated = await client.begin(async (tx) => {
+        const [patient] = await tx.unsafe(
+          `select id from public.patients where portal_user_id = $1 and clinic_id = $2 for update`,
+          [req.user.sub, req.user.clinicId],
+        );
+        if (!patient) return null;
+        const [profile] = await tx.unsafe(
+          `update public.patients
+              set first_name = $1, middle_name = $2, last_name = $3,
+                  email = $4, phone = $5, updated_at = now()
+            where id = $6 and clinic_id = $7
+            returning id, pid, first_name, middle_name, last_name, email, phone`,
+          [body.firstName.trim(), body.middleName.trim() || null, body.lastName.trim(),
+            email, phone, patient.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `update public.users set email = $1, updated_at = now()
+            where id = $2 and clinic_id = $3 and role = 'patient'`,
+          [email, req.user.sub, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'patient.profile_updated', 'patient', $3,
+             jsonb_build_object('fields', $4::jsonb))`,
+          [req.user.clinicId, req.user.sub, patient.id,
+            JSON.stringify(["firstName", "middleName", "lastName", "email", "phone"])],
+        );
+        return profile;
+      });
+      if (!updated) return res.status(404).json({ error: "PATIENT_PROFILE_NOT_FOUND" });
+      return res.json({ data: updated });
+    } catch (error) {
+      if (error.code === "23505") {
+        return res.status(409).json({ error: "EMAIL_ALREADY_IN_USE", message: "That email address is already used by another account." });
+      }
       return next(error);
     }
   });

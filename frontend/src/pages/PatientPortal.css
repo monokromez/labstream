@@ -14,6 +14,16 @@
   font-size: 0.85rem;
 }
 
+.patient-portal__success {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #86cdb5;
+  border-radius: 0.35rem;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 0.85rem;
+}
+
 .patient-portal__welcome {
   display: flex;
   align-items: flex-start;
@@ -178,6 +188,117 @@
 
 .patient-portal__button--primary:hover {
   background: var(--hover);
+}
+
+.patient-portal__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.patient-portal__profile-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: 1rem;
+  background: rgb(15 23 42 / 55%);
+}
+
+.patient-portal__profile-dialog {
+  width: min(100%, 34rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: #fff;
+  box-shadow: 0 20px 50px rgb(15 23 42 / 22%);
+}
+
+.patient-portal__profile-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.patient-portal__profile-heading h2 {
+  margin: 0;
+  color: var(--text-lightbg);
+  font-size: 1.25rem;
+}
+
+.patient-portal__profile-heading p {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.patient-portal__profile-close {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted-lightbg);
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.patient-portal__profile-form {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem 1.4rem 1.4rem;
+}
+
+.patient-portal__profile-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-lightbg);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.patient-portal__profile-form input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: #fff;
+  color: var(--text-lightbg);
+  font: inherit;
+  font-weight: 400;
+}
+
+.patient-portal__profile-form input:focus-visible {
+  border-color: var(--primary);
+  outline: 3px solid rgb(15 118 110 / 14%);
+}
+
+.patient-portal__profile-form input[aria-invalid='true'] {
+  border-color: #dc2626;
+}
+
+.patient-portal__field-error {
+  color: #b42318;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.patient-portal__profile-hint {
+  margin: -0.35rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.78rem;
+}
+
+.patient-portal__profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.3rem;
 }
 
 .patient-portal__notice {

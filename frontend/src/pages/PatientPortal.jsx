@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { api } from '../api/client.js'
 import useApiResource from '../api/useApiResource.js'
 import SummaryCard from '../components/reports/SummaryCard.jsx'
@@ -7,7 +8,13 @@ import './PatientPortal.css'
 const describeStatus = (status = '') => String(status).replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 
 export default function PatientPortal({ onNavigate }) {
-  const { result, loading, error } = useApiResource(() => api.patient.results({ page: 1, pageSize: 8 }), [])
+  const { result, loading, error, setResult } = useApiResource(() => api.patient.results({ page: 1, pageSize: 8 }), [])
+  const [editingProfile, setEditingProfile] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileError, setProfileError] = useState('')
+  const [profileFieldErrors, setProfileFieldErrors] = useState({})
+  const [profileNotice, setProfileNotice] = useState('')
+  const [profileForm, setProfileForm] = useState({ firstName: '', middleName: '', lastName: '', email: '', phone: '' })
   const requests = result?.data ?? []
   const patient = result?.patient
   const clinic = result?.clinic
@@ -18,9 +25,51 @@ export default function PatientPortal({ onNavigate }) {
   const releasedTests = Number(summary.releasedTests ?? 0)
   const unreleasedTests = Number(summary.unreleasedTests ?? 0)
 
+  function openProfileEditor() {
+    setProfileForm({
+      firstName: patient?.firstName ?? '',
+      middleName: patient?.middleName ?? '',
+      lastName: patient?.lastName ?? '',
+      email: patient?.email ?? '',
+      phone: patient?.phone ?? '',
+    })
+    setProfileError('')
+    setProfileFieldErrors({})
+    setProfileNotice('')
+    setEditingProfile(true)
+  }
+
+  async function saveProfile(event) {
+    event.preventDefault()
+    if (profileSaving) return
+    setProfileSaving(true)
+    setProfileError('')
+    setProfileFieldErrors({})
+    try {
+      const response = await api.patient.updateProfile(profileForm)
+      const updated = response.data
+      setResult((current) => ({
+        ...current,
+        patient: {
+          ...current.patient,
+          ...updated,
+          name: [updated.firstName, updated.middleName, updated.lastName].filter(Boolean).join(' '),
+        },
+      }))
+      setEditingProfile(false)
+      setProfileNotice('Your profile was updated.')
+    } catch (requestError) {
+      setProfileError(requestError.message || 'Unable to update your profile.')
+      setProfileFieldErrors(requestError.details?.fields ?? {})
+    } finally {
+      setProfileSaving(false)
+    }
+  }
+
   return (
     <section className="patient-portal" aria-label="Patient portal overview">
       {error && <p className="patient-portal__error" role="alert">{error}</p>}
+      {profileNotice && <p className="patient-portal__success" role="status">{profileNotice}</p>}
 
       <header className="patient-portal__welcome">
         <div>
@@ -33,6 +82,9 @@ export default function PatientPortal({ onNavigate }) {
           </p>
         </div>
         <div className="patient-portal__welcome-actions">
+          <button className="patient-portal__button" type="button" onClick={openProfileEditor} disabled={!patient}>
+            Edit profile
+          </button>
           <button className="patient-portal__button patient-portal__button--primary" type="button" onClick={() => onNavigate?.('my-results')}>
             My results
           </button>
@@ -105,6 +157,50 @@ export default function PatientPortal({ onNavigate }) {
       <p className="patient-portal__notice">
         For your privacy, results are only shown after the pathologist approves and releases them. Test details are never included in email.
       </p>
+
+      {editingProfile && (
+        <div className="patient-portal__profile-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !profileSaving) setEditingProfile(false)
+        }}>
+          <section className="patient-portal__profile-dialog" role="dialog" aria-modal="true" aria-labelledby="patient-profile-title">
+            <header className="patient-portal__profile-heading">
+              <div>
+                <h2 id="patient-profile-title">Edit profile</h2>
+                <p>Update your name and contact details. Your PID, birth date, sex, and ID information cannot be changed here.</p>
+              </div>
+              <button className="patient-portal__profile-close" type="button" aria-label="Close profile editor" disabled={profileSaving} onClick={() => setEditingProfile(false)}>×</button>
+            </header>
+            <form className="patient-portal__profile-form" onSubmit={saveProfile}>
+              {profileError && <p className="patient-portal__error" role="alert">{profileError}</p>}
+              <label>First name
+                <input name="firstName" autoComplete="given-name" required minLength={2} maxLength={50} value={profileForm.firstName} aria-invalid={Boolean(profileFieldErrors.firstName)} onChange={(event) => setProfileForm((current) => ({ ...current, firstName: event.target.value }))} />
+                {profileFieldErrors.firstName && <span className="patient-portal__field-error">{profileFieldErrors.firstName}</span>}
+              </label>
+              <label>Middle name
+                <input name="middleName" autoComplete="additional-name" maxLength={50} value={profileForm.middleName} aria-invalid={Boolean(profileFieldErrors.middleName)} onChange={(event) => setProfileForm((current) => ({ ...current, middleName: event.target.value }))} />
+                {profileFieldErrors.middleName && <span className="patient-portal__field-error">{profileFieldErrors.middleName}</span>}
+              </label>
+              <label>Last name
+                <input name="lastName" autoComplete="family-name" required minLength={2} maxLength={50} value={profileForm.lastName} aria-invalid={Boolean(profileFieldErrors.lastName)} onChange={(event) => setProfileForm((current) => ({ ...current, lastName: event.target.value }))} />
+                {profileFieldErrors.lastName && <span className="patient-portal__field-error">{profileFieldErrors.lastName}</span>}
+              </label>
+              <label>Email address
+                <input name="email" type="email" autoComplete="email" maxLength={254} value={profileForm.email} aria-invalid={Boolean(profileFieldErrors.email)} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} />
+                {profileFieldErrors.email && <span className="patient-portal__field-error">{profileFieldErrors.email}</span>}
+              </label>
+              <label>Phone number
+                <input name="phone" type="tel" autoComplete="tel" inputMode="tel" required maxLength={32} placeholder="+63..." value={profileForm.phone} aria-invalid={Boolean(profileFieldErrors.phone)} onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))} />
+                {profileFieldErrors.phone && <span className="patient-portal__field-error">{profileFieldErrors.phone}</span>}
+              </label>
+              <p className="patient-portal__profile-hint">Enter the phone number with its country code, for example +63.</p>
+              <div className="patient-portal__profile-actions">
+                <button className="patient-portal__button" type="button" disabled={profileSaving} onClick={() => setEditingProfile(false)}>Cancel</button>
+                <button className="patient-portal__button patient-portal__button--primary" type="submit" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save changes'}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </section>
   )
 }
