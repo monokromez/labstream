@@ -129,7 +129,7 @@ function ResultEntryTable({ fields, specimenLabel, values, isLocked, showFieldEr
                     )}
                   </td>
                   <td>{field.unit ?? '—'}</td>
-                  <td>{field.range}</td>
+                  <td>{field.rangeAvailable ? field.range : <span title="No active range matches this patient’s age, sex, and result unit.">No applicable range</span>}</td>
                   <td>{flag
                     ? <span className="medtech-flag" title={flag === 'H' ? 'Above reference range' : 'Below reference range'}>{flag} <span>{flag === 'H' ? 'High' : 'Low'}</span></span>
                     : '—'}</td>
@@ -284,8 +284,14 @@ export default function ResultsInProgress() {
 
   function completionAction(test) {
     const completed = test.status === 'completed'
+    const specimenResults = results.filter((result) => result.requestId === selectedResult?.request.id
+      && result.tests.some((entry) => entry.requestItemId === test.requestItemId))
+    const everySpecimenComplete = specimenResults.length > 0 && specimenResults.every((result) => {
+      const specimenTest = result.tests.find((entry) => entry.requestItemId === test.requestItemId)
+      return specimenTest?.fields.length > 0 && specimenTest.fields.every((field) => isFieldComplete(field, result.values[field.key]))
+    })
     const canComplete = ['processing', 'drafted', 'returned'].includes(test.status) && !isLocked && test.fields.length > 0
-      && test.fields.every((field) => isFieldComplete(field, values[field.key]))
+      && everySpecimenComplete
     const badge = selectedResult?.request.status === 'correction' && !completed
       ? 'For re-analysis'
       : completed ? 'Complete' : test.status === 'drafted' ? 'Drafted' : 'Awaiting result'
@@ -562,7 +568,9 @@ export default function ResultsInProgress() {
                           {row.rangeWidth > 0 && <span className="medtech-findings-chart__range" style={{ left: `${row.rangeStart}%`, width: `${row.rangeWidth}%` }} />}
                           <span className={`medtech-findings-chart__value-marker${row.flag ? ' is-out-of-range' : ''}`} style={{ left: `${row.valueWidth}%` }} />
                         </div>
-                        <small>Reference: {row.range || 'Not specified'} {row.unit ?? ''}</small>
+                        <small>{row.rangeAvailable
+                          ? `Reference: ${row.range} ${row.unit ?? ''}`
+                          : 'No active reference range matches this patient’s age, sex, and result unit.'}</small>
                       </div>
                     ))}
                   </div>

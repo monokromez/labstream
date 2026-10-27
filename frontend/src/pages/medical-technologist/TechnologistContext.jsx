@@ -55,7 +55,7 @@ export function TechnologistProvider({ children, onNavigate }) {
             const catalogTest = catalogTests.find((test) => test.id === link.testId)
             const analytes = link.analytes?.length ? link.analytes : catalogTest?.analytes ?? []
             linkedTests.set(key, {
-              id: link.id, requestItemId: link.id, testId: link.testId, name: link.testName,
+              id: link.id, requestItemId: link.id, testId: link.testId, specimenId: specimen.id, name: link.testName,
               category: link.category ?? catalogTest?.categoryName ?? '—', specimenType: specimen.specimenType,
               status: link.status,
               latestResult: link.latestResult,
@@ -63,6 +63,7 @@ export function TechnologistProvider({ children, onNavigate }) {
                 key: `${link.testId}:${analyte.key}`, analyteId: analyte.id, label: analyte.label,
                 valueType: analyte.valueType ?? analyte.value_type, options: analyte.options ?? [], unit: analyte.resultUnit ?? analyte.unit ?? '',
                 range: analyte.lowerLimit != null || analyte.upperLimit != null ? `${analyte.lowerLimit ?? '—'} - ${analyte.upperLimit ?? '—'}` : '—',
+                rangeAvailable: analyte.lowerLimit != null || analyte.upperLimit != null,
                 required: analyte.isRequired !== false,
               })),
             })
@@ -97,7 +98,8 @@ export function TechnologistProvider({ children, onNavigate }) {
         rejectionNotes: row.notes ?? '',
         linkedItemIds: (row.tests ?? []).map((test) => test.id),
       }})
-      const resultRows = specimenRows.filter((specimen) => specimen.status === 'Accepted').map((specimen) => {
+      const resultRows = specimenRows.filter((specimen) => specimen.status === 'Accepted'
+        && !specimenRows.some((replacement) => replacement.replacesSpecimenId === specimen.id)).map((specimen) => {
         const request = requestByNumber.get(specimen.requestId)
         const tests = (request?.tests ?? []).filter((test) => test.specimenType === specimen.type && specimen.linkedItemIds.includes(test.requestItemId))
         const states = tests.map((test) => test.status)
@@ -106,7 +108,7 @@ export function TechnologistProvider({ children, onNavigate }) {
             : states.some((value) => ['submitted', 'approved', 'released'].includes(value)) ? 'validation'
               : states.some((value) => ['draft', 'drafted', 'completed'].includes(value)) ? 'draft' : 'awaiting'
         const values = Object.fromEntries(tests.flatMap((test) => test.fields.map((field) => {
-          const saved = (test.latestResult?.values ?? []).find((value) => value.analyteId === field.analyteId)
+          const saved = (test.latestResult?.values ?? []).find((value) => value.specimenId === specimen.id && value.analyteId === field.analyteId)
           const value = saved && [saved.numericValue, saved.textValue, saved.selectValue, saved.booleanValue, saved.structuredValue].find((entry) => entry != null)
           return [field.key, value == null ? (field.valueType === 'structured' ? [] : '') : field.valueType === 'structured' ? value : String(value)]
         })))
@@ -168,9 +170,8 @@ export function TechnologistProvider({ children, onNavigate }) {
     if (!specimen || !request || !specimenResult) return
     try {
       for (const test of specimenResult.tests.filter((entry) => ['processing', 'drafted', 'returned'].includes(entry.status))) {
-        const linkedSpecimens = specimens.filter((entry) => entry.status === 'Accepted' && entry.requestId === request.id && entry.linkedItemIds.includes(test.requestItemId))
         const analyteValues = test.fields.map((field) => toApiAnalyteValue(field, values))
-        await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenIds: linkedSpecimens.map((entry) => entry.id), values: analyteValues })
+        await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenId: specimen.id, values: analyteValues })
       }
       await refresh()
       if (!quiet) setNotice('Draft saved to the server.')

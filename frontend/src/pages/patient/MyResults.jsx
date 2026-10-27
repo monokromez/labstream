@@ -26,6 +26,8 @@ export default function MyResults() {
       interpretation: test.pathologistInterpretation,
       results: (test.values ?? []).map((value) => ({
         name: value.label,
+        specimenType: value.specimenType,
+        specimenAttempt: value.specimenAttempt,
         value: Array.isArray(value.structuredValue) ? null : resultValueForDisplay(value),
         structuredValue: value.structuredValue,
         isNumeric: value.numericValue != null,
@@ -98,8 +100,8 @@ export default function MyResults() {
                 <h4 className="patient-records__test-name">{test.name}</h4>
                 <div className="patient-records__result-list">
                   {test.results.map((row) => (
-                    <div key={row.name}>
-                      <span>{row.name}</span>
+                    <div key={`${row.specimenType ?? 'specimen'}-${row.specimenAttempt ?? 1}-${row.name}`}>
+                      <span>{row.name}{row.specimenType ? ` · ${row.specimenType}${row.specimenAttempt > 1 ? ` · Attempt ${row.specimenAttempt}` : ''}` : ''}</span>
                       {Array.isArray(row.structuredValue) ? <StructuredValueTable rows={row.structuredValue} /> : <strong>{row.value}{row.unit && row.isNumeric ? ` ${row.unit}` : ''}</strong>}
                       <small className={row.abnormal ? 'patient-records__abnormal' : ''}>{row.abnormal ? 'Outside reference range' : `Reference: ${row.reference}`}</small>
                     </div>

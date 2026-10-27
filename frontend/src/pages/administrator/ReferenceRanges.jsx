@@ -8,8 +8,7 @@ import useApiResource from '../../api/useApiResource.js'
 import useTestCatalog from '../../data/useTestCatalog.js'
 import './ReferenceRanges.css'
 
-const units = ['g/dL', 'mg/dL', 'mmol/L', '10³/µL', '10⁶/µL', 'µIU/mL', 'U/L', 'Other']
-const blankRange = { test: '', analyteId: '', gender: 'All', minAge: '', maxAge: '', lower: '', upper: '', unit: 'mg/dL' }
+const blankRange = { test: '', analyteId: '', gender: 'All', minAge: '', maxAge: '', lower: '', upper: '', unit: '' }
 
 export default function ReferenceRanges() {
   const [search, setSearch] = useState('')
@@ -27,13 +26,19 @@ export default function ReferenceRanges() {
     () => api.administrator.referenceRanges({ page, pageSize, q: search, sex }),
     [page, search, sex],
   )
-  const ranges = (rangeResult?.data ?? []).map((range) => ({
-    ...range, test: range.testName, gender: range.sex ? range.sex[0].toUpperCase() + range.sex.slice(1) : 'All',
-    minAge: Math.floor(Number(range.minAgeDays ?? 0) / 365.25), maxAge: Math.floor(Number(range.maxAgeDays ?? 120 * 365.25) / 365.25),
-    lower: range.lowerLimit, upper: range.upperLimit,
-  }))
+  const ranges = (rangeResult?.data ?? []).map((range) => {
+    const analyteUnit = catalog.tests.find((test) => test.id === range.testId)?.analytes?.find((analyte) => analyte.id === range.analyteId)?.unit ?? ''
+    return {
+      ...range, test: range.testName, gender: range.sex ? range.sex[0].toUpperCase() + range.sex.slice(1) : 'All',
+      minAge: Math.floor(Number(range.minAgeDays ?? 0) / 365.25), maxAge: Math.floor(Number(range.maxAgeDays ?? 120 * 365.25) / 365.25),
+      lower: range.lowerLimit, upper: range.upperLimit, analyteUnit,
+      unitMismatch: Boolean(analyteUnit && analyteUnit.trim().toLowerCase() !== String(range.unit ?? '').trim().toLowerCase()),
+    }
+  })
   const selectedTest = catalog.tests.find((test) => test.id === form.test)
   const analytes = selectedTest?.analytes ?? []
+  const selectedAnalyte = analytes.find((analyte) => analyte.id === form.analyteId)
+  const rangeUnit = selectedAnalyte?.unit || 'Other'
 
   const pageRows = ranges
 
@@ -64,6 +69,8 @@ export default function ReferenceRanges() {
     }
     if (!errors.lower && !errors.upper && lower > upper) errors.upper = 'Upper limit must be at least the lower limit.'
     if (!values.unit || values.unit.length > 40) errors.unit = 'Choose a unit no longer than 40 characters.'
+    const analyteUnit = catalog.tests.find((test) => test.id === values.test)?.analytes?.find((analyte) => analyte.id === values.analyteId)?.unit
+    if (analyteUnit && values.unit.trim().toLowerCase() !== analyteUnit.trim().toLowerCase()) errors.unit = `Use the result field unit (${analyteUnit}).`
 
     return errors
   }
@@ -90,12 +97,13 @@ export default function ReferenceRanges() {
     setFormErrors({})
     setAttemptedSubmit(false)
     const test = catalog.tests[0]
-    setForm({ ...blankRange, test: test?.id || '', analyteId: test?.analytes?.[0]?.id || '' })
+    setForm({ ...blankRange, test: test?.id || '', analyteId: test?.analytes?.[0]?.id || '', unit: test?.analytes?.[0]?.unit || 'Other' })
     setDialog({ type: 'form' })
   }
   function openEdit(range) {
     const test = catalog.tests.find((item) => item.id === range.testId)
-    setForm({ test: range.testId, analyteId: range.analyteId, gender: range.gender, minAge: String(range.minAge), maxAge: String(range.maxAge), lower: String(range.lower), upper: String(range.upper), unit: range.unit || test?.analytes?.find((item) => item.id === range.analyteId)?.unit || 'Other' })
+    const resultUnit = test?.analytes?.find((item) => item.id === range.analyteId)?.unit || 'Other'
+    setForm({ test: range.testId, analyteId: range.analyteId, gender: range.gender, minAge: String(range.minAge), maxAge: String(range.maxAge), lower: String(range.lower), upper: String(range.upper), unit: resultUnit })
     setSaveError('')
     setFormErrors({})
     setAttemptedSubmit(false)
@@ -140,7 +148,7 @@ export default function ReferenceRanges() {
       <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr><th>Test</th><th>Gender</th><th>Age range</th><th>Boundary limits</th><th>Unit</th><th>Actions</th></tr></thead>
         <tbody>
-          {pageRows.map((range) => <tr key={range.id}><td className="admin-table__primary">{range.test}</td><td>{range.gender}</td><td>{range.minAge}–{range.maxAge}</td><td>{range.lower}–{range.upper}</td><td>{range.unit}</td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => openEdit(range)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => { setSaveError(''); setDialog({ type: 'delete', range }) }}>Delete</button></td></tr>)}
+          {pageRows.map((range) => <tr key={range.id}><td className="admin-table__primary">{range.test}</td><td>{range.gender}</td><td>{range.minAge}–{range.maxAge}</td><td>{range.lower}–{range.upper}</td><td>{range.unit}{range.unitMismatch && <small className="reference-range-unit-warning">Must match result unit: {range.analyteUnit}</small>}</td><td className="admin-table__actions"><button className="admin-button admin-button--small admin-button--positive" type="button" onClick={() => openEdit(range)}>Edit</button><button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => { setSaveError(''); setDialog({ type: 'delete', range }) }}>Delete</button></td></tr>)}
           {pageRows.length === 0 && <tr><td className="admin-empty" colSpan="6">No reference ranges match your filters.</td></tr>}
         </tbody>
       </table></div></section>
@@ -156,14 +164,14 @@ export default function ReferenceRanges() {
           setDialog({ ...dialog, type: 'confirm-save' })
         }}>
           {saveError && <p className="admin-dialog__field-error admin-dialog__span" role="alert">{saveError}</p>}
-          <label className="admin-dialog__field admin-dialog__span">Test<select aria-invalid={Boolean(formErrors.test)} aria-describedby={formErrors.test ? 'range-test-error' : undefined} value={form.test} onChange={(event) => { const test = catalog.tests.find((item) => item.id === event.target.value); const next = { ...form, test: event.target.value, analyteId: test?.analytes?.[0]?.id || '' }; setForm(next); if (attemptedSubmit) setFormErrors(validateForm(next)); setSaveError('') }}>{catalog.tests.map((test) => <option key={test.id} value={test.id}>{test.name}</option>)}</select>{formErrors.test && <span id="range-test-error" className="admin-dialog__field-error" role="alert">{formErrors.test}</span>}</label>
-          <label className="admin-dialog__field admin-dialog__span">Result field<select aria-invalid={Boolean(formErrors.analyteId)} aria-describedby={formErrors.analyteId ? 'range-analyte-error' : undefined} value={form.analyteId} onChange={(event) => updateForm('analyteId', event.target.value)}>{analytes.map((analyte) => <option key={analyte.id} value={analyte.id}>{analyte.label}{analyte.unit ? ` (${analyte.unit})` : ''}</option>)}</select>{formErrors.analyteId && <span id="range-analyte-error" className="admin-dialog__field-error" role="alert">{formErrors.analyteId}</span>}</label>
+          <label className="admin-dialog__field admin-dialog__span">Test<select aria-invalid={Boolean(formErrors.test)} aria-describedby={formErrors.test ? 'range-test-error' : undefined} value={form.test} onChange={(event) => { const test = catalog.tests.find((item) => item.id === event.target.value); const analyte = test?.analytes?.[0]; const next = { ...form, test: event.target.value, analyteId: analyte?.id || '', unit: analyte?.unit || 'Other' }; setForm(next); if (attemptedSubmit) setFormErrors(validateForm(next)); setSaveError('') }}>{catalog.tests.map((test) => <option key={test.id} value={test.id}>{test.name}</option>)}</select>{formErrors.test && <span id="range-test-error" className="admin-dialog__field-error" role="alert">{formErrors.test}</span>}</label>
+          <label className="admin-dialog__field admin-dialog__span">Result field<select aria-invalid={Boolean(formErrors.analyteId)} aria-describedby={formErrors.analyteId ? 'range-analyte-error' : undefined} value={form.analyteId} onChange={(event) => { const analyte = analytes.find((item) => item.id === event.target.value); const next = { ...form, analyteId: event.target.value, unit: analyte?.unit || 'Other' }; setForm(next); if (attemptedSubmit) setFormErrors(validateForm(next)); setSaveError('') }}>{analytes.map((analyte) => <option key={analyte.id} value={analyte.id}>{analyte.label}{analyte.unit ? ` (${analyte.unit})` : ''}</option>)}</select>{formErrors.analyteId && <span id="range-analyte-error" className="admin-dialog__field-error" role="alert">{formErrors.analyteId}</span>}</label>
           <label className="admin-dialog__field">Gender<select aria-invalid={Boolean(formErrors.gender)} aria-describedby={formErrors.gender ? 'range-gender-error' : undefined} value={form.gender} onChange={(event) => updateForm('gender', event.target.value)}><option>All</option><option>Female</option><option>Male</option></select>{formErrors.gender && <span id="range-gender-error" className="admin-dialog__field-error" role="alert">{formErrors.gender}</span>}</label>
           <label className="admin-dialog__field">Minimum age<input aria-invalid={Boolean(formErrors.minAge)} aria-describedby={formErrors.minAge ? 'range-min-age-error' : undefined} type="text" inputMode="numeric" maxLength="3" value={form.minAge} onChange={(event) => updateForm('minAge', event.target.value.replace(/\D/g, '').slice(0, 3))} />{formErrors.minAge && <span id="range-min-age-error" className="admin-dialog__field-error" role="alert">{formErrors.minAge}</span>}</label>
           <label className="admin-dialog__field">Maximum age<input aria-invalid={Boolean(formErrors.maxAge)} aria-describedby={formErrors.maxAge ? 'range-max-age-error' : undefined} type="text" inputMode="numeric" maxLength="3" value={form.maxAge} onChange={(event) => updateForm('maxAge', event.target.value.replace(/\D/g, '').slice(0, 3))} />{formErrors.maxAge && <span id="range-max-age-error" className="admin-dialog__field-error" role="alert">{formErrors.maxAge}</span>}</label>
           <label className="admin-dialog__field">Lower limit<input aria-invalid={Boolean(formErrors.lower)} aria-describedby={formErrors.lower ? 'range-lower-error' : undefined} type="text" inputMode="decimal" maxLength="16" value={form.lower} onChange={(event) => updateForm('lower', sanitizeDecimal(event.target.value, 10, 4))} />{formErrors.lower && <span id="range-lower-error" className="admin-dialog__field-error" role="alert">{formErrors.lower}</span>}</label>
           <label className="admin-dialog__field">Upper limit<input aria-invalid={Boolean(formErrors.upper)} aria-describedby={formErrors.upper ? 'range-upper-error' : undefined} type="text" inputMode="decimal" maxLength="16" value={form.upper} onChange={(event) => updateForm('upper', sanitizeDecimal(event.target.value, 10, 4))} />{formErrors.upper && <span id="range-upper-error" className="admin-dialog__field-error" role="alert">{formErrors.upper}</span>}</label>
-          <label className="admin-dialog__field">Unit<select aria-invalid={Boolean(formErrors.unit)} aria-describedby={formErrors.unit ? 'range-unit-error' : undefined} value={form.unit} onChange={(event) => updateForm('unit', event.target.value)}>{units.map((unit) => <option key={unit}>{unit}</option>)}</select>{formErrors.unit && <span id="range-unit-error" className="admin-dialog__field-error" role="alert">{formErrors.unit}</span>}</label>
+          <label className="admin-dialog__field">Result unit<select aria-invalid={Boolean(formErrors.unit)} aria-describedby={formErrors.unit ? 'range-unit-error' : undefined} value={form.unit} onChange={(event) => updateForm('unit', event.target.value)}><option>{rangeUnit}</option></select>{formErrors.unit && <span id="range-unit-error" className="admin-dialog__field-error" role="alert">{formErrors.unit}</span>}<span className="admin-dialog__field-hint">This is taken from the selected test result field.</span></label>
         </form>
         <div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button" type="submit" form="range-form">Review changes</button></div>
       </AdminDialog>}
