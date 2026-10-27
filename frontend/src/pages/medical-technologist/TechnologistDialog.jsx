@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import DialogCloseButton from '../../components/data/DialogCloseButton.jsx'
 
 export default function TechnologistDialog({ title, children, onClose, className = '' }) {
   const dialogRef = useRef(null)
@@ -64,11 +65,7 @@ export default function TechnologistDialog({ title, children, onClose, className
       >
         <header className="medtech-dialog__header">
           <h2 id={titleId}>{title}</h2>
-          <button className="medtech-icon-button" type="button" aria-label="Close dialog" onClick={onClose}>
-            <svg viewBox="0 0 20 20" aria-hidden="true">
-              <path d="m5 5 10 10M15 5 5 15" />
-            </svg>
-          </button>
+          <DialogCloseButton onClick={onClose} />
         </header>
         {children}
       </section>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import SearchInput from '../../components/data/SearchInput.jsx'
+import DialogCloseButton from '../../components/data/DialogCloseButton.jsx'
 import TablePagination from '../../components/data/TablePagination.jsx'
 import { formatDate, formatDateTime } from '../../utils/dateFormat.js'
 import { describeEmailDelivery } from '../../utils/emailDelivery.js'
@@ -219,7 +220,7 @@ export default function PaymentsReceipts() {
                 </h2>
         <p>{dialog.transaction.pid} · {dialog.transaction.patientName}</p>
               </div>
-              <button className='payments-receipts__close' type='button' aria-label='Close dialog' onClick={() => setDialog(null)}>×</button>
+              <DialogCloseButton onClick={() => setDialog(null)} />
             </div>
 
             {dialog.type === 'receipt' && (

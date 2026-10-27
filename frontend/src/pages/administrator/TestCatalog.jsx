@@ -388,7 +388,7 @@ export default function TestCatalog() {
       {loadError && <p role="alert">{loadError}</p>}
       <div className="admin-page__controls-row">
         <div className="admin-toolbar" role="search">
-          <SearchInput className="admin-toolbar__search" label="Search test catalog" visibleLabel="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
+          <SearchInput className="admin-toolbar__search" label="Search test catalog" placeholder="Test name" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} />
           <label className="admin-toolbar__field">Filter by category<select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option value="All categories">All categories</option>{categoryRecords.map((category) => <option key={category.id} value={category.id}>{category.name}{category.isActive ? '' : ' (Archived)'}</option>)}</select></label>
           <label className="admin-toolbar__field">Availability<select value={availabilityFilter} onChange={(event) => { setAvailabilityFilter(event.target.value); setPage(1) }}><option value="all">All tests</option><option value="active">Available</option><option value="inactive">Archived / unavailable</option></select></label>
         </div>

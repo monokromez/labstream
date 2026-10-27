@@ -2,16 +2,17 @@
 
 .patient-records { display: grid; gap: 1rem; min-width: 0; }
 .patient-records__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.patient-records__toolbar { display: flex; align-items: end; gap: .8rem; flex-wrap: wrap; }
+.patient-records__toolbar { display: flex; align-items: flex-start; gap: .8rem; flex-wrap: wrap; }
 .patient-records__search { flex: 1 1 20rem; max-width: 34rem; }
 .patient-records__filter { display: grid; gap: .4rem; min-width: 11rem; color: var(--text-muted-lightbg); font-size: .78rem; font-weight: 700; text-transform: uppercase; }
-.patient-records__filter select { min-height: 2.65rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface); color: var(--text-lightbg); font: inherit; text-transform: none; }
+.patient-records__filter select { min-height: 2.875rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface); color: var(--text-lightbg); font: inherit; text-transform: none; }
 .patient-records__table-card { overflow: hidden; border: 1px solid var(--border); border-radius: .55rem; background: #fff; }
 .patient-records__heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.15rem; }
 .patient-records__heading h2 { margin: 0; color: var(--text-lightbg); font-size: 1.1rem; text-transform: uppercase; }
 .patient-records__heading p { margin: .25rem 0 0; color: var(--text-muted-lightbg); font-size: .86rem; }
 .patient-records__heading > span { flex: 0 0 auto; padding: .35rem .65rem; border-radius: 999px; background: #d9f2ee; color: var(--text-lightbg); font-size: .8rem; }
-.patient-records__scroll { overflow-x: auto; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.patient-records__scroll { overflow-x: auto; overscroll-behavior-inline: contain; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.patient-records__scroll:focus-visible { outline: 3px solid var(--secondary); outline-offset: 2px; }
 .patient-records__table { width: 100%; min-width: 700px; border-collapse: collapse; text-align: left; }
 .patient-records__table th { padding: .8rem 1rem; background: var(--sidebar-background); color: var(--text-darkbg); font-size: .74rem; text-transform: uppercase; }
 .patient-records__table td { padding: .85rem 1rem; border-top: 1px solid var(--border); color: var(--text-lightbg); font-size: .88rem; }
@@ -49,8 +50,28 @@
 .patient-records__report-footer { margin-top: 1rem; padding-top: .75rem; border-top: 1px dashed var(--border); text-align: center; }
 .patient-records__report-footer p { margin: 0; color: var(--text-muted-lightbg); font-size: .78rem; font-style: italic; }
 
-@media (max-width: 760px) { .patient-records__summary { grid-template-columns: 1fr; } }
-@media (max-width: 600px) { .patient-records__result-list > div { grid-template-columns: 1fr 1fr; } .patient-records__result-list small { grid-column: 1 / -1; } .patient-records__patient-meta { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .patient-records__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+  .patient-records__summary > :last-child { grid-column: 1 / -1; }
+  .patient-records__toolbar { align-items: stretch; }
+  .patient-records__search { width: 100%; max-width: none; flex-basis: 100%; }
+  .patient-records__filter { width: 100%; }
+}
+@media (max-width: 600px) {
+  .patient-records__heading { align-items: flex-start; padding: 0.85rem; }
+  .patient-records__heading h2 { font-size: 1rem; }
+  .patient-records__heading p { font-size: 0.8rem; }
+  .patient-records__heading > span { font-size: 0.72rem; }
+  .patient-records__result-list > div { grid-template-columns: 1fr 1fr; }
+  .patient-records__result-list small { grid-column: 1 / -1; }
+  .patient-records__patient-meta { grid-template-columns: 1fr; }
+  .patient-records__report-header { flex-direction: column; gap: 0.65rem; }
+  .patient-records__report-meta { text-align: left; }
+}
+@media (max-width: 360px) {
+  .patient-records__summary { grid-template-columns: minmax(0, 1fr); }
+  .patient-records__summary > :last-child { grid-column: auto; }
+}
 
 /* Print styling for PDF export */
 @media print {
@@ -78,7 +99,6 @@
     margin: 0 !important;
     background: white !important;
   }
-  .admin-dialog__close,
   .admin-dialog__footer,
   .admin-dialog__header button {
     display: none !important;

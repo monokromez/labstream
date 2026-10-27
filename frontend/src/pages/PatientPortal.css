@@ -129,6 +129,11 @@
   border-bottom: 1px solid var(--border);
 }
 
+.patient-portal__item > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .patient-portal__item:last-child {
   border-bottom: none;
 }
@@ -237,16 +242,6 @@
   line-height: 1.5;
 }
 
-.patient-portal__profile-close {
-  align-self: flex-start;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted-lightbg);
-  font-size: 1.7rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
 .patient-portal__profile-form {
   display: grid;
   gap: 0.9rem;
@@ -312,8 +307,108 @@
 }
 
 @media (max-width: 900px) {
-  .patient-portal__summary,
   .patient-portal__columns {
     grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+  .patient-portal__summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    background: #fff;
+  }
+  .patient-portal__summary .summary-card {
+    display: grid;
+    align-content: center;
+    gap: 0.2rem;
+    min-height: 3.75rem;
+    padding: 0.45rem 0.55rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .patient-portal__summary .summary-card + .summary-card {
+    border-left: 1px solid var(--border);
+  }
+  .patient-portal__summary .summary-card__title {
+    font-size: 0.62rem;
+    line-height: 1.2;
+  }
+  .patient-portal__summary .summary-card__value {
+    margin: 0;
+    font-size: 1.15rem;
+  }
+  .patient-portal__summary .summary-card__helper {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .patient-portal {
+    gap: 0.75rem;
+  }
+  .patient-portal__welcome {
+    padding: 0.85rem;
+  }
+  .patient-portal__eyebrow {
+    display: none;
+  }
+  .patient-portal__welcome h2 {
+    font-size: 1.1rem;
+    line-height: 1.2;
+  }
+  .patient-portal__welcome-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .patient-portal__welcome-actions .patient-portal__button {
+    min-height: 2.75rem;
+    min-width: 0;
+    padding-inline: 0.4rem;
+    font-size: 0.75rem;
+    white-space: normal;
+  }
+  .patient-portal__panel-heading {
+    padding: 0.75rem 0.85rem;
+  }
+  .patient-portal__panel-heading p {
+    display: none;
+  }
+  .patient-portal__panel-heading h3 {
+    font-family: var(--main-font);
+    font-size: 0.92rem;
+    line-height: 1.2;
+    text-transform: none;
+  }
+  .patient-portal__empty {
+    padding: 0.9rem 0.85rem;
+  }
+  .patient-portal__item {
+    align-items: flex-start;
+    padding: 0.8rem 0.9rem;
+  }
+  .patient-portal__profile-backdrop {
+    align-items: start;
+    padding: max(0.6rem, env(safe-area-inset-top)) 0.6rem max(0.6rem, env(safe-area-inset-bottom));
+  }
+  .patient-portal__profile-dialog {
+    max-height: calc(100dvh - 1.2rem);
+  }
+  .patient-portal__profile-heading,
+  .patient-portal__profile-form {
+    padding-inline: 1rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .patient-portal__summary .summary-card {
+    padding-inline: 0.4rem;
+  }
+  .patient-portal__summary .summary-card__title {
+    font-size: 0.58rem;
   }
 }

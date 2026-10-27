@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min'
 import SearchInput from '../../components/data/SearchInput.jsx'
+import DialogCloseButton from '../../components/data/DialogCloseButton.jsx'
 import CountryCityFields from '../../components/data/CountryCityFields.jsx'
 import { CharacterCount, LimitedInput } from '../../components/forms/LimitedInput.jsx'
 import PlusIcon from '../../components/data/PlusIcon.jsx'
@@ -543,7 +544,7 @@ export default function RegisterRequest() {
                   {activeModal === 'add' && showRequestPrompt && 'Patient registration is complete.'}
                 </p>
               </div>
-              <button className='register-request__modal-close' type='button' aria-label='Close dialog' onClick={() => setActiveModal(null)}>×</button>
+              <DialogCloseButton onClick={() => setActiveModal(null)} />
             </div>
 
             <div className='register-request__modal-body'>

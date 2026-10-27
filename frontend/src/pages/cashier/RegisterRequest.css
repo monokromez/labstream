@@ -6,7 +6,7 @@
 
 .register-request__toolbar {
   display: flex;
-  align-items: end;
+  align-items: flex-start;
   gap: 1rem;
   width: 100%;
 }
@@ -25,7 +25,7 @@
 
 .register-request__filters {
   display: flex;
-  align-items: end;
+  align-items: flex-start;
   gap: 0.75rem;
 }
 
@@ -464,28 +464,6 @@
   font-size: 0.9rem;
 }
 
-.register-request__modal-close {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 0;
-  border-radius: 0.25rem;
-  background: transparent;
-  color: var(--text-muted-lightbg);
-  font: inherit;
-  font-size: 1.6rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.register-request__modal-close:hover,
-.register-request__modal-close:focus-visible {
-  background: var(--background);
-  color: var(--text-lightbg);
-}
-
 .register-request__modal-body {
   padding: 1.5rem;
 }
@@ -853,8 +831,7 @@
 }
 
 .register-request__modal-primary:focus-visible,
-.register-request__modal-secondary:focus-visible,
-.register-request__modal-close:focus-visible {
+.register-request__modal-secondary:focus-visible {
   outline: 3px solid rgb(15 118 110 / 20%);
   outline-offset: 2px;
 }

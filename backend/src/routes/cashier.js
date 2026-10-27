@@ -92,7 +92,13 @@ export function createCashierRouter({ client }) {
       const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
       const query = String(req.query.q ?? "").trim();
+      const paymentFilter = String(req.query.payment ?? "all");
+      const statusFilter = String(req.query.status ?? "all");
       if (query.length > 100) return res.status(400).json({ error: "INVALID_SEARCH", message: "Request search cannot exceed 100 characters." });
+      if (!["all", "paid", "unpaid"].includes(paymentFilter)) return res.status(400).json({ error: "INVALID_PAYMENT_FILTER", message: "Select a valid payment status." });
+      if (!["all", "awaiting_payment", "paid", "specimen_collection", "processing", "for_validation", "correction", "released", "cancelled"].includes(statusFilter)) {
+        return res.status(400).json({ error: "INVALID_STATUS_FILTER", message: "Select a valid workflow status." });
+      }
       const [summary] = await client.unsafe(
         `select count(*) filter (where r.requested_at::date = current_date)::integer as requests_today,
                 count(*) filter (where r.status = 'awaiting_payment')::integer as unpaid_requests,
@@ -110,8 +116,11 @@ export function createCashierRouter({ client }) {
             or p.pid ilike '%' || $2 || '%' or p.first_name ilike '%' || $2 || '%'
             or p.last_name ilike '%' || $2 || '%'
             or exists (select 1 from public.request_items ri where ri.request_id = r.id and ri.clinic_id = r.clinic_id
-              and ri.test_name_snapshot ilike '%' || $2 || '%'))`,
-        [req.user.clinicId, query],
+              and ri.test_name_snapshot ilike '%' || $2 || '%'))
+            and ($3 = 'all' or ($3 = 'paid' and exists (select 1 from public.payments pay where pay.request_id = r.id and pay.clinic_id = r.clinic_id and pay.voided_at is null))
+              or ($3 = 'unpaid' and not exists (select 1 from public.payments pay where pay.request_id = r.id and pay.clinic_id = r.clinic_id and pay.voided_at is null)))
+            and ($4 = 'all' or r.status::text = $4)`,
+        [req.user.clinicId, query, paymentFilter, statusFilter],
       );
       const totalPages = Math.ceil(count.total / pageSize);
       const page = Math.min(requestedPage, Math.max(1, totalPages));
@@ -127,8 +136,11 @@ export function createCashierRouter({ client }) {
             or p.last_name ilike '%' || $2 || '%'
             or exists (select 1 from public.request_items match_item where match_item.request_id = r.id
               and match_item.clinic_id = r.clinic_id and match_item.test_name_snapshot ilike '%' || $2 || '%'))
-          group by r.id, p.id order by r.requested_at desc limit $3 offset $4`,
-        [req.user.clinicId, query, pageSize, (page - 1) * pageSize],
+            and ($3 = 'all' or ($3 = 'paid' and exists (select 1 from public.payments pay where pay.request_id = r.id and pay.clinic_id = r.clinic_id and pay.voided_at is null))
+              or ($3 = 'unpaid' and not exists (select 1 from public.payments pay where pay.request_id = r.id and pay.clinic_id = r.clinic_id and pay.voided_at is null)))
+            and ($4 = 'all' or r.status::text = $4)
+          group by r.id, p.id order by r.requested_at desc limit $5 offset $6`,
+        [req.user.clinicId, query, paymentFilter, statusFilter, pageSize, (page - 1) * pageSize],
       );
       return res.json({ data: { summary, recent }, pagination: { page, pageSize, total: count.total, totalPages } });
     } catch (error) { return next(error); }

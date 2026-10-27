@@ -235,7 +235,7 @@ export default function Sidebar({
         ))}
       </nav>
 
-      <button className="app-sidebar__logout" type="button" onClick={() => onLogout?.()}>
+      <button className="app-sidebar__logout" type="button" aria-haspopup={onLogout ? 'dialog' : undefined} onClick={() => onLogout?.()}>
         <span
           className="app-sidebar__icon app-sidebar__logout-icon"
           style={{ '--sidebar-icon': `url("${logoutIcon}")` }}

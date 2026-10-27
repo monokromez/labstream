@@ -70,6 +70,27 @@ function createCorrectApp({ voidedAt = null, correctedAt = null, latestId = invo
   return { app, writes };
 }
 
+function createFilteredListsApp() {
+  process.env.AUTH_TOKEN_SECRET = secret;
+  const queries = [];
+  const execute = async (statement, parameters = []) => {
+    const query = normalize(statement);
+    const user = authenticatedUser(query);
+    if (user) return user;
+    queries.push({ query, parameters });
+    if (query.startsWith("select count(*) filter")) {
+      return [{ requests_today: 0, unpaid_requests: 0, awaiting_next_step: 0, payments_today: 0 }];
+    }
+    if (query.startsWith("select count(*)::integer as total")) return [{ total: 0, amount_due: 0 }];
+    return [];
+  };
+  const app = express();
+  app.use(express.json());
+  app.use("/cashier", createCashierRouter({ client: { unsafe: execute } }));
+  app.use((error, _req, res, _next) => res.status(500).json({ error: error.message }));
+  return { app, queries };
+}
+
 async function postJson(app, path, body = {}) {
   const server = createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -90,6 +111,39 @@ async function postJson(app, path, body = {}) {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 }
+
+async function getJson(app, path) {
+  const server = createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const { port } = server.address();
+    const token = createAccessToken({
+      id: cashierId,
+      clinic_id: clinicId,
+      role: "cashier",
+      must_change_password: false,
+    }, secret);
+    return await fetch(`http://127.0.0.1:${port}${path}`, {
+      headers: { authorization: `Bearer ${token}`, origin },
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
+test("cashier dashboard filters are applied to the paginated request list", async () => {
+  const { app, queries } = createFilteredListsApp();
+  const response = await getJson(app, "/cashier/dashboard?payment=paid&status=for_validation");
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.pagination.total, 0);
+  const countQuery = queries.find(({ query }) => query.startsWith("select count(*)::integer as total"));
+  const recentQuery = queries.find(({ query }) => query.startsWith("select r.id, r.request_number, r.status"));
+  assert.deepEqual(countQuery.parameters, [clinicId, "", "paid", "for_validation"]);
+  assert.deepEqual(recentQuery.parameters, [clinicId, "", "paid", "for_validation", 10, 0]);
+  assert.match(recentQuery.query, /and \(\$4 = 'all' or r\.status::text = \$4\)/);
+});
 
 test("correcting an invoice requires a reason", async () => {
   const { app, writes } = createCorrectApp();

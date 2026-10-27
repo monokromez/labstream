@@ -493,39 +493,6 @@
   font-size: 0.82rem;
 }
 
-.medtech-icon-button {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 0.25rem;
-  background: var(--surface);
-  color: var(--text-lightbg);
-  cursor: pointer;
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
-}
-
-.medtech-icon-button:hover {
-  border-color: var(--hover);
-  background: var(--hover);
-  color: var(--surface);
-}
-
-.medtech-icon-button:active {
-  transform: translateY(1px);
-}
-
-.medtech-icon-button svg {
-  width: 1rem;
-  height: 1rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-width: 1.8;
-}
-
 .medtech-dialog__body {
   display: grid;
   gap: 1rem;

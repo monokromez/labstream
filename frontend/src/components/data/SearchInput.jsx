@@ -1,6 +1,6 @@
 import './SearchInput.css'
 
-export default function SearchInput({ label, placeholder, value, onChange, className = '', visibleLabel }) {
+export default function SearchInput({ label, placeholder, value, onChange, className = '', visibleLabel = 'Search' }) {
   return (
     <div className={`app-search-field ${className}`.trim()}>
       {visibleLabel && <span className="app-search-field__label">{visibleLabel}</span>}

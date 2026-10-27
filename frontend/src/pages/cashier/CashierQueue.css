@@ -2,10 +2,10 @@
 
 .cashier-queue { display: grid; gap: 1rem; min-width: 0; }
 .cashier-queue__summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.cashier-queue__toolbar { display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
+.cashier-queue__toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: .8rem; flex-wrap: wrap; }
 .cashier-queue__search { flex: 1 1 20rem; max-width: 34rem; }
 .cashier-queue__filter { display: grid; gap: .4rem; min-width: 11rem; color: var(--text-muted-lightbg); font-size: .78rem; font-weight: 700; text-transform: uppercase; }
-.cashier-queue__filter select { min-height: 2.65rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface); color: var(--text-lightbg); font: inherit; text-transform: none; }
+.cashier-queue__filter select { min-height: 2.875rem; padding: .6rem .75rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface); color: var(--text-lightbg); font: inherit; text-transform: none; }
 .cashier-queue__table-card { overflow: hidden; border: 1px solid var(--border); border-radius: .55rem; background: #fff; }
 .cashier-queue__heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem 1.15rem; }
 .cashier-queue__heading h2 { margin: 0; color: var(--text-lightbg); font-size: 1.1rem; text-transform: uppercase; }
@@ -37,4 +37,9 @@
 
 @media (max-width: 760px) {
   .cashier-queue__summary { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .cashier-queue__search,
+  .cashier-queue__filter { width: 100%; max-width: none; }
 }

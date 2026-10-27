@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { api } from '../api/client.js'
 import useApiResource from '../api/useApiResource.js'
 import SummaryCard from '../components/reports/SummaryCard.jsx'
+import DialogCloseButton from '../components/data/DialogCloseButton.jsx'
 import { formatDate, formatDateTime } from '../utils/dateFormat.js'
 import './PatientPortal.css'
 
@@ -96,12 +97,6 @@ export default function PatientPortal({ onNavigate }) {
         </div>
       </header>
 
-      <div className="patient-portal__summary">
-        <SummaryCard title="Released results" value={String(releasedTests).padStart(2, '0')} helperText="Tests you can open and download" />
-        <SummaryCard title="Awaiting release" value={String(unreleasedTests).padStart(2, '0')} helperText="Tests still being processed or reviewed" />
-        <SummaryCard title="Total tests" value={String(totalTests).padStart(2, '0')} helperText="All tests in your requests" />
-      </div>
-
       <div className="patient-portal__columns">
         <section className="patient-portal__panel" aria-labelledby="patient-portal-released-title">
           <header className="patient-portal__panel-heading">
@@ -156,6 +151,12 @@ export default function PatientPortal({ onNavigate }) {
         </section>
       </div>
 
+      <div className="patient-portal__summary">
+        <SummaryCard title="Released results" value={String(releasedTests).padStart(2, '0')} helperText="Tests you can open and download" />
+        <SummaryCard title="Awaiting release" value={String(unreleasedTests).padStart(2, '0')} helperText="Tests still being processed or reviewed" />
+        <SummaryCard title="Total tests" value={String(totalTests).padStart(2, '0')} helperText="All tests in your requests" />
+      </div>
+
       <p className="patient-portal__notice">
         For your privacy, results are only shown after the pathologist approves and releases them. Test details are never included in email.
       </p>
@@ -170,7 +171,7 @@ export default function PatientPortal({ onNavigate }) {
                 <h2 id="patient-profile-title">Edit profile</h2>
                 <p>Update your name and contact details. Your PID, birth date, sex, and ID information cannot be changed here.</p>
               </div>
-              <button className="patient-portal__profile-close" type="button" aria-label="Close profile editor" disabled={profileSaving} onClick={() => setEditingProfile(false)}>×</button>
+              <DialogCloseButton label="Close profile editor" disabled={profileSaving} onClick={() => setEditingProfile(false)} />
             </header>
             <form className="patient-portal__profile-form" onSubmit={saveProfile}>
               {profileError && <p className="patient-portal__error" role="alert">{profileError}</p>}

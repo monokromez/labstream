@@ -36,6 +36,78 @@
   display: none;
 }
 
+.app-shell__logout-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  margin: auto;
+  padding: 1.35rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  color: var(--text-lightbg);
+  box-shadow: 0 1.25rem 3rem rgb(15 23 42 / 24%);
+}
+
+.app-shell__logout-dialog::backdrop {
+  background: rgb(9 35 33 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.app-shell__logout-dialog h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.app-shell__logout-dialog > p {
+  margin: 0.55rem 0 0;
+  color: var(--text-muted-lightbg);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.app-shell__logout-dialog .app-shell__logout-error {
+  margin-top: 0.8rem;
+  color: var(--error);
+}
+
+.app-shell__logout-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.35rem;
+}
+
+.app-shell__logout-dialog footer button {
+  min-height: 2.65rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-shell__logout-cancel {
+  background: var(--surface);
+  color: var(--text-lightbg);
+}
+
+.app-shell__logout-confirm {
+  border-color: var(--error) !important;
+  background: var(--error);
+  color: #fff;
+}
+
+.app-shell__logout-dialog footer button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.app-shell__logout-dialog footer button:focus-visible {
+  outline: 3px solid var(--secondary);
+  outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -51,14 +123,32 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.4rem 0.75rem;
-    background: var(--surface);
-    border-bottom: 1px solid rgb(19 78 74 / 12%);
+    background: var(--sidebar-background);
   }
 
   .app-shell__mobile-brand {
-    color: var(--text-lightbg);
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--text-darkbg);
     font-family: var(--title-font);
     font-size: 1.05rem;
+  }
+
+  .app-shell__mobile-brand img {
+    display: block;
+    width: 2rem;
+    height: 2rem;
+    flex: 0 0 2rem;
+    border-radius: 0.3rem;
+    object-fit: cover;
+  }
+
+  .app-shell__mobile-brand span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-shell__menu-toggle {
@@ -68,10 +158,10 @@
     align-content: center;
     justify-items: center;
     gap: 0.3rem;
-    border: 1px solid rgb(19 78 74 / 18%);
+    border: 1px solid rgb(209 250 229 / 28%);
     border-radius: 0.55rem;
-    background: var(--surface);
-    color: var(--primary);
+    background: transparent;
+    color: var(--text-darkbg);
     cursor: pointer;
   }
 
@@ -84,7 +174,7 @@
   }
 
   .app-shell__menu-toggle:focus-visible {
-    outline: 3px solid rgb(20 184 166 / 30%);
+    outline: 3px solid var(--secondary);
     outline-offset: 2px;
   }
 
@@ -95,5 +185,19 @@
 
   .app-shell__main {
     padding: 1rem 0.75rem;
+  }
+
+  .app-shell__logout-dialog footer {
+    flex-direction: column;
+  }
+
+  .app-shell__logout-dialog footer button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-shell__mobile-brand img {
+    display: none;
   }
 }

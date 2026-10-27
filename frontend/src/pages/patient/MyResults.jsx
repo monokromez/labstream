@@ -57,7 +57,7 @@ export default function MyResults() {
       </div>
       <section className="patient-records__table-card" aria-labelledby="patient-results-title">
         <header className="patient-records__heading"><div><h2 id="patient-results-title">My Results</h2><p>Each row represents one request. Released requests include all of their test results.</p></div><span>{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span></header>
-        <div className="patient-records__scroll"><table className="patient-records__table"><thead><tr><th>Request</th><th>Requested</th><th>Tests</th><th>Availability</th><th>Action</th></tr></thead><tbody>
+        <div className="patient-records__scroll" role="region" aria-label="My results table" tabIndex="0"><table className="patient-records__table"><thead><tr><th>Request</th><th>Requested</th><th>Tests</th><th>Availability</th><th>Action</th></tr></thead><tbody>
           {rows.map((item) => <tr key={item.id}><td className="patient-records__primary">{item.id}</td><td>{item.requested}</td><td>{item.testCount} tests</td><td><span className={`patient-records__status${item.status === 'Released' ? '' : ' patient-records__status--processing'}`}>{item.status}</span></td><td>{item.status === 'Released' ? <button className="patient-records__button" type="button" onClick={() => setSelected(item)}>View results</button> : <span className="patient-records__unavailable">Not available yet</span>}</td></tr>)}
           {(loading || rows.length === 0) && <tr><td className="patient-records__empty" colSpan="5">{loading ? 'Loading results…' : 'No results are available yet.'}</td></tr>}
         </tbody></table></div>

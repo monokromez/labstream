@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import DialogCloseButton from './DialogCloseButton.jsx'
 import './AdminDialog.css'
 
 export default function AdminDialog({ title, description, onClose, children, footer, size = 'medium', className = '' }) {
@@ -18,7 +19,7 @@ export default function AdminDialog({ title, description, onClose, children, foo
             <h2 id="admin-dialog-title">{title}</h2>
             {description && <p>{description}</p>}
           </div>
-          <button className="admin-dialog__close" type="button" onClick={onClose} aria-label="Close dialog">×</button>
+          <DialogCloseButton onClick={onClose} />
         </header>
         <div className="admin-dialog__body">{children}</div>
         {footer && <footer className="admin-dialog__footer">{footer}</footer>}

@@ -4,6 +4,14 @@ import { api } from './api/client.js'
 import Login from './pages/Login.jsx'
 import { clearLegacyPrototypeData } from './utils/clearLegacyPrototypeData.js'
 
+const roleTitles = {
+  administrator: 'Administrator',
+  cashier: 'Cashier',
+  medical_technologist: 'Medical Technologist',
+  pathologist: 'Pathologist',
+  patient: 'Patient',
+}
+
 clearLegacyPrototypeData()
 
 export default function App() {
@@ -11,6 +19,13 @@ export default function App() {
   const [ready, setReady] = useState(false)
   const [mustChangePassword, setMustChangePassword] = useState(false)
   const [connectionMessage, setConnectionMessage] = useState('')
+
+  useEffect(() => {
+    const roleLabel = user?.role
+      ? roleTitles[user.role] ?? user.role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+      : ''
+    document.title = roleLabel ? `Labstream | ${roleLabel}` : 'Labstream'
+  }, [user])
 
   useEffect(() => {
     let active = true

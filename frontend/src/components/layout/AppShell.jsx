@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import './AppShell.css'
 import Sidebar, { getRoleNavigation } from './Sidebar.jsx'
+import labstreamIcon from '../../assets/labstream-icon.png'
 import PageHeader from './PageHeader.jsx'
 import * as CashierPages from '../../pages/cashier/index.js'
 import * as TechnologistPages from '../../pages/medical-technologist/index.js'
@@ -15,8 +16,12 @@ export default function AppShell({ children, role = 'administrator', userId, use
     () => window.matchMedia('(max-width: 760px)').matches,
   )
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [logoutConfirmationOpen, setLogoutConfirmationOpen] = useState(false)
+  const [logoutPending, setLogoutPending] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
   const menuButtonRef = useRef(null)
   const closeButtonRef = useRef(null)
+  const logoutDialogRef = useRef(null)
   const wasMenuOpen = useRef(false)
   const [selectedItem, setSelectedItem] = useState(
     activeItem ?? navigationItems[0].id,
@@ -42,11 +47,32 @@ export default function AppShell({ children, role = 'administrator', userId, use
   useEffect(() => {
     if (!isMobile || !mobileMenuOpen) return undefined
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setMobileMenuOpen(false)
+      if (event.key === 'Escape' && !logoutConfirmationOpen) {
+        setMobileMenuOpen(false)
+      }
     }
     window.addEventListener('keydown', closeOnEscape)
     return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [isMobile, mobileMenuOpen])
+  }, [isMobile, mobileMenuOpen, logoutConfirmationOpen])
+
+  useEffect(() => {
+    const dialog = logoutDialogRef.current
+    if (!dialog) return
+    if (logoutConfirmationOpen && !dialog.open) dialog.showModal()
+    else if (!logoutConfirmationOpen && dialog.open) dialog.close()
+  }, [logoutConfirmationOpen])
+
+  async function confirmLogout() {
+    if (!onLogout || logoutPending) return
+    setLogoutPending(true)
+    setLogoutError('')
+    try {
+      await onLogout()
+    } catch (error) {
+      setLogoutError(error.message || 'Unable to log out. Please try again.')
+      setLogoutPending(false)
+    }
+  }
 
   const cashierPages = {
     dashboard: <CashierPages.CashierDashboard />,
@@ -101,7 +127,10 @@ export default function AppShell({ children, role = 'administrator', userId, use
   return (
     <div className="app-shell">
       <header className="app-shell__mobile-header">
-        <span className="app-shell__mobile-brand">Labstream</span>
+        <div className="app-shell__mobile-brand">
+          <img src={labstreamIcon} alt="" />
+          <span>Labstream</span>
+        </div>
         <button
           ref={menuButtonRef}
           className="app-shell__menu-toggle"
@@ -128,8 +157,58 @@ export default function AppShell({ children, role = 'administrator', userId, use
           setSelectedItem(itemId)
           setMobileMenuOpen(false)
         }}
-        onLogout={onLogout}
+        onLogout={onLogout ? () => {
+          setLogoutError('')
+          setLogoutConfirmationOpen(true)
+        } : undefined}
       />
+      <dialog
+        ref={logoutDialogRef}
+        className="app-shell__logout-dialog"
+        aria-labelledby="logout-confirm-title"
+        aria-describedby="logout-confirm-description"
+        aria-busy={logoutPending}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            if (!logoutPending) setLogoutConfirmationOpen(false)
+          }
+        }}
+        onCancel={(event) => {
+          event.preventDefault()
+          if (!logoutPending) setLogoutConfirmationOpen(false)
+        }}
+        onClose={() => setLogoutConfirmationOpen(false)}
+        onClick={(event) => {
+          if (event.target === event.currentTarget && !logoutPending) {
+            setLogoutConfirmationOpen(false)
+          }
+        }}
+      >
+        <h2 id="logout-confirm-title">Log out of Labstream?</h2>
+        <p id="logout-confirm-description">You will need to sign in again to access your portal.</p>
+        {logoutError && <p className="app-shell__logout-error" role="alert">{logoutError}</p>}
+        <footer>
+          <button
+            className="app-shell__logout-cancel"
+            type="button"
+            autoFocus
+            disabled={logoutPending}
+            onClick={() => setLogoutConfirmationOpen(false)}
+          >
+            Stay signed in
+          </button>
+          <button
+            className="app-shell__logout-confirm"
+            type="button"
+            disabled={logoutPending}
+            onClick={confirmLogout}
+          >
+            {logoutPending ? 'Logging out…' : 'Log out'}
+          </button>
+        </footer>
+      </dialog>
       <main className="app-shell__main">
         <PageHeader 
           title={currentItem.label}
