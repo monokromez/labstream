@@ -140,6 +140,7 @@ export const api = {
     rejectSpecimen: (specimenId, reason) => request(`/api/technologist/specimens/${specimenId}/reject`, { method: 'POST', body: { reason } }),
     relabelSpecimen: (specimenId, correction) => request(`/api/technologist/specimens/${specimenId}/relabel`, { method: 'POST', body: correction }),
     saveDraft: (requestId, itemId, values) => request(`/api/technologist/requests/${requestId}/items/${itemId}/draft`, { method: 'POST', body: values }),
+    setTestCompletion: (requestId, itemId, completed) => request(`/api/technologist/requests/${requestId}/items/${itemId}/completion`, { method: 'POST', body: { completed } }),
     submitResults: (requestId) => request(`/api/technologist/requests/${requestId}/submit-results`, { method: 'POST', body: {} }),
   },
   pathologist: {

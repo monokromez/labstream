@@ -788,6 +788,24 @@
   color: #116348;
 }
 
+.medtech-result-request-group__submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #b7dfcb;
+  border-radius: 0.3rem;
+  background: #f0faf4;
+}
+
+.medtech-result-request-group__submit p {
+  margin: 0;
+  color: #28684f;
+  font-size: 0.76rem;
+}
+
 .medtech-result-rejection-notice {
   display: flex;
   align-items: flex-start;
@@ -948,6 +966,23 @@
   background: var(--background);
 }
 
+@media (max-width: 640px) {
+  .medtech-test-section__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .medtech-test-completion,
+  .medtech-result-request-group__submit {
+    width: 100%;
+  }
+
+  .medtech-result-request-group__submit {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .medtech-test-section__heading h3 {
   margin: 0;
   color: var(--text-lightbg);
@@ -959,6 +994,25 @@
   margin-top: 0.15rem;
   color: var(--text-muted-lightbg);
   font-size: 0.68rem;
+}
+
+.medtech-test-completion {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.medtech-test-completion .medtech-button {
+  min-height: 2rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.7rem;
+}
+
+.medtech-test-completion .medtech-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .medtech-result-input {

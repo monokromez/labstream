@@ -187,6 +187,14 @@ export function createPathologistRouter({ client }) {
           }
         }
         if (returnedCount > 0) {
+          // A returned result sends the complete request back for correlation review.
+          // Keep prior submissions/reviews immutable, but mark previously approved
+          // request items as needing the technologist's renewed review as well.
+          await tx.unsafe(
+            `update public.request_items set status = 'returned', updated_at = now()
+              where request_id = $1 and clinic_id = $2 and status = 'approved'`,
+            [request.id, req.user.clinicId],
+          );
           await tx.unsafe(`update public.test_requests set status = 'correction', updated_at = now() where id = $1 and clinic_id = $2`, [request.id, req.user.clinicId]);
         } else {
           const [notApproved] = await tx.unsafe(

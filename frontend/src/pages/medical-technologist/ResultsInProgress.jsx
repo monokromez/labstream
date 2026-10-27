@@ -15,6 +15,7 @@ const stateFilters = [
   { value: 'draft', label: 'Drafted' },
   { value: 'returned', label: 'Returned' },
   { value: 'validation', label: 'For validation' },
+  { value: 'complete', label: 'Complete' },
 ]
 
 function formatDateTime(value) {
@@ -173,14 +174,15 @@ function getSpecimenTests(request, specimen) {
 }
 
 export default function ResultsInProgress() {
-  const { requests, specimens, results, saveDraft, submitRequest, goToSpecimens, loadError } = useTechnologist()
+  const { requests, specimens, results, saveDraft, setTestCompletion, submitRequest, goToSpecimens, loadError } = useTechnologist()
   const [filter, setFilter] = useState('all')
   const [selectedLabel, setSelectedLabel] = useState('')
   const [draftValues, setDraftValues] = useState({})
   const [showFieldErrors, setShowFieldErrors] = useState(false)
   const [validationError, setValidationError] = useState('')
   const [confirmSubmit, setConfirmSubmit] = useState(false)
-  const [pendingSubmissionValues, setPendingSubmissionValues] = useState({})
+  const [pendingSubmitRequest, setPendingSubmitRequest] = useState(null)
+  const [pendingTestAction, setPendingTestAction] = useState(null)
 
   const visibleResults = useMemo(() => results
     .filter((result) => filter === 'all' || result.state === filter)
@@ -199,11 +201,7 @@ export default function ResultsInProgress() {
       grouped.get(result.request.id).items.push(result)
     })
     return [...grouped.values()].map((group) => {
-      const complete = group.request.tests.length > 0 && group.request.tests.every((test) => {
-        const specimen = specimens.find((item) => item.requestId === group.request.id && item.status === 'Accepted' && item.linkedItemIds.includes(test.requestItemId))
-        const specimenResult = specimen && results.find((item) => item.specimenLabel === specimen.label)
-        return Boolean(specimenResult && test.fields.length > 0 && test.fields.every((field) => isFieldComplete(field, specimenResult.values[field.key])))
-      })
+      const complete = group.request.tests.length > 0 && group.request.tests.every((test) => test.status === 'completed')
       const rejectedSpecimens = specimens.filter((item) => item.requestId === group.request.id
         && item.status === 'Rejected'
         && !getAcceptedReplacement(item.id, specimens))
@@ -264,50 +262,46 @@ export default function ResultsInProgress() {
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
   }, [hasUnsavedChanges])
 
-  function saveCurrentDraft() {
-    if (!selectedResult || isLocked || hasMissingFields) return
-    saveDraft(selectedResult.specimenLabel, values).catch(() => {})
-  }
-
-  function requestSubmission(event) {
-    event.preventDefault()
-    if (!selectedResult || isLocked) return
-    if (hasMissingFields) {
-      setValidationError(`Result fields are not configured for ${testsMissingFields.map((test) => test.name).join(', ')}. Ask an administrator to configure them in Test Catalog.`)
-      return
-    }
-    const requestSpecimens = specimens.filter((specimen) => specimen.requestId === selectedResult.request.id)
-    const valuesBySpecimen = {}
-    const missingResults = []
-    requestSpecimens.filter((specimen) => specimen.status === 'Accepted').forEach((specimen) => {
-      const specimenResult = results.find((result) => result.specimenLabel === specimen.label)
-      if (!specimenResult) {
-        missingResults.push(`${specimen.type} result`)
-        return
-      }
-      const specimenValues = specimen.label === selectedResult.specimenLabel
-        ? values
-        : draftValues[specimen.label] ?? specimenResult.values
-      valuesBySpecimen[specimen.label] = specimenValues
-      const tests = getSpecimenTests(selectedResult.request, specimen)
-      tests.flatMap((test) => test.fields).forEach((field) => {
-        if (!isFieldComplete(field, specimenValues[field.key])) missingResults.push(`${specimen.type}: ${field.label}`)
-      })
-    })
-    if (missingResults.length > 0) {
-      setShowFieldErrors(true)
-      setValidationError(`Complete every test result in this request before submitting. Still missing: ${missingResults.slice(0, 3).join(', ')}${missingResults.length > 3 ? ` and ${missingResults.length - 3} more` : ''}. You can save this specimen as a draft.`)
-      return
-    }
-    setValidationError('')
-    setPendingSubmissionValues(valuesBySpecimen)
-    setConfirmSubmit(true)
-  }
-
-  function confirmSubmission() {
-    if (!selectedResult) return
-    submitRequest(selectedResult.request.id, pendingSubmissionValues)
+  async function confirmSubmission() {
+    if (!pendingSubmitRequest) return
+    await submitRequest(pendingSubmitRequest.id)
     setConfirmSubmit(false)
+    setPendingSubmitRequest(null)
+  }
+
+  async function confirmTestAction() {
+    if (!pendingTestAction || !selectedResult) return
+    try {
+      if (pendingTestAction.completed) {
+        await saveDraft(selectedResult.specimenLabel, values)
+      }
+      await setTestCompletion(selectedResult.request.id, pendingTestAction.test.requestItemId, pendingTestAction.completed)
+    } catch {
+      // The provider surfaces the API message in its notice.
+    }
+    setPendingTestAction(null)
+  }
+
+  function completionAction(test) {
+    const completed = test.status === 'completed'
+    const canComplete = ['processing', 'drafted', 'returned'].includes(test.status) && !isLocked && test.fields.length > 0
+      && test.fields.every((field) => isFieldComplete(field, values[field.key]))
+    const badge = selectedResult?.request.status === 'correction' && !completed
+      ? 'For re-analysis'
+      : completed ? 'Complete' : test.status === 'drafted' ? 'Drafted' : 'Awaiting result'
+    return (
+      <div className="medtech-test-completion">
+        <TechnologistStatusBadge status={badge} />
+        <button
+          className={`medtech-button medtech-button--small${completed ? ' medtech-button--secondary' : ' medtech-button--positive'}`}
+          type="button"
+          disabled={completed ? false : !canComplete}
+          onClick={() => setPendingTestAction({ test, completed: !completed })}
+        >
+          {completed ? 'Withdraw completion' : 'Complete'}
+        </button>
+      </div>
+    )
   }
 
   function changeFilter(nextFilter) {
@@ -320,6 +314,7 @@ export default function ResultsInProgress() {
     setShowFieldErrors(false)
     setValidationError('')
     setConfirmSubmit(false)
+    setPendingTestAction(null)
   }
 
   function changeFieldValue(fieldKey, fieldValue) {
@@ -364,10 +359,10 @@ export default function ResultsInProgress() {
           </div>
           <div className="medtech-result-cards">
             {requestGroups.map((group) => (
-              <section className="medtech-result-request-group" key={group.request.id}>
+            <section className="medtech-result-request-group" key={group.request.id}>
                 <div className="medtech-result-request-group__heading">
                   <div><strong>{group.request.id}</strong><span>{group.request.patient}</span></div>
-                  <span className={`medtech-result-request-group__status${group.complete ? ' is-complete' : ''}`}>{group.complete ? 'Tests complete' : 'Tests in progress'}</span>
+                  <span className={`medtech-result-request-group__status${group.complete ? ' is-complete' : ''}`}>{group.complete ? 'Tests complete' : group.request.status === 'correction' ? 'For re-analysis' : 'Tests in progress'}</span>
                 </div>
                 {group.rejectedSpecimens.length > 0 && (
                   <div className="medtech-result-rejection-notice" role="status">
@@ -407,12 +402,18 @@ export default function ResultsInProgress() {
                 >
                   <span className="medtech-result-card__top">
                     <strong>{result.specimenLabel}</strong>
-                    <TechnologistStatusBadge status={result.state} />
+              <TechnologistStatusBadge status={result.state} />
                   </span>
                   <span className="medtech-result-card__patient">{result.specimen.type}</span>
                   <span className="medtech-result-card__tests">{testSummary}{moreTests}</span>
                 </button>
                 )})}
+                {group.complete && (
+                  <div className="medtech-result-request-group__submit">
+                    <p>Every test in this request is complete and ready for pathologist review.</p>
+                    <button className="medtech-button medtech-button--positive" type="button" onClick={() => { setPendingSubmitRequest(group.request); setConfirmSubmit(true) }}>Submit</button>
+                  </div>
+                )}
               </section>
             ))}
             {visibleResults.length === 0 && <p className="medtech-empty medtech-empty--compact">No specimens in this list.</p>}
@@ -461,9 +462,9 @@ export default function ResultsInProgress() {
               <p className="medtech-reference-note">Numeric values outside the reference range are flagged automatically: H (high) or L (low). The range shown is for the patient&apos;s sex.</p>
             )}
 
-            <form className="medtech-result-form" onSubmit={requestSubmission}>
+            <div className="medtech-result-form">
               <p className={`medtech-autosave-status${autoSaveState === 'error' ? ' is-error' : ''}`} role="status" aria-live="polite">
-                {hasMissingFields ? 'Result fields unavailable' : autoSaveState === 'saving' ? 'Saving draft…' : autoSaveState === 'pending' ? 'Changes not saved yet' : autoSaveState === 'error' ? 'Draft could not be saved. Check the connection and try Save Draft.' : 'Draft saved'}
+                {hasMissingFields ? 'Result fields unavailable' : autoSaveState === 'saving' ? 'Saving draft…' : autoSaveState === 'pending' ? 'Changes not saved yet' : autoSaveState === 'error' ? 'Draft could not be saved. Check the connection, then edit again to retry.' : 'Draft saved'}
               </p>
               {hasMissingFields && (
                 <p className="medtech-form__notice" role="alert">
@@ -476,7 +477,7 @@ export default function ResultsInProgress() {
                   return (
                     <section className="medtech-test-section" key={test.name} aria-labelledby={`test-${test.name.replaceAll(' ', '-')}`}>
                       <div className="medtech-test-section__heading">
-                        <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>
+                        <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>{completionAction(test)}
                       </div>
                       <p className="medtech-empty medtech-empty--compact">No result fields are configured for this test.</p>
                     </section>
@@ -486,7 +487,7 @@ export default function ResultsInProgress() {
                   return (
                     <section className="medtech-test-section" key={test.name} aria-labelledby={`test-${test.name.replaceAll(' ', '-')}`}>
                       <div className="medtech-test-section__heading">
-                        <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>
+                        <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>{completionAction(test)}
                       </div>
                       <div className="medtech-text-results">
                         {fields.map((field) => {
@@ -495,28 +496,28 @@ export default function ResultsInProgress() {
                             field.valueType === 'structured' ? (
                               <div className="medtech-form__field" key={field.key}>
                                 <span>{field.label}</span>
-                                <StructuredResultInput field={field} specimenLabel={selectedResult.specimenLabel} value={values[field.key]} disabled={isLocked} invalid={showFieldErrors && missing} onChange={(value) => changeFieldValue(field.key, value)} />
+                              <StructuredResultInput field={field} specimenLabel={selectedResult.specimenLabel} value={values[field.key]} disabled={isLocked || !['processing', 'drafted', 'returned'].includes(test.status)} invalid={showFieldErrors && missing} onChange={(value) => changeFieldValue(field.key, value)} />
                               </div>
                             ) : (
                               <label className="medtech-form__field" htmlFor={`result-${selectedResult.specimenLabel}-${field.key}`} key={field.key}>
                               <span>{field.label}</span>
                               {field.valueType === 'boolean' ? (
-                                <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
+                              <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked || !['processing', 'drafted', 'returned'].includes(test.status)} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
                                   <option value="">Select yes or no</option><option value="true">Yes</option><option value="false">No</option>
                                 </select>
                               ) : field.valueType === 'select' ? (
-                                <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
+                                <select id={`result-${selectedResult.specimenLabel}-${field.key}`} value={values[field.key] ?? ''} disabled={isLocked || !['processing', 'drafted', 'returned'].includes(test.status)} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)}>
                                   <option value="">Select {field.label.toLowerCase()}</option>
                                   {field.options.map((option) => <option key={option}>{option}</option>)}
                                 </select>
                               ) : field.valueType === 'numeric' ? (
-                                <input id={`result-${selectedResult.specimenLabel}-${field.key}`} type="number" step="any" value={values[field.key] ?? ''} disabled={isLocked} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)} />
+                                <input id={`result-${selectedResult.specimenLabel}-${field.key}`} type="number" step="any" value={values[field.key] ?? ''} disabled={isLocked || !['processing', 'drafted', 'returned'].includes(test.status)} aria-invalid={showFieldErrors && missing} onChange={(event) => changeFieldValue(field.key, event.target.value)} />
                               ) : (
                                 <LimitedTextarea
                                   id={`result-${selectedResult.specimenLabel}-${field.key}`}
                                   rows="3"
                                   value={values[field.key] ?? ''}
-                                  disabled={isLocked}
+                                  disabled={isLocked || !['processing', 'drafted', 'returned'].includes(test.status)}
                                   aria-invalid={showFieldErrors && missing}
                                   maxLength={2000}
                                   onChange={(event) => changeFieldValue(field.key, event.target.value)}
@@ -533,13 +534,13 @@ export default function ResultsInProgress() {
                 return (
                   <section className="medtech-test-section" key={test.name} aria-labelledby={`test-${test.name.replaceAll(' ', '-')}`}>
                     <div className="medtech-test-section__heading">
-                      <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>
+                      <div><h3 id={`test-${test.name.replaceAll(' ', '-')}`}>{test.name}</h3><span>{test.category}</span></div>{completionAction(test)}
                     </div>
                     <ResultEntryTable
                       fields={fields}
                       specimenLabel={selectedResult.specimenLabel}
                       values={values}
-                      isLocked={isLocked}
+                      isLocked={isLocked || !['processing', 'drafted', 'returned'].includes(test.status)}
                       showFieldErrors={showFieldErrors}
                       onValueChange={changeFieldValue}
                     />
@@ -569,15 +570,7 @@ export default function ResultsInProgress() {
               )}
 
               {validationError && <p className="medtech-form__error" role="alert">{validationError}</p>}
-              {!isLocked && (
-                <div className="medtech-result-actions">
-                  <button className="medtech-button medtech-button--positive" type="button" onClick={saveCurrentDraft} disabled={hasMissingFields}>Save draft</button>
-                  <button className="medtech-button" type="submit" disabled={hasMissingFields}>
-                    {selectedResult.state === 'returned' ? 'Resubmit to pathologist' : 'Submit to pathologist'}
-                  </button>
-                </div>
-              )}
-            </form>
+            </div>
           </section>
         ) : (
           <section className="medtech-panel medtech-result-placeholder" aria-live="polite">
@@ -586,14 +579,26 @@ export default function ResultsInProgress() {
         )}
       </div>
 
-      {confirmSubmit && selectedResult && (
-        <TechnologistDialog title="Submit to pathologist?" onClose={() => setConfirmSubmit(false)}>
+      {confirmSubmit && pendingSubmitRequest && (
+        <TechnologistDialog title="Submit this request?" onClose={() => { setConfirmSubmit(false); setPendingSubmitRequest(null) }}>
           <div className="medtech-dialog__body">
-            <p className="medtech-dialog__context">{selectedResult.specimenLabel} · {selectedResult.request.patient}</p>
-            <p className="medtech-form__notice medtech-form__notice--quiet">After you submit, you cannot edit this result unless the pathologist returns it with feedback.</p>
+            <p className="medtech-dialog__context">{pendingSubmitRequest.id} · {pendingSubmitRequest.patient}</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">The complete request will be submitted together to the assigned pathologist. Results will remain unavailable to the patient until the pathologist releases them.</p>
             <div className="medtech-dialog__actions">
-              <button className="medtech-button medtech-button--secondary" type="button" onClick={() => setConfirmSubmit(false)}>Cancel</button>
+              <button className="medtech-button medtech-button--secondary" type="button" onClick={() => { setConfirmSubmit(false); setPendingSubmitRequest(null) }}>Cancel</button>
               <button className="medtech-button" type="button" onClick={confirmSubmission}>Submit</button>
+            </div>
+          </div>
+        </TechnologistDialog>
+      )}
+      {pendingTestAction && selectedResult && (
+        <TechnologistDialog title={pendingTestAction.completed ? 'Mark test complete?' : 'Withdraw completion?'} onClose={() => setPendingTestAction(null)}>
+          <div className="medtech-dialog__body">
+            <p className="medtech-dialog__context">{pendingTestAction.test.name} · {selectedResult.request.id}</p>
+            <p className="medtech-form__notice medtech-form__notice--quiet">{pendingTestAction.completed ? 'The saved result will be marked complete. You can withdraw completion later if this test needs changes.' : 'This test will return to an editable draft. The request cannot be submitted until it is complete again.'}</p>
+            <div className="medtech-dialog__actions">
+              <button className="medtech-button medtech-button--secondary" type="button" onClick={() => setPendingTestAction(null)}>Cancel</button>
+              <button className="medtech-button" type="button" onClick={confirmTestAction}>{pendingTestAction.completed ? 'Complete' : 'Withdraw completion'}</button>
             </div>
           </div>
         </TechnologistDialog>

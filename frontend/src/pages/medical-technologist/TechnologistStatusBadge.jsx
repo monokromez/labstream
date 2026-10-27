@@ -12,6 +12,8 @@ const tones = {
   Drafted: 'warning',
   Returned: 'danger',
   'For validation': 'primary',
+  'For re-analysis': 'danger',
+  Complete: 'primary',
 }
 
 const labels = {
@@ -19,6 +21,7 @@ const labels = {
   draft: 'Drafted',
   returned: 'Returned',
   validation: 'For validation',
+  complete: 'Complete',
 }
 
 export default function TechnologistStatusBadge({ status }) {

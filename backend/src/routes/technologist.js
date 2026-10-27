@@ -19,7 +19,7 @@ export function createTechnologistRouter({ client }) {
                 receipt.receipt_number,
                 p.pid, p.sex, p.date_of_birth, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 count(ri.id)::integer as test_count,
-                count(ri.id) filter (where ri.status in ('drafted', 'submitted', 'approved', 'released'))::integer as completed_test_count
+                count(ri.id) filter (where ri.status in ('drafted', 'completed', 'submitted', 'approved', 'released'))::integer as completed_test_count
            from public.test_requests r
            join public.patients p on p.id = r.patient_id and p.clinic_id = r.clinic_id
            join public.request_items ri on ri.request_id = r.id and ri.clinic_id = r.clinic_id
@@ -46,7 +46,7 @@ export function createTechnologistRouter({ client }) {
       const status = String(req.query.status ?? "");
       const data = await client.unsafe(
         `select s.id, s.request_id, s.replaces_specimen_id, r.request_number, s.specimen_type, s.attempt_number,
-                s.status, s.collected_at, s.received_at, s.rejected_at, s.rejection_reason, s.notes,
+                s.status, r.status as request_status, s.collected_at, s.received_at, s.rejected_at, s.rejection_reason, s.notes,
                 p.pid, p.sex, p.date_of_birth, concat_ws(' ', p.first_name, p.middle_name, p.last_name) as patient_name,
                 array_agg(distinct jsonb_build_object(
                   'id', ri.id, 'testId', ri.test_id, 'testName', ri.test_name_snapshot,
@@ -63,7 +63,7 @@ export function createTechnologistRouter({ client }) {
                         select ranges.lower_limit, ranges.upper_limit, ranges.unit
                           from public.reference_ranges ranges
                          where ranges.analyte_id = a.id and ranges.clinic_id = a.clinic_id and ranges.is_active = true
-                           and (ranges.sex is null or ranges.sex = p.sex)
+                           and (ranges.sex is null or lower(ranges.sex) = lower(p.sex))
                            and (ranges.min_age_days is null or current_date - p.date_of_birth >= ranges.min_age_days)
                            and (ranges.max_age_days is null or current_date - p.date_of_birth <= ranges.max_age_days)
                          order by (ranges.sex is not null) desc, coalesce(ranges.min_age_days, 0) desc limit 1
@@ -389,7 +389,7 @@ export function createTechnologistRouter({ client }) {
           [req.params.requestId, req.user.clinicId, req.user.sub, req.params.itemId],
         );
         if (!context) throw Object.assign(new Error("Request, test, or specimen was not found in your assigned work."), { code: "RESULT_CONTEXT_NOT_FOUND" });
-        if (!["specimen_collection", "processing", "correction"].includes(context.request_status) || !["processing", "drafted", "returned", "for_recollection"].includes(context.item_status)) {
+        if (!["specimen_collection", "processing", "correction"].includes(context.request_status) || !["processing", "drafted", "returned"].includes(context.item_status)) {
           throw Object.assign(new Error("This test is not currently available for result entry."), { code: "RESULT_NOT_EDITABLE" });
         }
         const acceptedSpecimens = await tx.unsafe(
@@ -422,7 +422,7 @@ export function createTechnologistRouter({ client }) {
                select r.lower_limit, r.upper_limit, r.unit
                  from public.reference_ranges r
                 where r.analyte_id = a.id and r.clinic_id = a.clinic_id and r.is_active = true
-                  and (r.sex is null or r.sex = $3)
+                  and (r.sex is null or lower(r.sex) = lower($3))
                   and (r.min_age_days is null or current_date - $4::date >= r.min_age_days)
                   and (r.max_age_days is null or current_date - $4::date <= r.max_age_days)
                 order by (r.sex is not null) desc, coalesce(r.min_age_days, 0) desc limit 1
@@ -470,7 +470,7 @@ export function createTechnologistRouter({ client }) {
             `insert into public.result_submissions
               (clinic_id, request_id, request_item_id, specimen_id, revision_number, status, entered_by, supersedes_result_id)
              values ($1, $2, $3, $4, $5, 'draft', $6, $7) returning id, revision_number`,
-            [req.user.clinicId, context.request_id, context.item_id, specimenIds[0], revision, req.user.sub, latest?.status === "returned" ? latest.id : null],
+            [req.user.clinicId, context.request_id, context.item_id, specimenIds[0], revision, req.user.sub, ["returned", "approved"].includes(latest?.status) ? latest.id : null],
           );
         }
         for (const specimenId of specimenIds) {
@@ -517,6 +517,67 @@ export function createTechnologistRouter({ client }) {
     }
   });
 
+  router.post("/requests/:requestId/items/:itemId/completion", async (req, res, next) => {
+    try {
+      if (typeof req.body?.completed !== "boolean") return res.status(400).json({ error: "INVALID_COMPLETION_STATE", message: "Specify whether the test is complete." });
+      const completed = req.body?.completed === true;
+      const data = await client.begin(async (tx) => {
+        const [item] = await tx.unsafe(
+          `select ri.id, ri.status, r.status as request_status
+             from public.request_items ri
+             join public.test_requests r on r.id = ri.request_id and r.clinic_id = ri.clinic_id
+            where ri.id = $1 and ri.request_id = $2 and ri.clinic_id = $3
+              and r.assigned_technologist_id = $4 for update of ri, r`,
+          [req.params.itemId, req.params.requestId, req.user.clinicId, req.user.sub],
+        );
+        if (!item) throw Object.assign(new Error("Request or test was not found in your assigned work."), { code: "RESULT_CONTEXT_NOT_FOUND" });
+        if (!["specimen_collection", "processing", "correction"].includes(item.request_status)) throw Object.assign(new Error("This request cannot be updated in its current status."), { code: "INVALID_REQUEST_STATUS" });
+        if (completed) {
+          if (item.status !== "drafted") throw Object.assign(new Error("Save this test as a draft before marking it complete."), { code: "RESULT_NOT_EDITABLE" });
+          const [latest] = await tx.unsafe(
+            `select id, status from public.result_submissions where request_item_id = $1 and clinic_id = $2 order by revision_number desc limit 1 for update`,
+            [item.id, req.user.clinicId],
+          );
+          if (!latest || latest.status !== "draft") throw Object.assign(new Error("A saved draft is required before marking this test complete."), { code: "RESULT_NOT_EDITABLE" });
+          const [check] = await tx.unsafe(
+            `select count(*)::integer as total,
+                    count(*) filter (where rv.id is null
+                      or (a.value_type = 'numeric' and rv.numeric_value is null)
+                      or (a.value_type = 'text' and nullif(btrim(rv.text_value), '') is null)
+                      or (a.value_type = 'select' and nullif(btrim(rv.select_value), '') is null)
+                      or (a.value_type = 'boolean' and rv.boolean_value is null)
+                      or (a.value_type = 'structured' and (rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
+                        or exists (select 1 from jsonb_array_elements(rv.structured_value) as row_data(value)
+                          where exists (select 1 from jsonb_array_elements_text(a.options) as column_name(label)
+                            where btrim(coalesce(row_data.value ->> column_name.label, '')) = '')))))::integer as missing
+               from public.test_analytes a
+               left join public.result_values rv on rv.analyte_id = a.id and rv.result_submission_id = $3 and rv.clinic_id = a.clinic_id
+              where a.test_id = (select test_id from public.request_items where id = $1 and clinic_id = $2)
+                and a.clinic_id = $2 and a.configuration_version = (select configuration_version from public.request_items where id = $1 and clinic_id = $2)
+                and a.is_required = true`,
+            [item.id, req.user.clinicId, latest.id],
+          );
+          if (!check.total || check.missing) throw Object.assign(new Error("Complete every required result field before marking this test complete."), { code: "RESULTS_INCOMPLETE" });
+          await tx.unsafe(`update public.request_items set status = 'completed', updated_at = now() where id = $1 and clinic_id = $2`, [item.id, req.user.clinicId]);
+        } else {
+          if (item.status !== "completed") throw Object.assign(new Error("Only a completed test can have its completion withdrawn."), { code: "RESULT_NOT_EDITABLE" });
+          await tx.unsafe(`update public.request_items set status = 'drafted', updated_at = now() where id = $1 and clinic_id = $2`, [item.id, req.user.clinicId]);
+        }
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, $3, 'request_item', $4, jsonb_build_object('completed', $5::boolean))`,
+          [req.user.clinicId, req.user.sub, completed ? "results.test_completed" : "results.test_completion_withdrawn", item.id, completed],
+        );
+        return { requestItemId: item.id, status: completed ? "completed" : "drafted" };
+      });
+      return res.json({ data });
+    } catch (error) {
+      const codes = ["RESULT_CONTEXT_NOT_FOUND", "INVALID_REQUEST_STATUS", "RESULT_NOT_EDITABLE", "RESULTS_INCOMPLETE"];
+      if (codes.includes(error.code)) return res.status(error.code === "RESULT_CONTEXT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      return next(error);
+    }
+  });
+
   router.post("/requests/:requestId/submit-results", async (req, res, next) => {
     try {
       const result = await client.begin(async (tx) => {
@@ -529,8 +590,7 @@ export function createTechnologistRouter({ client }) {
         if (!["specimen_collection", "processing", "correction"].includes(request.status)) throw Object.assign(new Error("This request cannot be submitted in its current status."), { code: "INVALID_REQUEST_STATUS" });
         const [target] = await tx.unsafe(
           `select count(*)::integer as total from public.request_items ri
-            where ri.request_id = $1 and ri.clinic_id = $2
-              and ri.status in ('processing', 'drafted', 'returned')`,
+            where ri.request_id = $1 and ri.clinic_id = $2 and ri.status <> 'cancelled'`,
           [request.id, req.user.clinicId],
         );
         const drafts = await tx.unsafe(
@@ -539,10 +599,10 @@ export function createTechnologistRouter({ client }) {
              join lateral (select id, status, revision_number from public.result_submissions rs
                            where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
                            order by revision_number desc limit 1) rs on rs.status = 'draft'
-            where ri.request_id = $1 and ri.clinic_id = $2 and ri.status = 'drafted'`,
+            where ri.request_id = $1 and ri.clinic_id = $2 and ri.status = 'completed'`,
           [request.id, req.user.clinicId],
         );
-        if (!drafts.length) throw Object.assign(new Error("Save at least one complete result draft before submitting."), { code: "NO_RESULT_DRAFTS" });
+        if (!drafts.length) throw Object.assign(new Error("Mark every test complete before submitting the request."), { code: "NO_RESULT_DRAFTS" });
         if (drafts.length !== target.total) throw Object.assign(new Error("Complete every test in this request before submitting the results."), { code: "REQUEST_RESULTS_INCOMPLETE" });
         const completeness = await tx.unsafe(
           `select ri.id, count(a.id)::integer as required_count,
@@ -560,7 +620,7 @@ export function createTechnologistRouter({ client }) {
                                  where rs.request_item_id = ri.id and rs.clinic_id = ri.clinic_id
                                  order by revision_number desc limit 1) latest on true
              left join public.result_values rv on rv.result_submission_id = latest.id and rv.analyte_id = a.id and rv.clinic_id = ri.clinic_id
-            where ri.request_id = $1 and ri.clinic_id = $2 and ri.status = 'drafted'
+            where ri.request_id = $1 and ri.clinic_id = $2 and ri.status = 'completed'
             group by ri.id having count(a.id) = 0 or count(a.id) <> count(rv.id)
               or count(rv.id) filter (where a.value_type = 'structured' and (
                 rv.structured_value is null or jsonb_array_length(rv.structured_value) = 0
@@ -574,24 +634,6 @@ export function createTechnologistRouter({ client }) {
         for (const draft of drafts) {
           await tx.unsafe(`update public.result_submissions set status = 'submitted', submitted_at = now(), updated_at = now() where id = $1 and clinic_id = $2`, [draft.submission_id, req.user.clinicId]);
           await tx.unsafe(`update public.request_items set status = 'submitted', updated_at = now() where id = $1 and clinic_id = $2`, [draft.item_id, req.user.clinicId]);
-        }
-        const [remaining] = await tx.unsafe(
-          `select count(*)::integer as total from public.request_items
-            where request_id = $1 and clinic_id = $2
-              and status in ('awaiting_specimen', 'specimen_received', 'processing', 'drafted', 'returned', 'for_recollection')`,
-          [request.id, req.user.clinicId],
-        );
-        if (remaining.total > 0) {
-          await tx.unsafe(
-            `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
-             values ($1, $2, 'results.submitted', 'test_request', $3,
-               jsonb_build_object('testCount', $4::integer, 'partial', true, 'remainingTestCount', $5::integer))`,
-            [req.user.clinicId, req.user.sub, request.id, drafts.length, remaining.total],
-          );
-          return {
-            requestId: request.id, submittedTestCount: drafts.length, assignedPathologistId: null,
-            partial: true, remainingTestCount: remaining.total,
-          };
         }
         let pathologistId = request.assigned_pathologist_id;
         if (pathologistId) {
@@ -628,7 +670,7 @@ export function createTechnologistRouter({ client }) {
            values ($1, $2, 'results.submitted', 'test_request', $3, jsonb_build_object('testCount', $4::integer, 'pathologistId', $5::uuid))`,
           [req.user.clinicId, req.user.sub, request.id, drafts.length, pathologistId],
         );
-        return { requestId: request.id, submittedTestCount: drafts.length, assignedPathologistId: pathologistId, partial: false, remainingTestCount: 0 };
+        return { requestId: request.id, submittedTestCount: drafts.length, assignedPathologistId: pathologistId };
       });
       return res.json({ data: result });
     } catch (error) {

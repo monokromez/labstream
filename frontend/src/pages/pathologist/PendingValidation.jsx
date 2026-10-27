@@ -54,7 +54,7 @@ export default function PendingValidation() {
     if (!activeCase) return
     const undecided = activeCase.tests.filter((test) => !reviewDecisions[test.requestItemId])
     if (undecided.length) {
-      setNotice(`Choose approve or return for each test. ${undecided.length} ${undecided.length === 1 ? 'test needs' : 'tests need'} a decision.`)
+        setNotice(`Choose approve or mark for re-analysis for each test. ${undecided.length} ${undecided.length === 1 ? 'test needs' : 'tests need'} a decision.`)
       return
     }
     if (activeCase.tests.some((test) => !interpretations[test.requestItemId]?.trim())) {
@@ -88,8 +88,8 @@ export default function PendingValidation() {
       const actionSummary = returnedCount === 0
         ? 'All tests were approved'
         : approvedCount === 0
-          ? 'All tests were returned for correction'
-          : `${approvedCount} ${approvedCount === 1 ? 'test was' : 'tests were'} approved and ${returnedCount} returned for correction`
+          ? 'All tests were marked for re-analysis'
+          : `${approvedCount} ${approvedCount === 1 ? 'test was' : 'tests were'} approved and ${returnedCount} marked for re-analysis`
       const emailNotice = response.emailDelivery?.status === 'sent'
         ? ' Patient notification email sent.'
         : response.emailDelivery?.status === 'skipped'
@@ -147,18 +147,18 @@ export default function PendingValidation() {
         {notice && <p className="pathologist-page__notice" role="alert">{notice}</p>}
         {activeCase.tests.map((test) => <section className="pathologist-dialog__test-review" key={test.requestItemId}>
           <header className="pathologist-dialog__test-heading"><div><span>Test review</span><h3>{test.testName}</h3></div><span className={`pathologist-dialog__test-state${reviewDecisions[test.requestItemId] ? ' is-selected' : ''}`}>{reviewDecisions[test.requestItemId] === 'approved' ? 'Approve' : reviewDecisions[test.requestItemId] === 'returned' ? 'Return' : 'Awaiting decision'}</span></header>
-          <label className="pathologist-filter" htmlFor={`decision-${test.requestItemId}`}>Decision<select id={`decision-${test.requestItemId}`} value={reviewDecisions[test.requestItemId] ?? ''} onChange={(event) => { const decision = event.target.value; setReviewDecisions((current) => ({ ...current, [test.requestItemId]: decision })); if (decision !== 'returned') setRecollectionItems((current) => current.filter((id) => id !== test.requestItemId)); setNotice('') }}><option value="">Choose an outcome</option><option value="approved">Approve this test</option><option value="returned">Return this test for correction</option></select></label>
+          <label className="pathologist-filter" htmlFor={`decision-${test.requestItemId}`}>Decision<select id={`decision-${test.requestItemId}`} value={reviewDecisions[test.requestItemId] ?? ''} onChange={(event) => { const decision = event.target.value; setReviewDecisions((current) => ({ ...current, [test.requestItemId]: decision })); if (decision !== 'returned') setRecollectionItems((current) => current.filter((id) => id !== test.requestItemId)); setNotice('') }}><option value="">Choose an outcome</option><option value="approved">Approve this test</option><option value="returned">Mark for re-analysis</option></select></label>
           <label className="pathologist-dialog__remarks" htmlFor={`interpretation-${test.requestItemId}`}>Pathologist interpretation<LimitedTextarea id={`interpretation-${test.requestItemId}`} value={interpretations[test.requestItemId] ?? ''} onChange={(event) => { setInterpretations((current) => ({ ...current, [test.requestItemId]: event.target.value })); setNotice('') }} placeholder={`Interpret ${test.testName} in clinical context…`} rows="3" maxLength={2000} /></label>
           {reviewDecisions[test.requestItemId] === 'returned' && <>
-            <label className="pathologist-dialog__remarks" htmlFor={`remark-${test.requestItemId}`}>Return remark <span>(required)</span><LimitedTextarea id={`remark-${test.requestItemId}`} value={reviewDecisions[`${test.requestItemId}:remark`] ?? ''} onChange={(event) => { setReviewDecisions((current) => ({ ...current, [`${test.requestItemId}:remark`]: event.target.value })); setNotice('') }} placeholder={`Explain the correction needed for ${test.testName}…`} rows="3" maxLength={1000} /></label>
+            <label className="pathologist-dialog__remarks" htmlFor={`remark-${test.requestItemId}`}>Re-analysis remark <span>(required)</span><LimitedTextarea id={`remark-${test.requestItemId}`} value={reviewDecisions[`${test.requestItemId}:remark`] ?? ''} onChange={(event) => { setReviewDecisions((current) => ({ ...current, [`${test.requestItemId}:remark`]: event.target.value })); setNotice('') }} placeholder={`Explain the re-analysis needed for ${test.testName}…`} rows="3" maxLength={1000} /></label>
             <label className="pathologist-dialog__recollection"><input type="checkbox" checked={recollectionItems.includes(test.requestItemId)} onChange={(event) => setRecollectionItems((current) => event.target.checked ? [...current, test.requestItemId] : current.filter((id) => id !== test.requestItemId))} /><span>Request a new specimen / retest for this test</span></label>
           </>}
         </section>)}
-        <p className="pathologist-page__return-hint">The patient receives the request only when every test is approved. Returned tests go back to the technologist; select a retest only when a new specimen is needed.</p>
+        <p className="pathologist-page__return-hint">If any test is marked for re-analysis, the entire request returns to the technologist for review. Select a retest only when a new specimen is needed.</p>
       </AdminDialog>}
       {activeCase && confirmAction && <AdminDialog className="pathologist-dialog" title="Confirm review decisions" onClose={() => setConfirmAction('')} size="small">
         <p className="admin-dialog__confirm">Submit the review for <strong>{activeCase.id}</strong> ({activeCase.patient})?</p>
-        <ul className="pathologist-confirm__summary"><li>{activeCase.tests.filter((test) => reviewDecisions[test.requestItemId] === 'approved').length} tests approved</li><li>{activeCase.tests.filter((test) => reviewDecisions[test.requestItemId] === 'returned').length} tests returned for correction</li><li>{recollectionItems.length} retest / recollection requests</li></ul>
+        <ul className="pathologist-confirm__summary"><li>{activeCase.tests.filter((test) => reviewDecisions[test.requestItemId] === 'approved').length} tests approved</li><li>{activeCase.tests.filter((test) => reviewDecisions[test.requestItemId] === 'returned').length} tests marked for re-analysis</li><li>{recollectionItems.length} retest / recollection requests</li></ul>
         <p>Results reach the patient only when every test in this request is approved.</p>
         <div className="admin-dialog__footer">
           <button className="admin-button admin-button--secondary" type="button" onClick={() => setConfirmAction('')}>Back to review</button>

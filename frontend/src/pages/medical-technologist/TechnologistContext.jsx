@@ -57,6 +57,7 @@ export function TechnologistProvider({ children, onNavigate }) {
             linkedTests.set(key, {
               id: link.id, requestItemId: link.id, testId: link.testId, name: link.testName,
               category: link.category ?? catalogTest?.categoryName ?? '—', specimenType: specimen.specimenType,
+              status: link.status,
               latestResult: link.latestResult,
               fields: analytes.map((analyte) => ({
                 key: `${link.testId}:${analyte.key}`, analyteId: analyte.id, label: analyte.label,
@@ -99,10 +100,11 @@ export function TechnologistProvider({ children, onNavigate }) {
       const resultRows = specimenRows.filter((specimen) => specimen.status === 'Accepted').map((specimen) => {
         const request = requestByNumber.get(specimen.requestId)
         const tests = (request?.tests ?? []).filter((test) => test.specimenType === specimen.type && specimen.linkedItemIds.includes(test.requestItemId))
-        const states = tests.map((test) => test.latestResult?.status ?? test.status)
-        const state = states.includes('returned') || states.includes('for_recollection') ? 'returned'
-          : states.some((value) => ['submitted', 'approved', 'released'].includes(value)) ? 'validation'
-            : states.some((value) => ['draft', 'drafted'].includes(value)) ? 'draft' : 'awaiting'
+        const states = tests.map((test) => test.status)
+        const state = tests.length && states.every((value) => value === 'completed') ? 'complete'
+          : request?.status === 'correction' ? 'returned'
+            : states.some((value) => ['submitted', 'approved', 'released'].includes(value)) ? 'validation'
+              : states.some((value) => ['draft', 'drafted', 'completed'].includes(value)) ? 'draft' : 'awaiting'
         const values = Object.fromEntries(tests.flatMap((test) => test.fields.map((field) => {
           const saved = (test.latestResult?.values ?? []).find((value) => value.analyteId === field.analyteId)
           const value = saved && [saved.numericValue, saved.textValue, saved.selectValue, saved.booleanValue, saved.structuredValue].find((entry) => entry != null)
@@ -165,7 +167,7 @@ export function TechnologistProvider({ children, onNavigate }) {
     const specimenResult = results.find((item) => item.specimenLabel === specimenLabel)
     if (!specimen || !request || !specimenResult) return
     try {
-      for (const test of specimenResult.tests) {
+      for (const test of specimenResult.tests.filter((entry) => ['processing', 'drafted', 'returned'].includes(entry.status))) {
         const linkedSpecimens = specimens.filter((entry) => entry.status === 'Accepted' && entry.requestId === request.id && entry.linkedItemIds.includes(test.requestItemId))
         const analyteValues = test.fields.map((field) => toApiAnalyteValue(field, values))
         await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenIds: linkedSpecimens.map((entry) => entry.id), values: analyteValues })
@@ -179,40 +181,30 @@ export function TechnologistProvider({ children, onNavigate }) {
     }
   }, [findSpecimen, requests, results, specimens, refresh])
 
-  const submitRequest = useCallback(async (requestId, valuesBySpecimen = {}) => {
+  const setTestCompletion = useCallback(async (requestId, itemId, completed) => {
+    try {
+      await api.technologist.setTestCompletion(requests.find((item) => item.id === requestId)?.backendId, itemId, completed)
+      await refresh()
+      setNotice(completed ? 'Test marked complete.' : 'Completion withdrawn. The test can be updated again.')
+    } catch (error) { setNotice(error.message || 'Unable to update test completion.') }
+  }, [requests, refresh])
+
+  const submitRequest = useCallback(async (requestId) => {
     const request = requests.find((item) => item.id === requestId)
     if (!request) return
     try {
-      const accepted = specimens.filter((specimen) => specimen.requestId === requestId && specimen.status === 'Accepted')
-      const seen = new Set()
-      for (const specimen of accepted) {
-        const specimenResult = results.find((item) => item.specimenLabel === specimen.label)
-        for (const test of specimenResult?.tests ?? []) {
-          if (seen.has(test.requestItemId)) continue
-          seen.add(test.requestItemId)
-          const values = valuesBySpecimen[specimen.label] ?? specimenResult.values
-          const linkedSpecimens = accepted.filter((entry) => entry.linkedItemIds.includes(test.requestItemId))
-          const analyteValues = test.fields.map((field) => toApiAnalyteValue(field, values))
-          await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenIds: linkedSpecimens.map((entry) => entry.id), values: analyteValues })
-        }
-      }
-      const submission = await api.technologist.submitResults(request.backendId)
+      await api.technologist.submitResults(request.backendId)
       await refresh()
-      const submitted = submission?.data
-      if (submitted?.partial) {
-        setNotice(`Results submitted. ${submitted.remainingTestCount} ${submitted.remainingTestCount === 1 ? 'test is' : 'tests are'} still waiting on specimens or result entry.`)
-      } else {
-        setNotice('Completed request results submitted to the assigned pathologist.')
-      }
+      setNotice(`All tests in ${request.id} were submitted to the assigned pathologist.`)
     } catch (error) { setNotice(error.message || 'Unable to submit this request.') }
-  }, [requests, specimens, results, refresh])
+  }, [requests, refresh])
 
   const value = useMemo(() => ({
     requests, specimens, results, notice, loadError, specimenSearch, setSpecimenSearch,
-    acceptSpecimen, rejectSpecimen, relabelSpecimen, saveDraft, submitRequest,
+    acceptSpecimen, rejectSpecimen, relabelSpecimen, saveDraft, setTestCompletion, submitRequest,
     getRequestStatus: (request) => getRequestStatus(request, specimens, results),
     goToSpecimens: (requestId) => { setSpecimenSearch(requestId); onNavigate?.('specimens') },
-  }), [requests, specimens, results, notice, loadError, specimenSearch, acceptSpecimen, rejectSpecimen, relabelSpecimen, saveDraft, submitRequest, onNavigate])
+  }), [requests, specimens, results, notice, loadError, specimenSearch, acceptSpecimen, rejectSpecimen, relabelSpecimen, saveDraft, setTestCompletion, submitRequest, onNavigate])
 
   return <TechnologistContext.Provider value={value}>{children}<div className="medtech-toast" role="status" aria-live="polite" aria-atomic="true">{notice}</div></TechnologistContext.Provider>
 }
