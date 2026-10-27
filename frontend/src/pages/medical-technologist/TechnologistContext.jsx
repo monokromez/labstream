@@ -179,9 +179,14 @@ export function TechnologistProvider({ children, onNavigate }) {
           await api.technologist.saveDraft(request.backendId, test.requestItemId, { specimenIds: linkedSpecimens.map((entry) => entry.id), values: analyteValues })
         }
       }
-      await api.technologist.submitResults(request.backendId)
+      const submission = await api.technologist.submitResults(request.backendId)
       await refresh()
-      setNotice('Completed request results submitted to the assigned pathologist.')
+      const submitted = submission?.data
+      if (submitted?.partial) {
+        setNotice(`Results submitted. ${submitted.remainingTestCount} ${submitted.remainingTestCount === 1 ? 'test is' : 'tests are'} still waiting on specimens or result entry.`)
+      } else {
+        setNotice('Completed request results submitted to the assigned pathologist.')
+      }
     } catch (error) { setNotice(error.message || 'Unable to submit this request.') }
   }, [requests, specimens, results, refresh])
 

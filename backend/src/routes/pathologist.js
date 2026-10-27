@@ -169,7 +169,7 @@ export function createPathologistRouter({ client }) {
                 );
                 const [replacement] = await tx.unsafe(
                   `insert into public.specimens (clinic_id, request_id, specimen_type, attempt_number, replaces_specimen_id, status, notes)
-                   select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'for_recollection', $5
+                   select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'expected', $5
                      from public.specimens where clinic_id = $1 and request_id = $2 and specimen_type = $3
                    returning id`,
                   [req.user.clinicId, request.id, requirement.specimen_type, oldSpecimen?.id ?? null, `Retest requested by pathologist: ${decision.remarks}`],

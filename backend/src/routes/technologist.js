@@ -73,7 +73,7 @@ export function createTechnologistRouter({ client }) {
            join public.specimen_request_items sri on sri.specimen_id = s.id and sri.clinic_id = s.clinic_id
            join public.request_items ri on ri.id = sri.request_item_id and ri.clinic_id = sri.clinic_id
           where s.clinic_id = $1 and r.assigned_technologist_id = $2
-            and ($3 = '' or s.status::text = $3)
+            and ($3 = '' or s.status::text = $3 or ($3 = 'for_recollection' and s.replaces_specimen_id is not null and s.status = 'expected'))
             and s.status in ('expected', 'received', 'accepted', 'rejected', 'for_recollection')
             and r.status = any($4::public.request_status[])
           group by s.id, r.id, p.id order by s.created_at, s.attempt_number`,
@@ -192,9 +192,20 @@ export function createTechnologistRouter({ client }) {
           [req.user.sub, specimen.id, req.user.clinicId],
         );
         await tx.unsafe(
-          `update public.request_items ri set status = case when ri.status = 'for_recollection' then 'for_recollection'::public.request_item_status else 'processing'::public.request_item_status end, updated_at = now()
+          `update public.request_items ri set status = 'processing', updated_at = now()
             where ri.id in (select request_item_id from public.specimen_request_items where specimen_id = $1 and clinic_id = $2)
-              and ri.status in ('awaiting_specimen', 'specimen_received', 'for_recollection')`,
+              and ri.status in ('awaiting_specimen', 'specimen_received', 'for_recollection')
+              and not exists (
+                select 1 from public.test_specimen_requirements sr
+                 where sr.test_id = ri.test_id and sr.clinic_id = ri.clinic_id
+                   and sr.configuration_version = ri.configuration_version and sr.is_required = true
+                   and not exists (
+                     select 1 from public.specimen_request_items sri
+                       join public.specimens s on s.id = sri.specimen_id and s.request_id = sri.request_id and s.clinic_id = sri.clinic_id
+                      where sri.request_item_id = ri.id and sri.request_id = ri.request_id and sri.clinic_id = ri.clinic_id
+                        and s.specimen_type = sr.specimen_type and s.status = 'accepted'
+                   )
+              )`,
           [specimen.id, req.user.clinicId],
         );
         await tx.unsafe(
@@ -249,7 +260,7 @@ export function createTechnologistRouter({ client }) {
         );
         const [replacement] = await tx.unsafe(
           `insert into public.specimens (clinic_id, request_id, specimen_type, attempt_number, replaces_specimen_id, status, notes)
-           select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'for_recollection', $5
+           select $1, $2, $3, coalesce(max(attempt_number), 0) + 1, $4, 'expected', $5
              from public.specimens where request_id = $2 and clinic_id = $1 and specimen_type = $3
            returning id, attempt_number, status`,
           [req.user.clinicId, specimen.request_id, specimen.specimen_type, specimen.id, `Recollection: ${reason}`],
@@ -297,7 +308,7 @@ export function createTechnologistRouter({ client }) {
           [req.params.requestId, req.user.clinicId, req.user.sub, req.params.itemId],
         );
         if (!context) throw Object.assign(new Error("Request, test, or specimen was not found in your assigned work."), { code: "RESULT_CONTEXT_NOT_FOUND" });
-        if (!["processing", "correction"].includes(context.request_status) || !["processing", "drafted", "returned", "for_recollection"].includes(context.item_status)) {
+        if (!["specimen_collection", "processing", "correction"].includes(context.request_status) || !["processing", "drafted", "returned", "for_recollection"].includes(context.item_status)) {
           throw Object.assign(new Error("This test is not currently available for result entry."), { code: "RESULT_NOT_EDITABLE" });
         }
         const acceptedSpecimens = await tx.unsafe(
@@ -434,13 +445,12 @@ export function createTechnologistRouter({ client }) {
           [req.params.requestId, req.user.clinicId, req.user.sub],
         );
         if (!request) throw Object.assign(new Error("Request was not found in your work queue."), { code: "REQUEST_NOT_FOUND" });
-        if (!["processing", "correction"].includes(request.status)) throw Object.assign(new Error("This request cannot be submitted in its current status."), { code: "INVALID_REQUEST_STATUS" });
+        if (!["specimen_collection", "processing", "correction"].includes(request.status)) throw Object.assign(new Error("This request cannot be submitted in its current status."), { code: "INVALID_REQUEST_STATUS" });
         const [target] = await tx.unsafe(
           `select count(*)::integer as total from public.request_items ri
             where ri.request_id = $1 and ri.clinic_id = $2
-              and (($3 = 'processing' and ri.status not in ('cancelled', 'for_recollection'))
-                or ($3 = 'correction' and ri.status in ('returned', 'drafted')))` ,
-          [request.id, req.user.clinicId, request.status],
+              and ri.status in ('processing', 'drafted', 'returned')`,
+          [request.id, req.user.clinicId],
         );
         const drafts = await tx.unsafe(
           `select ri.id as item_id, rs.id as submission_id, rs.revision_number
@@ -480,6 +490,28 @@ export function createTechnologistRouter({ client }) {
           [request.id, req.user.clinicId],
         );
         if (completeness.length) throw Object.assign(new Error("Complete every required result field for the drafted tests before submitting."), { code: "RESULTS_INCOMPLETE", details: completeness.map((row) => row.id) });
+        for (const draft of drafts) {
+          await tx.unsafe(`update public.result_submissions set status = 'submitted', submitted_at = now(), updated_at = now() where id = $1 and clinic_id = $2`, [draft.submission_id, req.user.clinicId]);
+          await tx.unsafe(`update public.request_items set status = 'submitted', updated_at = now() where id = $1 and clinic_id = $2`, [draft.item_id, req.user.clinicId]);
+        }
+        const [remaining] = await tx.unsafe(
+          `select count(*)::integer as total from public.request_items
+            where request_id = $1 and clinic_id = $2
+              and status in ('awaiting_specimen', 'specimen_received', 'processing', 'drafted', 'returned', 'for_recollection')`,
+          [request.id, req.user.clinicId],
+        );
+        if (remaining.total > 0) {
+          await tx.unsafe(
+            `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+             values ($1, $2, 'results.submitted', 'test_request', $3,
+               jsonb_build_object('testCount', $4::integer, 'partial', true, 'remainingTestCount', $5::integer))`,
+            [req.user.clinicId, req.user.sub, request.id, drafts.length, remaining.total],
+          );
+          return {
+            requestId: request.id, submittedTestCount: drafts.length, assignedPathologistId: null,
+            partial: true, remainingTestCount: remaining.total,
+          };
+        }
         let pathologistId = request.assigned_pathologist_id;
         if (pathologistId) {
           const [existing] = await tx.unsafe(`select id from public.users where id = $1 and clinic_id = $2 and role = 'pathologist' and is_active = true for update`, [pathologistId, req.user.clinicId]);
@@ -499,10 +531,6 @@ export function createTechnologistRouter({ client }) {
           if (!pathologist) throw Object.assign(new Error("No active pathologist is available."), { code: "NO_PATHOLOGIST_AVAILABLE" });
           pathologistId = pathologist.id;
         }
-        for (const draft of drafts) {
-          await tx.unsafe(`update public.result_submissions set status = 'submitted', submitted_at = now(), updated_at = now() where id = $1 and clinic_id = $2`, [draft.submission_id, req.user.clinicId]);
-          await tx.unsafe(`update public.request_items set status = 'submitted', updated_at = now() where id = $1 and clinic_id = $2`, [draft.item_id, req.user.clinicId]);
-        }
         const oldStatus = request.status;
         await tx.unsafe(
           `update public.test_requests set status = 'for_validation', assigned_pathologist_id = $1, updated_at = now()
@@ -519,7 +547,7 @@ export function createTechnologistRouter({ client }) {
            values ($1, $2, 'results.submitted', 'test_request', $3, jsonb_build_object('testCount', $4::integer, 'pathologistId', $5::uuid))`,
           [req.user.clinicId, req.user.sub, request.id, drafts.length, pathologistId],
         );
-        return { requestId: request.id, submittedTestCount: drafts.length, assignedPathologistId: pathologistId };
+        return { requestId: request.id, submittedTestCount: drafts.length, assignedPathologistId: pathologistId, partial: false, remainingTestCount: 0 };
       });
       return res.json({ data: result });
     } catch (error) {

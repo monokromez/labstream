@@ -161,6 +161,7 @@ export default function Specimens() {
                       )}
                       {specimen.status === 'Accepted' && <span className="medtech-table__note">Sent to Results in Progress</span>}
                       {['Rejected', 'For Recollection'].includes(specimen.status) && <span className="medtech-table__note">{specimen.reason}</span>}
+                      {specimen.recollectionOf && specimen.status === 'Expected' && <span className="medtech-table__note">Waiting for a new sample. {specimen.reason}</span>}
                     </td>
                   </tr>
                 )

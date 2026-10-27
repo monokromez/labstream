@@ -269,14 +269,6 @@ export default function ResultsInProgress() {
       return
     }
     const requestSpecimens = specimens.filter((specimen) => specimen.requestId === selectedResult.request.id)
-    const requiredTypes = [...new Set(selectedResult.request.tests.map((test) => test.specimenType))]
-    const acceptedTypes = new Set(requestSpecimens.filter((specimen) => specimen.status === 'Accepted').map((specimen) => specimen.type))
-    const missingTypes = requiredTypes.filter((type) => !acceptedTypes.has(type))
-    if (missingTypes.length) {
-      setValidationError(`This request is not ready to submit. Receive and accept all required specimen types first: ${missingTypes.join(', ')}.`)
-      return
-    }
-
     const valuesBySpecimen = {}
     const missingResults = []
     requestSpecimens.filter((specimen) => specimen.status === 'Accepted').forEach((specimen) => {
