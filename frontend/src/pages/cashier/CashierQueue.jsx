@@ -26,12 +26,6 @@ export default function CashierQueue() {
   }))
   const invoices = invoicesResult?.data ?? []
   const rows = transactions
-  const calledRequest = result?.currentCall
-  const currentlyCalling = calledRequest ? {
-    ...calledRequest,
-    queueNumber: `Q-${String(calledRequest.queueTicket).padStart(3, '0')}`,
-    fee: Number(calledRequest.totalAmount ?? 0),
-  } : null
 
   async function callPatient(item) {
     try {
@@ -39,22 +33,6 @@ export default function CashierQueue() {
       await refresh()
       setNotice(`Marked ${item.patientName} (${item.queueNumber}) as called to the cashier counter.`)
     } catch (requestError) { setNotice(requestError.message || 'Unable to call this patient.') }
-  }
-
-  async function callNextPatient() {
-    try {
-      await api.cashier.callNext()
-      await refresh()
-      setNotice('The next patient in queue has been marked as called to the cashier counter.')
-    } catch (requestError) { setNotice(requestError.message || 'No waiting patient is available to call.') }
-  }
-
-  async function dismissCurrentCall() {
-    try {
-      await api.cashier.dismissCurrentCall()
-      await refresh()
-      setNotice('Current call dismissed.')
-    } catch (requestError) { setNotice(requestError.message || 'Unable to dismiss the current call.') }
   }
 
   async function processPayment() {
@@ -97,33 +75,10 @@ export default function CashierQueue() {
         <SummaryCard title="Invoices issued" value={String(invoicesResult?.pagination?.total ?? invoices.length).padStart(2, '0')} helperText="Paid requests recorded today" />
       </div>
 
-      {currentlyCalling && (
-        <div className="cashier-queue__calling-banner" role="region" aria-label="Now calling patient">
-          <div className="cashier-queue__calling-info">
-            <span className="cashier-queue__calling-badge">📢 NOW CALLING</span>
-            <h3>Queue #{currentlyCalling.queueNumber} · {currentlyCalling.patientName}</h3>
-            <p>PID: {currentlyCalling.pid} · Request: {currentlyCalling.requestNumber} · Due: {currency.format(currentlyCalling.fee)}</p>
-          </div>
-          <div className="cashier-queue__calling-actions">
-            <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={() => setActive(currentlyCalling)}>
-              {currentlyCalling.fee === 0 ? 'Confirm Request' : 'Process Payment'}
-            </button>
-            <button className="cashier-queue__action" type="button" onClick={dismissCurrentCall}>
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
       {notice && <p className="cashier-queue__note" role="status">{notice}</p>}
 
       <div className="cashier-queue__toolbar">
         <SearchInput className="cashier-queue__search" label="Search payment queue" placeholder="Queue #, Request, PID, patient, or test" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} />
-        {(result?.summary?.total ?? 0) > 0 && (
-          <button className="cashier-queue__action cashier-queue__action--positive" type="button" onClick={callNextPatient}>
-            📢 Call Next to Counter
-          </button>
-        )}
       </div>
 
       <section className="cashier-queue__table-card" aria-labelledby="cashier-queue-title">

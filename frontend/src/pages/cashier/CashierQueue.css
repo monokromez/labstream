@@ -39,26 +39,6 @@
 .cashier-queue__dialog footer button { padding: .55rem .8rem; border: 1px solid var(--border); border-radius: .35rem; background: white; color: var(--text-lightbg); font: inherit; font-weight: 700; cursor: pointer; }
 .cashier-queue__dialog footer button:last-child { border-color: transparent; background: #087f70; color: white; }
 
-/* Calling Banner for Event-Driven Queueing */
-.cashier-queue__calling-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-  border-radius: .55rem;
-  background: linear-gradient(135deg, #0b4f46 0%, #087f70 100%);
-  color: white;
-  box-shadow: 0 .25rem 1rem rgba(8, 127, 112, 0.2);
-}
-.cashier-queue__calling-info h3 { margin: .25rem 0; font-size: 1.2rem; font-weight: 800; color: white; }
-.cashier-queue__calling-info p { margin: 0; font-size: .85rem; color: #d9f2ee; }
-.cashier-queue__calling-badge { display: inline-block; padding: .2rem .55rem; border-radius: 999px; background: rgba(255, 255, 255, 0.25); font-size: .75rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
-.cashier-queue__calling-actions { display: flex; gap: .6rem; }
-.cashier-queue__calling-actions .cashier-queue__action--positive { background: white; color: #087f70; border-color: white; font-weight: 800; }
-.cashier-queue__calling-actions .cashier-queue__action--positive:hover { background: #f0fdfa; }
-
 @media (max-width: 760px) {
   .cashier-queue__summary { grid-template-columns: 1fr; }
-  .cashier-queue__calling-banner { flex-direction: column; align-items: stretch; }
 }
