@@ -29,7 +29,9 @@ export const users = pgTable("users", {
   staffNumber: integer("staff_number").generatedAlwaysAsIdentity(), username: varchar("username", { length: 80 }), email: varchar("email", { length: 254 }),
   passwordHash: varchar("password_hash", { length: 255 }), isActive: boolean("is_active").notNull().default(false),
   mustChangePassword: boolean("must_change_password").notNull().default(true),
-  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }), createdAt: createdAt(), updatedAt: updatedAt(),
+  lastSignInAt: timestamp("last_sign_in_at", { withTimezone: true }),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }), deletedBy: uuid("deleted_by"),
+  createdAt: createdAt(), updatedAt: updatedAt(),
 });
 export const staffProfiles = pgTable("staff_profiles", {
   userId: uuid("user_id").primaryKey(), clinicId: uuid("clinic_id").notNull(),
@@ -54,6 +56,7 @@ export const patients = pgTable("patients", {
   validIdType: varchar("valid_id_type", { length: 100 }).notNull(), validIdNumber: varchar("valid_id_number", { length: 120 }).notNull(),
   archivedAt: timestamp("archived_at", { withTimezone: true }), archivedBy: uuid("archived_by"),
   archiveReason: text("archive_reason"), archivedPortalUserWasActive: boolean("archived_portal_user_was_active"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }), deletedBy: uuid("deleted_by"),
   registeredBy: uuid("registered_by").notNull(), createdAt: createdAt(), updatedAt: updatedAt(),
 });
 export const testCategories = pgTable("test_categories", {

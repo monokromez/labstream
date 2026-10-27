@@ -27,6 +27,20 @@ function createTestApp({ role = "cashier", isActive = false, isPendingActivation
       return [{ id: adminId, clinic_id: clinicId, role: "administrator", is_active: true, must_change_password: false }];
     }
     if (query.startsWith("select id, username, role, is_active, password_hash from public.users")) return [target];
+    if (query.startsWith("select id, username, role, is_active, deleted_at from public.users")) return [{ ...target, deleted_at: null }];
+    if (query.startsWith("select count(*)::integer as total from public.users")) return [{ total: 1 }];
+    if (query.startsWith("update public.users set deleted_at =")) {
+      writes.push({ query, parameters });
+      return [];
+    }
+    if (query.startsWith("delete from public.staff_profiles")) {
+      writes.push({ query, parameters });
+      return [];
+    }
+    if (query.startsWith("update public.account_tokens")) {
+      writes.push({ query, parameters });
+      return [];
+    }
     if (query.startsWith("select exists(")) return [{ has_active_work: hasActiveWork }];
     if (query.startsWith("update public.users set email =")) {
       writes.push({ query, parameters });
@@ -126,5 +140,55 @@ test("role changes are rejected while active work remains assigned", async () =>
 
   assert.equal(response.status, 409);
   assert.equal(payload.error, "STAFF_ROLE_CHANGE_HAS_ACTIVE_WORK");
+  assert.equal(writes.length, 0);
+});
+
+async function deleteStaff(app, id = staffId) {
+  const server = createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const { port } = server.address();
+    const token = createAccessToken({
+      id: adminId,
+      clinic_id: clinicId,
+      role: "administrator",
+      must_change_password: false,
+    }, secret);
+    return await fetch(`http://127.0.0.1:${port}/staff/${id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}`, origin },
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
+
+test("deleting an inactive account hides it and records an audit event", async () => {
+  const { app, writes } = createTestApp();
+  const response = await deleteStaff(app);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.data, { id: staffId });
+  assert.equal(writes.length, 4);
+  assert.ok(writes[3].query.includes("staff.deleted"));
+  assert.equal(writes[3].parameters[2], staffId);
+});
+
+test("deleting an active account is rejected without writing", async () => {
+  const { app, writes } = createTestApp({ isActive: true });
+  const response = await deleteStaff(app);
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error, "STAFF_ACCOUNT_ACTIVE");
+  assert.equal(writes.length, 0);
+});
+
+test("administrators cannot delete their own account", async () => {
+  const { app, writes } = createTestApp();
+  const response = await deleteStaff(app, adminId);
+
+  assert.equal(response.status, 409);
   assert.equal(writes.length, 0);
 });

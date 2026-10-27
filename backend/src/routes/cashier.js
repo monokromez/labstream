@@ -5,6 +5,7 @@ import { allowRoles, createRequireAuth, requirePasswordSetupComplete, requireSam
 import { createOneTimeCode } from "../auth/oneTimeCode.js";
 import { emailService } from "../email.js";
 import { ACTIVE_REQUEST_STATUSES } from "../requestStatus.js";
+import { isUuid } from "../adminValidation.js";
 
 const code = (prefix) => `${prefix}-${new Date().getFullYear()}-${randomBytes(6).toString("hex").toUpperCase()}`;
 const patientNamePattern = /^[\p{L}\p{M}]+(?:[ '\u2019.-][\p{L}\p{M}]+)*$/u;
@@ -183,7 +184,7 @@ export function createCashierRouter({ client }) {
                   p.portal_user_id, u.is_active as portal_user_active
              from public.patients p
              left join public.users u on u.id = p.portal_user_id and u.clinic_id = p.clinic_id
-            where p.id = $1 and p.clinic_id = $2 for update of p`,
+            where p.id = $1 and p.clinic_id = $2 and p.deleted_at is null for update of p`,
           [req.params.id, req.user.clinicId],
         );
         if (!patient) throw Object.assign(new Error("Patient was not found."), { code: "PATIENT_NOT_FOUND" });
@@ -246,13 +247,72 @@ export function createCashierRouter({ client }) {
     }
   });
 
+  router.delete("/patients/:id", allowRoles("cashier"), async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_PATIENT_ID" });
+      const deleted = await client.begin(async (tx) => {
+        const [patient] = await tx.unsafe(
+          `select id, pid, archived_at, deleted_at, portal_user_id
+             from public.patients
+            where id = $1 and clinic_id = $2
+            for update`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!patient || patient.deleted_at) throw Object.assign(new Error("Patient was not found."), { code: "PATIENT_NOT_FOUND" });
+        if (!patient.archived_at) throw Object.assign(new Error("Archive this patient before deleting the record."), { code: "PATIENT_NOT_ARCHIVED" });
+        const [activeRequest] = await tx.unsafe(
+          `select id from public.test_requests
+            where patient_id = $1 and clinic_id = $2 and status = any($3::public.request_status[])
+            limit 1 for update`,
+          [patient.id, req.user.clinicId, ACTIVE_REQUEST_STATUSES],
+        );
+        if (activeRequest) throw Object.assign(new Error("Complete or cancel this patient's active request before deleting the record."), { code: "PATIENT_HAS_ACTIVE_REQUEST" });
+        await tx.unsafe(
+          `update public.patients
+              set deleted_at = now(), deleted_by = $1, email = null, phone = 'deleted',
+                  house_number = null, street = null, valid_id_type = 'deleted',
+                  valid_id_number = 'deleted', updated_at = now()
+            where id = $2 and clinic_id = $3`,
+          [req.user.sub, patient.id, req.user.clinicId],
+        );
+        if (patient.portal_user_id) {
+          await tx.unsafe(
+            `update public.users
+                set is_active = false, password_hash = null, must_change_password = true,
+                    email = 'deleted+' || id::text || '@deleted.invalid', updated_at = now()
+              where id = $1 and clinic_id = $2`,
+            [patient.portal_user_id, req.user.clinicId],
+          );
+          await tx.unsafe(
+            `update public.account_tokens set consumed_at = now()
+              where user_id = $1 and clinic_id = $2 and consumed_at is null`,
+            [patient.portal_user_id, req.user.clinicId],
+          );
+        }
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'patient.deleted', 'patient', $3, jsonb_build_object('pid', $4::text))`,
+          [req.user.clinicId, req.user.sub, patient.id, patient.pid],
+        );
+        return { id: patient.id, pid: patient.pid };
+      });
+      return res.json({ data: deleted });
+    } catch (error) {
+      const known = ["PATIENT_NOT_FOUND", "PATIENT_NOT_ARCHIVED", "PATIENT_HAS_ACTIVE_REQUEST"];
+      if (known.includes(error.code)) {
+        return res.status(error.code === "PATIENT_NOT_FOUND" ? 404 : 409).json({ error: error.code, message: error.message });
+      }
+      return next(error);
+    }
+  });
+
   router.post("/patients/:id/portal-activation", allowRoles("cashier"), async (req, res, next) => {
     try {
       const activation = createOneTimeCode();
       const data = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
           `select id, pid, email, portal_user_id, first_name, middle_name, last_name
-             from public.patients where id = $1 and clinic_id = $2 and archived_at is null for update`,
+             from public.patients where id = $1 and clinic_id = $2 and archived_at is null and deleted_at is null for update`,
           [req.params.id, req.user.clinicId],
         );
         if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });
@@ -323,7 +383,7 @@ export function createCashierRouter({ client }) {
                   u.is_active
              from public.patients p
              left join public.users u on u.id = p.portal_user_id and u.clinic_id = p.clinic_id
-            where p.id = $1 and p.clinic_id = $2 and p.archived_at is null for update of p`,
+            where p.id = $1 and p.clinic_id = $2 and p.archived_at is null and p.deleted_at is null for update of p`,
           [req.params.id, req.user.clinicId],
         );
         if (!record) throw Object.assign(new Error("Patient was not found."), { code: "PATIENT_NOT_FOUND" });
@@ -369,7 +429,7 @@ export function createCashierRouter({ client }) {
       }
       const request = await client.begin(async (tx) => {
         const [patient] = await tx.unsafe(
-          `select id from public.patients where id = $1 and clinic_id = $2 and archived_at is null for update`,
+          `select id from public.patients where id = $1 and clinic_id = $2 and archived_at is null and deleted_at is null for update`,
           [patientId, req.user.clinicId],
         );
         if (!patient) throw Object.assign(new Error("Patient was not found in this laboratory."), { code: "PATIENT_NOT_FOUND" });

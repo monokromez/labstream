@@ -34,10 +34,14 @@ create table public.users (
   is_active boolean not null default false,
   must_change_password boolean not null default true,
   last_sign_in_at timestamptz,
+  deleted_at timestamptz, deleted_by uuid,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id),
   unique (clinic_id, username), unique (clinic_id, staff_number), unique (clinic_id, email),
-  check ((role = 'patient') or (username is not null and email is not null))
+  check ((role = 'patient') or (username is not null and email is not null)),
+  foreign key (deleted_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  check ((deleted_at is null and deleted_by is null)
+      or (deleted_at is not null and deleted_by is not null and is_active = false))
 );
 
 create function public.set_staff_username() returns trigger language plpgsql as $$
@@ -91,13 +95,17 @@ create table public.patients (
   registered_by uuid not null,
   archived_at timestamptz, archived_by uuid, archive_reason text,
   archived_portal_user_was_active boolean,
+  deleted_at timestamptz, deleted_by uuid,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   unique (id, clinic_id), unique (clinic_id, pid),
   foreign key (portal_user_id, clinic_id) references public.users(id, clinic_id) on delete restrict,
   foreign key (registered_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
   foreign key (archived_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
+  foreign key (deleted_by, clinic_id) references public.users(id, clinic_id) on delete restrict,
   check ((archived_at is null and archived_by is null and archive_reason is null and archived_portal_user_was_active is null)
-      or (archived_at is not null and archived_by is not null and archive_reason is not null))
+      or (archived_at is not null and archived_by is not null and archive_reason is not null)),
+  check ((deleted_at is null and deleted_by is null)
+      or (deleted_at is not null and deleted_by is not null and archived_at is not null))
 );
 create index patients_name_idx on public.patients(clinic_id, last_name, first_name);
 

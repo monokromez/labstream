@@ -219,6 +219,14 @@ export default function StaffAccounts({ currentUserId }) {
       await refresh()
     } catch (error) { setDialog({ type: 'error', message: error.message }) }
   }
+  async function commitDelete() {
+    const { person } = dialog
+    try {
+      await api.staff.remove(person.id)
+      setDialog(null)
+      await refresh()
+    } catch (error) { setDialog({ type: 'error', message: error.message }) }
+  }
   async function reissueActivation(person) {
     try {
       const result = await api.staff.reissueActivation(person.id)
@@ -253,7 +261,7 @@ export default function StaffAccounts({ currentUserId }) {
             <td className="admin-table__primary">{displayName(person)}<span className="admin-table__secondary">{person.email}</span></td>
             <td>{person.post}</td><td>{formatDateTime(person.lastSignIn)}</td>
             <td><span className={`admin-badge ${person.status === 'Active' ? 'admin-badge--success' : 'admin-badge--muted'}`}>{person.status}</span></td>
-            <td><div className="staff-accounts__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openView(person)}>View</button><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openEdit(person)}>Edit</button>{['medical_technologist', 'pathologist'].includes(person.role) && <button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openAssignments(person)}>Work</button>}{person.id === currentUserId ? <span className="staff-accounts__own-account">Own account</span> : <button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>}{person.pendingActivation && person.id !== currentUserId && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</div></td>
+            <td><div className="staff-accounts__actions"><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openView(person)}>View</button><button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openEdit(person)}>Edit</button>{['medical_technologist', 'pathologist'].includes(person.role) && <button className="admin-button admin-button--small admin-button--secondary" type="button" onClick={() => openAssignments(person)}>Work</button>}{person.id === currentUserId ? <span className="staff-accounts__own-account">Own account</span> : <><button className={`admin-button admin-button--small ${person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={() => setDialog({ type: 'status', person })}>{person.status === 'Active' ? 'Deactivate' : 'Activate'}</button>{person.status !== 'Active' && <button className="admin-button admin-button--small admin-button--negative" type="button" onClick={() => setDialog({ type: 'delete', person })}>Delete</button>}</>}{person.pendingActivation && person.id !== currentUserId && <button className="admin-button admin-button--small" type="button" onClick={() => reissueActivation(person)}>Reissue code</button>}</div></td>
           </tr>)}
           {staff.length === 0 && <tr><td className="admin-empty" colSpan="5">No staff accounts match your filters.</td></tr>}
         </tbody>
@@ -354,6 +362,7 @@ export default function StaffAccounts({ currentUserId }) {
       {(dialog?.type === 'created' || dialog?.type === 'activation-reissued') && <AdminDialog title={dialog.type === 'created' ? 'Staff account created' : 'Activation code reissued'} onClose={() => setDialog(null)} size="small"><p>These one-time activation details are shown only now. The code expires in 24 hours and can only be used once.</p><p>Username: <strong>{dialog.username}</strong></p><p>Activation code: <strong>{dialog.activationCode}</strong></p><p className={`staff-accounts__email-status staff-accounts__email-status--${activationDelivery.tone}`} role={activationDelivery.tone === 'error' ? 'alert' : 'status'}>{activationDelivery.text}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => { setDialog(null); setPage(1) }}>Done</button></div></AdminDialog>}
       {dialog?.type === 'error' && <AdminDialog title="Unable to complete action" onClose={() => setDialog(null)} size="small"><p role="alert">{dialog.message}</p><div className="admin-dialog__footer"><button className="admin-button" type="button" onClick={() => setDialog(null)}>Close</button></div></AdminDialog>}
       {dialog?.type === 'status' && <AdminDialog title={`${dialog.person.status === 'Active' ? 'Deactivate' : 'Activate'} account?`} onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Confirm {dialog.person.status === 'Active' ? 'deactivating' : 'activating'} <strong>{displayName(dialog.person)}</strong>’s staff account?</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className={`admin-button ${dialog.person.status === 'Active' ? 'admin-button--negative' : 'admin-button--positive'}`} type="button" onClick={commitStatus}>Confirm</button></div></AdminDialog>}
+      {dialog?.type === 'delete' && <AdminDialog title="Delete staff account?" onClose={() => setDialog(null)} size="small"><p className="admin-dialog__confirm">Permanently delete <strong>{displayName(dialog.person)}</strong>’s account ({dialog.person.username})?</p><p>The account is removed from this list, its personal details and activation codes are erased, and the email address becomes available again. Past work stays in the audit log. This cannot be undone.</p><div className="admin-dialog__footer"><button className="admin-button admin-button--secondary" type="button" onClick={() => setDialog(null)}>Cancel</button><button className="admin-button admin-button--negative" type="button" onClick={commitDelete}>Delete account</button></div></AdminDialog>}
     </section>
   )
 }

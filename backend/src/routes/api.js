@@ -70,6 +70,7 @@ export function createApiRouter({ client }) {
         `select count(*)::integer as total
            from public.patients p
           where p.clinic_id = $1
+            and p.deleted_at is null
             and ($2::boolean = false or p.portal_user_id = $3)
             and ($4 = '' or p.pid ilike '%' || $4 || '%'
               or p.first_name ilike '%' || $4 || '%'
@@ -96,6 +97,7 @@ export function createApiRouter({ client }) {
                     and r.status <> 'cancelled'), p.created_at) as previous_visit
            from public.patients p
           where p.clinic_id = $1
+            and p.deleted_at is null
             and ($2::boolean = false or p.portal_user_id = $3)
             and ($4 = '' or p.pid ilike '%' || $4 || '%'
               or p.first_name ilike '%' || $4 || '%'

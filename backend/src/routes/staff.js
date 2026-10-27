@@ -26,7 +26,7 @@ export function createStaffRouter({ client }) {
         `select count(*)::integer as total
            from public.users u
            join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
-          where u.clinic_id = $1 and u.role <> 'patient'
+          where u.clinic_id = $1 and u.role <> 'patient' and u.deleted_at is null
             and ($2 = '' or u.role::text = $2)
             and ($3 = '' or u.is_active::text = $3)
             and ($4 = '' or u.username ilike '%' || $4 || '%' or u.email ilike '%' || $4 || '%'
@@ -43,7 +43,7 @@ export function createStaffRouter({ client }) {
                 p.phone, p.country, p.city, p.house_number, p.street
            from public.users u
            join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
-          where u.clinic_id = $1 and u.role <> 'patient'
+          where u.clinic_id = $1 and u.role <> 'patient' and u.deleted_at is null
             and ($2 = '' or u.role::text = $2)
             and ($3 = '' or u.is_active::text = $3)
             and ($6 = '' or u.username ilike '%' || $6 || '%' or u.email ilike '%' || $6 || '%'
@@ -69,7 +69,7 @@ export function createStaffRouter({ client }) {
                 p.country, p.city, p.house_number, p.street
            from public.users u
            join public.staff_profiles p on p.user_id = u.id and p.clinic_id = u.clinic_id
-          where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient'`,
+          where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient' and u.deleted_at is null`,
         [req.params.id, req.user.clinicId],
       );
       if (!staff) return res.status(404).json({ error: "STAFF_NOT_FOUND", message: "Staff account was not found." });
@@ -84,7 +84,7 @@ export function createStaffRouter({ client }) {
       if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
       const [person] = await client.unsafe(
         `select id, role from public.users
-          where id = $1 and clinic_id = $2 and role in ('medical_technologist', 'pathologist')`,
+          where id = $1 and clinic_id = $2 and role in ('medical_technologist', 'pathologist') and deleted_at is null`,
         [req.params.id, req.user.clinicId],
       );
       if (!person) return res.status(404).json({ error: "STAFF_NOT_FOUND" });
@@ -120,7 +120,7 @@ export function createStaffRouter({ client }) {
       const updated = await client.begin(async (tx) => {
         const [target] = await tx.unsafe(
           `select id, username, role, is_active, password_hash from public.users
-            where id = $1 and clinic_id = $2 and role <> 'patient'
+            where id = $1 and clinic_id = $2 and role <> 'patient' and deleted_at is null
             for update`,
           [req.params.id, req.user.clinicId],
         );
@@ -280,7 +280,7 @@ export function createStaffRouter({ client }) {
         const [target] = await tx.unsafe(
           `select u.id, u.username, u.role, u.email, sp.first_name, sp.last_name
              from public.users u join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
-            where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient'
+            where u.id = $1 and u.clinic_id = $2 and u.role <> 'patient' and u.deleted_at is null
               and u.is_active = false and u.password_hash is null for update of u`,
           [req.params.id, req.user.clinicId]);
         if (!target) throw Object.assign(new Error("Only a staff account that has not yet been activated can receive a replacement activation code."), { code: "STAFF_NOT_PENDING_ACTIVATION" });
@@ -314,7 +314,7 @@ export function createStaffRouter({ client }) {
       const result = await client.begin(async (tx) => {
         const [target] = await tx.unsafe(
           `select id, role, is_active, password_hash
-             from public.users where id = $1 and clinic_id = $2 and role <> 'patient' for update`,
+             from public.users where id = $1 and clinic_id = $2 and role <> 'patient' and deleted_at is null for update`,
           [userId, req.user.clinicId],
         );
         if (!target) throw Object.assign(new Error("Staff account was not found."), { code: "STAFF_NOT_FOUND" });
@@ -365,6 +365,62 @@ export function createStaffRouter({ client }) {
       if (["STAFF_NOT_FOUND", "ACTIVATION_REQUIRED", "NO_REASSIGNEE"].includes(error.code)) {
         const status = error.code === "STAFF_NOT_FOUND" ? 404 : 409;
         return res.status(status).json({ error: error.code, message: error.message });
+      }
+      return next(error);
+    }
+  });
+
+  router.delete("/:id", async (req, res, next) => {
+    try {
+      if (!isUuid(req.params.id)) return res.status(400).json({ error: "INVALID_STAFF_ID" });
+      if (req.params.id === req.user.sub) {
+        return res.status(409).json({ error: "CANNOT_DELETE_OWN_ACCOUNT", message: "You cannot delete your own account." });
+      }
+      const deleted = await client.begin(async (tx) => {
+        const [target] = await tx.unsafe(
+          `select id, username, role, is_active, deleted_at
+             from public.users
+            where id = $1 and clinic_id = $2 and role <> 'patient'
+            for update`,
+          [req.params.id, req.user.clinicId],
+        );
+        if (!target || target.deleted_at) throw Object.assign(new Error("Staff account was not found."), { code: "STAFF_NOT_FOUND" });
+        if (target.is_active) throw Object.assign(new Error("Deactivate this account before deleting it."), { code: "STAFF_ACCOUNT_ACTIVE" });
+        if (target.role === "administrator") {
+          const [others] = await tx.unsafe(
+            `select count(*)::integer as total
+               from public.users
+              where clinic_id = $1 and role = 'administrator' and deleted_at is null and id <> $2`,
+            [req.user.clinicId, target.id],
+          );
+          if (!others.total) throw Object.assign(new Error("The last administrator account cannot be deleted."), { code: "LAST_ADMINISTRATOR" });
+        }
+        await tx.unsafe(
+          `update public.users
+              set deleted_at = now(), deleted_by = $1, is_active = false,
+                  email = 'deleted+' || id::text || '@deleted.invalid',
+                  password_hash = null, updated_at = now()
+            where id = $2 and clinic_id = $3`,
+          [req.user.sub, target.id, req.user.clinicId],
+        );
+        await tx.unsafe(`delete from public.staff_profiles where user_id = $1 and clinic_id = $2`, [target.id, req.user.clinicId]);
+        await tx.unsafe(
+          `update public.account_tokens set consumed_at = now()
+            where user_id = $1 and clinic_id = $2 and consumed_at is null`,
+          [target.id, req.user.clinicId],
+        );
+        await tx.unsafe(
+          `insert into public.audit_logs (clinic_id, actor_user_id, action, entity_type, entity_id, details)
+           values ($1, $2, 'staff.deleted', 'user', $3, jsonb_build_object('username', $4::text, 'role', $5::text))`,
+          [req.user.clinicId, req.user.sub, target.id, target.username, target.role],
+        );
+        return { id: target.id };
+      });
+      return res.json({ data: deleted });
+    } catch (error) {
+      if (error.code === "STAFF_NOT_FOUND") return res.status(404).json({ error: error.code, message: error.message });
+      if (["STAFF_ACCOUNT_ACTIVE", "CANNOT_DELETE_OWN_ACCOUNT", "LAST_ADMINISTRATOR"].includes(error.code)) {
+        return res.status(409).json({ error: error.code, message: error.message });
       }
       return next(error);
     }

@@ -135,14 +135,21 @@ export function createAuthRouter(client) {
            left join public.patients p on p.portal_user_id = u.id and p.clinic_id = u.clinic_id
            left join public.staff_profiles sp on sp.user_id = u.id and sp.clinic_id = u.clinic_id
           where u.clinic_id = (select id from public.clinics where is_active = true)
+            and u.deleted_at is null
             and (upper(u.username) = $1 or upper(p.pid) = $1)
           limit 1`,
         [identifier],
       );
-      const verified = user?.password_hash && user.is_active
+      const passwordMatches = user?.password_hash
         ? await argon2.verify(user.password_hash, password).catch(() => false)
         : false;
-      if (!verified) return res.status(401).json({ error: "INVALID_CREDENTIALS", message: "The supplied sign-in details are not valid." });
+      if (passwordMatches && !user.is_active) {
+        return res.status(403).json({
+          error: "ACCOUNT_INACTIVE",
+          message: "This account is inactive. Ask an administrator to activate it before signing in.",
+        });
+      }
+      if (!passwordMatches) return res.status(401).json({ error: "INVALID_CREDENTIALS", message: "The supplied sign-in details are not valid." });
       if (!STAFF_ROLES.has(user.role) && user.role !== "patient") {
         return res.status(403).json({ error: "ACCOUNT_ROLE_INVALID" });
       }

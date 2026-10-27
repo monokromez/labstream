@@ -89,6 +89,7 @@ export const api = {
     issuePatientPortalActivation: (patientId) => request(`/api/cashier/patients/${patientId}/portal-activation`, { method: 'POST', body: {} }),
     issuePatientPasswordReset: (patientId, identityVerified) => request(`/api/cashier/patients/${patientId}/password-reset`, { method: 'POST', body: { identityVerified } }),
     setPatientArchived: (patientId, archived, reason = '') => request(`/api/cashier/patients/${patientId}/archive`, { method: 'PATCH', body: { archived, reason } }),
+    deletePatient: (patientId) => request(`/api/cashier/patients/${patientId}`, { method: 'DELETE' }),
     createRequest: (testRequest) => request('/api/cashier/requests', { method: 'POST', body: testRequest }),
     queue: (filters) => request(`/api/cashier/queue${queryString(filters)}`),
     callQueueItem: (requestId) => request(`/api/cashier/queue/${requestId}/call`, { method: 'POST', body: {} }),
@@ -107,6 +108,7 @@ export const api = {
     update: (staffId, staff) => request(`/api/admin/staff/${staffId}`, { method: 'PATCH', body: staff }),
     reissueActivation: (staffId) => request(`/api/admin/staff/${staffId}/activation`, { method: 'POST', body: {} }),
     setActive: (staffId, isActive) => request(`/api/admin/staff/${staffId}/status`, { method: 'PATCH', body: { isActive } }),
+    remove: (staffId) => request(`/api/admin/staff/${staffId}`, { method: 'DELETE' }),
     assignments: (staffId) => request(`/api/admin/staff/${staffId}/assignments`),
   },
   administrator: {

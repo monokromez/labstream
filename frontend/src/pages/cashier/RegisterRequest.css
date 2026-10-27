@@ -297,6 +297,16 @@
   color: var(--surface);
 }
 
+.register-request__action-button--delete {
+  background: var(--error, #b42318);
+  color: var(--surface);
+}
+
+.register-request__action-button--delete:hover,
+.register-request__action-button--delete:focus-visible {
+  background: #8f1c13;
+}
+
 .register-request__patient-status {
   display: inline-flex;
   padding: 0.25rem 0.55rem;

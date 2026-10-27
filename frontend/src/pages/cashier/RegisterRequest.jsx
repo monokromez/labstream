@@ -96,6 +96,8 @@ export default function RegisterRequest() {
   const [patientStatusTarget, setPatientStatusTarget] = useState(null)
   const [patientArchiveReason, setPatientArchiveReason] = useState('')
   const [patientStatusSubmitting, setPatientStatusSubmitting] = useState(false)
+  const [patientDeleteTarget, setPatientDeleteTarget] = useState(null)
+  const [patientDeleteSubmitting, setPatientDeleteSubmitting] = useState(false)
   const { result: patientResult, refresh: refreshPatients, error: patientLoadError } = useApiResource(
     () => api.patients.list({ page: 1, pageSize: 100, q: searchQuery, status: patientStatusFilter }), [searchQuery, patientStatusFilter],
   )
@@ -241,6 +243,21 @@ export default function RegisterRequest() {
       setActionError(error.message || `Unable to ${archived ? 'archive' : 'restore'} this patient.`)
     } finally {
       setPatientStatusSubmitting(false)
+    }
+  }
+
+  const deletePatientRecord = async () => {
+    if (!patientDeleteTarget || patientDeleteSubmitting) return
+    setPatientDeleteSubmitting(true)
+    setActionError('')
+    try {
+      await api.cashier.deletePatient(patientDeleteTarget.id)
+      setPatientDeleteTarget(null)
+      await refreshPatients()
+    } catch (error) {
+      setActionError(error.message || 'Unable to delete this patient record.')
+    } finally {
+      setPatientDeleteSubmitting(false)
     }
   }
 
@@ -473,6 +490,18 @@ export default function RegisterRequest() {
                       >
                         {patient.isArchived ? 'Restore' : 'Archive'}
                       </button>
+                      {patient.isArchived && (
+                        <button
+                          className='register-request__action-button register-request__action-button--delete'
+                          type='button'
+                          onClick={() => {
+                            setActionError('')
+                            setPatientDeleteTarget(patient)
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -800,6 +829,20 @@ export default function RegisterRequest() {
               <button className={patientStatusTarget.patient.isArchived ? 'register-request__modal-primary' : 'register-request__modal-danger'} type='button' disabled={patientStatusSubmitting || (!patientStatusTarget.patient.isArchived && !patientArchiveReason.trim())} onClick={updatePatientArchiveStatus}>
                 {patientStatusSubmitting ? 'Saving…' : patientStatusTarget.patient.isArchived ? 'Confirm restore' : 'Confirm archive'}
               </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {patientDeleteTarget && (
+        <div className='register-request__confirm-backdrop'>
+          <section className='register-request__confirm-dialog' role='alertdialog' aria-modal='true' aria-labelledby='confirm-patient-delete-title'>
+            <h2 id='confirm-patient-delete-title'>Delete patient record?</h2>
+            <p>Permanently delete <strong>{getPatientName(patientDeleteTarget)}</strong> ({patientDeleteTarget.pid})? The record disappears from the registry, the patient portal login is removed, and the contact and ID details are erased. Requests, results, and invoices already issued keep their history. This cannot be undone.</p>
+            {actionError && <p className='register-request__field-error' role='alert'>{actionError}</p>}
+            <div className='register-request__confirm-actions'>
+              <button className='register-request__modal-secondary' type='button' disabled={patientDeleteSubmitting} onClick={() => setPatientDeleteTarget(null)}>Cancel</button>
+              <button className='register-request__modal-danger' type='button' disabled={patientDeleteSubmitting} onClick={deletePatientRecord}>{patientDeleteSubmitting ? 'Deleting…' : 'Delete patient'}</button>
             </div>
           </section>
         </div>
